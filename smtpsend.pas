@@ -1,5 +1,5 @@
 {==============================================================================|
-| Project : Delphree - Synapse                                   | 001.001.001 |
+| Project : Delphree - Synapse                                   | 001.002.000 |
 |==============================================================================|
 | Content: SMTP client                                                         |
 |==============================================================================|
@@ -63,7 +63,7 @@ begin
   inherited Create;
   sock:=TTCPBlockSocket.create;
   sock.CreateSocket;
-  timeout:=300;
+  timeout:=300000;
   SMTPhost:='localhost';
 end;
 
@@ -187,6 +187,7 @@ begin
   try
     t.assign(Maildata);
     t.Insert(0,'');
+    t.Insert(0,'x-mailer: Synapse - Delphi TCP/IP library by Lukas Gebauer');
     t.Insert(0,'subject: '+subject);
     t.Insert(0,'date: '+Rfc822DateTime(now));
     t.Insert(0,'to: '+mailto);

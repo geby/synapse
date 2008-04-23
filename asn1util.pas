@@ -1,5 +1,5 @@
 {==============================================================================|
-| Project : Delphree - Synapse                                   | 001.000.000 |
+| Project : Delphree - Synapse                                   | 001.001.000 |
 |==============================================================================|
 | Content: support for ASN.1 coding and decoding                               |
 |==============================================================================|
@@ -43,83 +43,107 @@ const
   ASN1_GAUGE = $42;
   ASN1_TIMETICKS = $43;
 
+function ASNEncOIDitem(Value: integer): string;
+function ASNDecOIDitem(var Start: integer; Buffer: string): integer;
 function ASNEncLen(Len: integer): string;
 function ASNDecLen(var Start: integer; Buffer: string): integer;
-function ASNEncInt(Len: integer): string;
+function ASNEncInt(Value: integer): string;
 function ASNObject(Data: string; ASNType: integer): string;
-function ASNItem(var Start: integer; Buffer: string): string;
+function ASNItem(var Start: integer; Buffer: string; var ValueType:integer): string;
 
 implementation
+
+function ASNEncOIDitem(Value: integer): string;
+var
+  x,xm:integer;
+  b:boolean;
+begin
+  x:=value;
+  b:=false;
+  result:='';
+  repeat
+    xm:=x mod 128;
+    x:=x div 128;
+    if b then
+      xm:=xm or $80;
+    if x>0
+      then b:=true;
+    result:=char(xm)+result;
+  until x=0;
+end;
+
+function ASNDecOIDitem(var Start: integer; Buffer: string): integer;
+var
+  x:integer;
+  b:boolean;
+begin
+  result:=0;
+  repeat
+    result:=result*128;
+    x := Ord(Buffer[Start]);
+    inc(start);
+    b:=x>$7f;
+    x:=x and $7f;
+    result:=result+x;
+    if not b
+      then break;
+  until false
+end;
 
 function ASNEncLen(Len: integer): string;
 var
   x, y: integer;
 begin
-  if (Len < $80) then
-    Result := Char(Len)
-  else
-    if (Len < $FF) then
-      Result := Char($81) + Char(Len)
+  if (len<$80)
+    then result:=char(len)
     else
-    begin
-      x := Len div $FF;
-      y := Len mod $FF;
-      Result := Char($82) + Char(x) + Char(y);
-    end;
+      begin
+        x:=len;
+        result:='';
+        repeat
+          y:=x mod 256;
+          x:=x div 256;
+          result:=char(y)+result;
+        until x=0;
+        y:=length(result);
+        y:=y or $80;
+        result:=char(y)+result;
+      end;
 end;
 
 function ASNDecLen(var Start: integer; Buffer: string): integer;
 var
-  x: integer;
+  x,n: integer;
 begin
-  x := Ord(Buffer[Start]);
-  if (x < $80) then
-  begin
-    Inc(Start);
-    Result := x;
-  end
-  else
-    if (x = $81) then
-    begin
-      Inc(Start);
-      Result := Ord(Buffer[Start]);
-      Inc(Start);
-    end
+  x:=Ord(Buffer[Start]);
+  Inc(Start);
+  if (x<$80)
+    then Result:=x
     else
-    begin
-      Inc(Start);
-      x := Ord(Buffer[Start]);
-      Inc(Start);
-      Result := x * $FF + Ord(Buffer[Start]);
-      Inc(Start);
-    end;
+      begin
+        result:=0;
+        x:=x and $7f;
+        for n:=1 to x do
+          begin
+            result:=result*256;
+            x:=Ord(Buffer[Start]);
+            Inc(Start);
+            result:=result+x;
+          end;
+      end;
 end;
 
-function ASNEncInt(Len: integer): string;
+function ASNEncInt(Value: integer): string;
 var
-  j, y: integer;
+  x,y:integer;
 begin
-  Result := '';
-  j := 0;
-  y := Len div $FFFFFF;
-  Len := Len - (y * $FFFFFF);
-  if ((y > 0) or (j = 1)) then
-  begin
-    j := 1;
-    Result := Result + Char(y);
-  end;
-  y := Len div $FFFF;
-  Len := Len - (y * $FFFF);
-  if ((y > 0) or (j = 1)) then
-  begin
-    j := 1;
-    Result := Result + Char(y);
-  end;
-  y := Len div $FF;
-  Len := Len - (y * $FF);
-  if ((y > 0) or (j = 1)) then
-    Result := Result + Char(y);
-  Result := Result + Char(Len);
+  x:=Value;
+  result:='';
+  repeat
+    y:=x mod 256;
+    x:=x div 256;
+    result:=char(y)+result;
+  until x=0;
 end;
 
 function ASNObject(Data: string; ASNType: integer): string;
@@ -127,7 +151,7 @@ begin
   Result := Char(ASNType) + ASNEncLen(Length(Data)) + Data;
 end;
 
-function ASNItem(var Start: integer; Buffer: string): string;
+function ASNItem(var Start: integer; Buffer: string; var ValueType:integer): string;
 var
   ASNType: integer;
   ASNSize: integer;
@@ -136,6 +160,7 @@ var
   c: char;
 begin
   ASNType := Ord(Buffer[Start]);
+  Valuetype:=ASNType;
   Inc(start);
   ASNSize := ASNDecLen(Start, Buffer);
   Result := '';
@@ -197,5 +222,10 @@ begin
     end;
 end;
 
+begin
+  exit;
+  asm
+    db 'Synapse ASN.1 library by Lukas Gebauer',0
+  end;
 end.
 

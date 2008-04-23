@@ -1,5 +1,5 @@
 {==============================================================================|
-| Project : Delphree - Synapse                                   | 001.001.001 |
+| Project : Delphree - Synapse                                   | 002.000.000 |
 |==============================================================================|
 | Content: Library base                                                        |
 |==============================================================================|
@@ -32,6 +32,12 @@ uses
 
 type
 
+ESynapseError = class (Exception)
+Public
+  ErrorCode:integer;
+  ErrorMessage:string;
+end;
+
 {TBlockSocket}
 TBlockSocket = class (TObject)
 Protected
@@ -41,6 +47,7 @@ Protected
   FLastError:integer;
   FProtocol:integer;
   FBuffer:string;
+  FRaiseExcept:boolean;
 
   procedure SetSin (var sin:TSockAddrIn;ip,port:string);
   function GetSinIP (sin:TSockAddrIn):string;
@@ -55,7 +62,7 @@ public
   Procedure CloseSocket;
   procedure Bind(ip,port:string);
   procedure Connect(ip,port:string);
-  procedure SendBuffer(buffer:pointer;length:integer); virtual;
+  function SendBuffer(buffer:pointer;length:integer):integer; virtual;
   procedure SendByte(data:byte); virtual;
   procedure SendString(data:string); virtual;
   function RecvBuffer(buffer:pointer;length:integer):integer; virtual;
@@ -67,6 +74,7 @@ public
   procedure SetLinger(enable:boolean;Linger:integer);
   procedure GetSins;
   function SockCheck(SockResult:integer):integer;
+  procedure ExceptCheck;
   function LocalName:string;
   function GetLocalSinIP:string;
   function GetRemoteSinIP:string;
@@ -74,7 +82,7 @@ public
   function GetRemoteSinPort:integer;
   function CanRead(Timeout:integer):boolean;
   function CanWrite(Timeout:integer):boolean;
-  procedure SendBufferTo(buffer:pointer;length:integer);
+  function SendBufferTo(buffer:pointer;length:integer):integer;
   function RecvBufferFrom(buffer:pointer;length:integer):integer;
 
 published
@@ -83,6 +91,7 @@ published
   property RemoteSin:TSockAddrIn read FRemoteSin;
   property LastError:integer read FLastError;
   property Protocol:integer read FProtocol;
+  property RaiseExcept:boolean read FRaiseExcept write FRaiseExcept;
 end;
 
 {TUDPBlockSocket}
@@ -108,9 +117,11 @@ implementation
 constructor TBlockSocket.Create;
 begin
   inherited create;
+  FRaiseExcept:=false;
   FSocket:=INVALID_SOCKET;
   FProtocol:=IPPROTO_IP;
   SockCheck(winsock.WSAStartup($101, FWsaData));
+  ExceptCheck;
 end;
 
 {TBlockSocket.Destroy}
@@ -172,6 +183,7 @@ Procedure TBlockSocket.CreateSocket;
 begin
   if FSocket=INVALID_SOCKET then FLastError:=winsock.WSAGetLastError
     else FLastError:=0;
+  ExceptCheck;
 end;
 
 
@@ -191,6 +203,7 @@ begin
   SockCheck(winsock.bind(FSocket,sin,sizeof(sin)));
   len:=sizeof(FLocalSin);
   Winsock.GetSockName(FSocket,FLocalSin,Len);
+  ExceptCheck;
 end;
 
 {TBlockSocket.Connect}
@@ -201,6 +214,7 @@ begin
   SetSin(sin,ip,port);
   SockCheck(winsock.connect(FSocket,sin,sizeof(sin)));
   GetSins;
+  ExceptCheck;
 end;
 
 {TBlockSocket.GetSins}
@@ -215,21 +229,25 @@ begin
 end;
 
 {TBlockSocket.SendBuffer}
-procedure TBlockSocket.SendBuffer(buffer:pointer;length:integer);
+function TBlockSocket.SendBuffer(buffer:pointer;length:integer):integer;
 begin
-  sockcheck(winsock.send(FSocket,buffer^,length,0));
+  result:=winsock.send(FSocket,buffer^,length,0);
+  sockcheck(result);
+  ExceptCheck;
 end;
 
 {TBlockSocket.SendByte}
 procedure TBlockSocket.SendByte(data:byte);
 begin
   sockcheck(winsock.send(FSocket,data,1,0));
+  ExceptCheck;
 end;
 
 {TBlockSocket.SendString}
 procedure TBlockSocket.SendString(data:string);
 begin
   sockcheck(winsock.send(FSocket,pchar(data)^,length(data),0));
+  ExceptCheck;
 end;
 
 {TBlockSocket.RecvBuffer}
@@ -239,6 +257,7 @@ begin
   if result=0
     then FLastError:=WSAENOTCONN
     else sockcheck(result);
+  ExceptCheck;
 end;
 
 {TBlockSocket.RecvByte}
@@ -257,6 +276,7 @@ begin
       result:=data;
     end
     else FLastError:=WSAETIMEDOUT;
+  ExceptCheck;
 end;
 
 {TBlockSocket.Recvstring}
@@ -313,6 +333,7 @@ begin
       result:=s;
     end
   else result:='';
+  ExceptCheck;
 end;
 
 {TBlockSocket.PeekBuffer}
@@ -320,6 +341,7 @@ function TBlockSocket.PeekBuffer(buffer:pointer;length:integer):integer;
 begin
   result:=winsock.recv(FSocket,buffer^,length,MSG_PEEK);
   sockcheck(result);
+  ExceptCheck;
 end;
 
 {TBlockSocket.PeekByte}
@@ -338,6 +360,7 @@ begin
       result:=data;
     end
     else FLastError:=WSAETIMEDOUT;
+  ExceptCheck;
 end;
 
 {TBlockSocket.SockCheck}
@@ -346,6 +369,22 @@ begin
   if SockResult=SOCKET_ERROR then result:=winsock.WSAGetLastError
     else result:=0;
   FLastError:=result;
+end;
+
+{TBlockSocket.ExceptCheck}
+procedure TBlockSocket.ExceptCheck;
+var
+  e:ESynapseError;
+  s:string;
+begin
+  if FRaiseExcept and (LastError<>0) then
+    begin
+      s:=GetErrorDesc(LastError);
+      e:=ESynapseError.CreateFmt('TCP/IP socket error %d: %s',[LastError,s]);
+      e.ErrorCode:=LastError;
+      e.ErrorMessage:=s;
+      raise e;
+    end;
 end;
 
 {TBlockSocket.WaitingData}
@@ -363,8 +402,9 @@ var
   li:TLinger;
 begin
   li.l_onoff  := ord(enable);
-  li.l_linger := Linger;
+  li.l_linger := Linger div 1000;
   SockCheck(winsock.SetSockOpt(FSocket, SOL_SOCKET, SO_LINGER, @li, SizeOf(li)));
+  ExceptCheck;
 end;
 
 {TBlockSocket.LocalName}
@@ -418,8 +458,8 @@ var
   TimeV:tTimeval;
   x:integer;
 begin
-  Timev.tv_usec:=0;
-  Timev.tv_sec:=Timeout;
+  Timev.tv_usec:=(Timeout mod 1000)*1000;
+  Timev.tv_sec:=Timeout div 1000;
   TimeVal:=@TimeV;
   if timeout = -1 then Timeval:=nil;
   Winsock.FD_Zero(FDSet);
@@ -428,6 +468,7 @@ begin
   SockCheck(x);
   If FLastError<>0 then x:=0;
   result:=x>0;
+  ExceptCheck;
 end;
 
 {TBlockSocket.CanWrite}
@@ -438,8 +479,8 @@ var
   TimeV:tTimeval;
   x:integer;
 begin
-  Timev.tv_usec:=0;
-  Timev.tv_sec:=Timeout;
+  Timev.tv_usec:=(Timeout mod 1000)*1000;
+  Timev.tv_sec:=Timeout div 1000;
   TimeVal:=@TimeV;
   if timeout = -1 then Timeval:=nil;
   Winsock.FD_Zero(FDSet);
@@ -448,15 +489,18 @@ begin
   SockCheck(x);
   If FLastError<>0 then x:=0;
   result:=x>0;
+  ExceptCheck;
 end;
 
 {TBlockSocket.SendBufferTo}
-procedure TBlockSocket.SendBufferTo(buffer:pointer;length:integer);
+function TBlockSocket.SendBufferTo(buffer:pointer;length:integer):integer;
 var
   len:integer;
 begin
   len:=sizeof(FRemoteSin);
-  sockcheck(winsock.sendto(FSocket,buffer^,length,0,FRemoteSin,len));
+  result:=winsock.sendto(FSocket,buffer^,length,0,FRemoteSin,len);
+  sockcheck(result);
+  ExceptCheck;
 end;
 
 {TBlockSocket.RecvBufferFrom}
@@ -467,6 +511,7 @@ begin
   len:=sizeof(FRemoteSin);
   result:=winsock.recvfrom(FSocket,buffer^,length,0,FRemoteSin,len);
   sockcheck(result);
+  ExceptCheck;
 end;
 
 
@@ -491,6 +536,7 @@ begin
   Res:=winsock.SetSockOpt(FSocket, SOL_SOCKET, SO_BROADCAST, @opt, SizeOf(opt));
   SockCheck(Res);
   Result:=res=0;
+  ExceptCheck;
 end;
 
 
@@ -508,6 +554,7 @@ end;
 procedure TTCPBlockSocket.Listen;
 begin
   SockCheck(winsock.listen(FSocket,SOMAXCONN));
+  ExceptCheck;
 end;
 
 {TTCPBlockSocket.Accept}
@@ -522,6 +569,7 @@ begin
   result:=winsock.accept(FSocket,@FRemoteSin,@len);
 {$ENDIF}
   SockCheck(result);
+  ExceptCheck;
 end;
 
 
@@ -587,5 +635,9 @@ begin
   end;
 end;
 
-
+begin
+  exit;
+  asm
+    db 'Synapse TCP/IP library by Lukas Gebauer',0
+  end;
 end.
