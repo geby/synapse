@@ -14,7 +14,7 @@
 | The Original Code is Synapse Delphi Library.                                 |
 |==============================================================================|
 | The Initial Developer of the Original Code is Lukas Gebauer (Czech Republic).|
-| Portions created by Lukas Gebauer are Copyright (c) 1999.                    |
+| Portions created by Lukas Gebauer are Copyright (c)2000.                     |
 | All Rights Reserved.                                                         |
 |==============================================================================|
 | Contributor(s):                                                              |
@@ -147,7 +147,6 @@ var
       y,n:integer;
       s:string;
       c:char;
-      b:Boolean;
     begin
       ASNType:=Ord(Buffer[start]);
       Inc(start);
