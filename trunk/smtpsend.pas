@@ -1,7 +1,7 @@
 {==============================================================================|
-| Project : Delphree - Synapse                                   | 001.000.000 |
+| Project : Delphree - Synapse                                   | 001.000.001|
 |==============================================================================|
-| Content: SMTP client                                                         |
+| Content: SMTP client                                                        |
 |==============================================================================|
 | The contents of this file are subject to the Mozilla Public License Ver. 1.0 |
 | (the "License"); you may not use this file except in compliance with the     |
@@ -27,7 +27,7 @@ unit SMTPsend;
 
 interface
 uses
-  Blcksock, sysutils, classes, windows;
+  Blcksock, sysutils, classes, windows, SynaUtil;
 
 const
   CRLF=#13+#10;
@@ -51,8 +51,6 @@ type
     function maildata(Value:Tstrings):Boolean;
   end;
 
-function timezone:string;
-function Rfc822DateTime(t:TDateTime):String;
 function Sendto (mailfrom,mailto,subject,SMTPHost:string;maildata:TStrings):Boolean;
 
 implementation
@@ -173,57 +171,6 @@ end;
 
 {==============================================================================}
 
-function timezone:string;
-var
-  zoneinfo:TTimeZoneInformation;
-  bias:integer;
-  h,m:integer;
-begin
-  GetTimeZoneInformation(Zoneinfo);
-  bias:=zoneinfo.bias;
-  if bias<=0 then result:='+'
-    else result:='-';
-  bias:=abs(bias);
-  h:=bias div 60;
-  m:=bias mod 60;
-  result:=result+format('%.2d%.2d',[h,m]);
-end;
-
-function Rfc822DateTime(t:TDateTime):String;
-var
-  I: Integer;
-  SaveDayNames: array[1..7] of string;
-  SaveMonthNames: array[1..12] of string;
-const
-  MyDayNames: array[1..7] of string =
-    ('Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat');
-  MyMonthNames: array[1..12] of string =
-    ('Jan', 'Feb', 'Mar', 'Apr',
-     'May', 'Jun', 'Jul', 'Aug',
-     'Sep', 'Oct', 'Nov', 'Dec');
-begin
-  if ShortDayNames[1] = MyDayNames[1]
-    then Result := FormatDateTime('ddd, d mmm yyyy hh:mm:ss', t)
-    else
-      begin
-        for I := Low(ShortDayNames) to High(ShortDayNames) do
-          begin
-            SaveDayNames[I] := ShortDayNames[I];
-            ShortDayNames[I] := MyDayNames[I];
-          end;
-        for I := Low(ShortMonthNames) to High(ShortMonthNames) do
-          begin
-            SaveMonthNames[I] := ShortMonthNames[I];
-            ShortMonthNames[I] := MyMonthNames[I];
-          end;
-        Result := FormatDateTime('ddd, d mmm yyyy hh:mm:ss', t);
-        for I := Low(ShortDayNames) to High(ShortDayNames) do
-          ShortDayNames[I] := SaveDayNames[I];
-        for I := Low(ShortMonthNames) to High(ShortMonthNames) do
-          ShortMonthNames[I] := SaveMonthNames[I];
-      end;
-  Result:=Result+' '+Timezone;
-end;
 
 function Sendto (mailfrom,mailto,subject,SMTPHost:string;maildata:TStrings):Boolean;
 var
