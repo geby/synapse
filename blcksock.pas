@@ -247,8 +247,8 @@ begin
   if CanRead(timeout) then
     begin
       y:=winsock.recv(FSocket,data,1,0);
-      if y=0 then FLastError:=WSAENOTCONN;
-      sockcheck(y);
+      if y=0 then FLastError:=WSAENOTCONN
+        else sockcheck(y);
       result:=data;
     end
     else FLastError:=WSAETIMEDOUT;
