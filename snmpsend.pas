@@ -1,5 +1,5 @@
 {==============================================================================|
-| Project : Delphree - Synapse                                   | 002.001.000 |
+| Project : Delphree - Synapse                                   | 002.002.000 |
 |==============================================================================|
 | Content: SNMP client                                                         |
 |==============================================================================|
@@ -101,6 +101,7 @@ constructor TSNMPRec.Create;
 begin
   inherited create;
   SNMPMibList := TList.create;
+  id:=1;
 end;
 
 {TSNMPRec.Destroy}
@@ -148,10 +149,15 @@ begin
     begin
       SNMPMib := SNMPMibList[n];
       case (SNMPMib.ValueType) of
-        ASN1_INT, ASN1_COUNTER, ASN1_GAUGE, ASN1_TIMETICKS:
+        ASN1_INT:
           begin
             s := ASNObject(MibToID(SNMPMib.OID),ASN1_OBJID)
               +ASNObject(ASNEncInt(strToIntDef(SNMPMib.Value,0)),SNMPMib.ValueType);
+          end;
+        ASN1_COUNTER, ASN1_GAUGE, ASN1_TIMETICKS:
+          begin
+            s := ASNObject(MibToID(SNMPMib.OID),ASN1_OBJID)
+              +ASNObject(ASNEncUInt(strToIntDef(SNMPMib.Value,0)),SNMPMib.ValueType);
           end;
         ASN1_OBJID:
           begin
@@ -190,7 +196,6 @@ begin
   version:=0;
   community:='';
   PDUType:=0;
-  ID:=0;
   ErrorStatus:=0;
   ErrorIndex:=0;
   for i := 0 to SNMPMibList.count - 1 do

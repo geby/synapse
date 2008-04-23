@@ -1,5 +1,5 @@
 {==============================================================================|
-| Project : Delphree - Synapse                                   | 001.000.000 |
+| Project : Delphree - Synapse                                   | 001.000.001 |
 |==============================================================================|
 | Content: MIME support procedures and functions                                    |
 |==============================================================================|
@@ -188,6 +188,7 @@ var
   s,su,b:string;
   st,st2:string;
   e:boolean;
+  fn:string;
 begin
   t:=tstringlist.create;
   try
@@ -200,6 +201,7 @@ begin
     FileName:='';
     encoding:='7BIT';
 
+    fn:='';
     x:=beginline;
     b:=boundary;
     if b<>'' then
@@ -225,6 +227,8 @@ begin
             st2:=separateleft(st,';');
             primary:=separateleft(st2,'/');
             secondary:=separateright(st2,'/');
+            if (secondary=primary) and (pos('/',st2)<1)
+              then secondary:='';
             case primarycode of
               MP_TEXT:
                 begin
@@ -239,7 +243,7 @@ begin
                 end;
               MP_BINARY:
                 begin
-                  filename:=getparameter(s,'filename=');
+                  filename:=getparameter(s,'name=');
                 end;
             end;
           end;
@@ -251,7 +255,14 @@ begin
           begin
             description:=separateright(s,':');
           end;
+        if pos('CONTENT-DISPOSITION:',su)=1 then
+          begin
+            fn:=getparameter(s,'filename=');
+          end;
       end;
+
+    if (primarycode=MP_BINARY) and (filename='')
+      then filename:=fn;
 
     x1:=x;
     x2:=value.count-1;
@@ -340,7 +351,8 @@ begin
                 if s[length(s)]<>'='
                   then s:=s+CRLF;
             s:=DecodeQuotedPrintable(s);
-            s:=decodeChar(s,CharsetCode,TargetCharset);
+            if PrimaryCode=MP_TEXT
+              then s:=decodeChar(s,CharsetCode,TargetCharset);
           end;
         ME_BASE64:
           begin

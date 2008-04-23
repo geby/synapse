@@ -112,7 +112,6 @@ var
   PIPHeader:^TIPHeader;
   IpHdrLen:Integer;
   PIcmpEchoHeader:^TICMPEchoHeader;
-  data:string;
   n,x:integer;
 begin
   Result:=False;

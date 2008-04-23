@@ -1,5 +1,5 @@
 {==============================================================================|
-| Project : Delphree - Synapse                                   | 001.003.000 |
+| Project : Delphree - Synapse                                   | 001.004.000 |
 |==============================================================================|
 | Content: support procedures and functions                                    |
 |==============================================================================|
@@ -48,6 +48,7 @@ function SeparateRight(value,delimiter:string):string;
 function getparameter(value,parameter:string):string;
 function GetEmailAddr(value:string):string;
 function GetEmailDesc(value:string):string;
+function StrToHex(value:string):string;
 
 implementation
 
@@ -316,7 +317,7 @@ end;
 {GetParameter}
 function getparameter(value,parameter:string):string;
 var
-  x,x1,n:integer;
+  x,x1:integer;
   s:string;
 begin
   x:=pos(uppercase(parameter),uppercase(value));
@@ -381,6 +382,17 @@ begin
   result:=trim(s);
 end;
 
+{==============================================================================}
+{StrToHex}
+function StrToHex(value:string):string;
+var
+  n:integer;
+begin
+  result:='';
+  for n:=1 to length(value) do
+    Result:=Result+IntToHex(Byte(value[n]),2);
+  result:=lowercase(result);
+end;
 {==============================================================================}
 
 end.
