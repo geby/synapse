@@ -21,7 +21,7 @@
 |   Jean-Fabien Connault (jfconnault@mail.dotcom.fr)                           |
 |==============================================================================|
 | History: see HISTORY.HTM from distribution package                           |
-|          (Found at URL: http://www.mlp.cz/space/gebauerl/synapse/)           |
+|          (Found at URL: http://www.ararat.cz/synapse/)                       |
 |==============================================================================}
 
 unit SNMPSend;

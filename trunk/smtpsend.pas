@@ -1,5 +1,5 @@
 {==============================================================================|
-| Project : Delphree - Synapse                                   | 001.002.000 |
+| Project : Delphree - Synapse                                   | 001.003.000 |
 |==============================================================================|
 | Content: SMTP client                                                         |
 |==============================================================================|
@@ -20,7 +20,7 @@
 | Contributor(s):                                                              |
 |==============================================================================|
 | History: see HISTORY.HTM from distribution package                           |
-|          (Found at URL: http://www.mlp.cz/space/gebauerl/synapse/)           |
+|          (Found at URL: http://www.ararat.cz/synapse/)                       |
 |==============================================================================}
 
 unit SMTPsend;
@@ -53,6 +53,7 @@ type
     function maildata(Value:Tstrings):Boolean;
   end;
 
+function SendtoRaw (mailfrom,mailto,SMTPHost:string;maildata:TStrings):Boolean;
 function Sendto (mailfrom,mailto,subject,SMTPHost:string;maildata:TStrings):Boolean;
 
 implementation
@@ -175,14 +176,30 @@ end;
 
 {==============================================================================}
 
-
-function Sendto (mailfrom,mailto,subject,SMTPHost:string;maildata:TStrings):Boolean;
+function SendtoRaw (mailfrom,mailto,SMTPHost:string;maildata:TStrings):Boolean;
 var
   SMTP:TSMTPSend;
-  t:TStrings;
 begin
   Result:=False;
   SMTP:=TSMTPSend.Create;
+  try
+    SMTP.SMTPHost:=SMTPHost;
+    if not SMTP.login then Exit;
+    if not SMTP.mailfrom(mailfrom) then Exit;
+    if not SMTP.mailto(mailto) then Exit;
+    if not SMTP.maildata(Maildata) then Exit;
+    SMTP.logout;
+    Result:=True;
+  finally
+    SMTP.Free;
+  end;
+end;
+
+function Sendto (mailfrom,mailto,subject,SMTPHost:string;maildata:TStrings):Boolean;
+var
+  t:TStrings;
+begin
+  Result:=False;
   t:=TStringList.Create;
   try
     t.assign(Maildata);
@@ -192,15 +209,8 @@ begin
     t.Insert(0,'date: '+Rfc822DateTime(now));
     t.Insert(0,'to: '+mailto);
     t.Insert(0,'from: '+mailfrom);
-    SMTP.SMTPHost:=SMTPHost;
-    if not SMTP.login then Exit;
-    if not SMTP.mailfrom(mailfrom) then Exit;
-    if not SMTP.mailto(mailto) then Exit;
-    if not SMTP.maildata(t) then Exit;
-    SMTP.logout;
-    Result:=True;
+    result:=SendToRaw(mailfrom,mailto,SMTPHost,t);
   finally
-    SMTP.Free;
     t.Free;
   end;
 end;

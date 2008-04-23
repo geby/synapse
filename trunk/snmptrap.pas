@@ -1,5 +1,5 @@
 {==============================================================================|
-| Project : Delphree - Synapse                                   | 002.000.000 |
+| Project : Delphree - Synapse                                   | 002.000.001 |
 |==============================================================================|
 | Content: SNMP traps                                                          |
 |==============================================================================|
@@ -21,7 +21,7 @@
 |   Hernan Sanchez (hernan.sanchez@iname.com)                                  |
 |==============================================================================|
 | History: see HISTORY.HTM from distribution package                           |
-|          (Found at URL: http://www.mlp.cz/space/gebauerl/synapse/)           |
+|          (Found at URL: http://www.ararat.cz/synapse/)                       |
 |==============================================================================}
 
 unit SNMPTrap;
@@ -212,7 +212,7 @@ begin
   Version := StrToIntDef(ASNItem(Pos, Buffer,svt), 0);
   Community := ASNItem(Pos, Buffer,svt);
   PDUType := StrToIntDef(ASNItem(Pos, Buffer,svt), PDU_TRAP);
-  Enterprise := IdToMIB(ASNItem(Pos, Buffer,svt));
+  Enterprise := ASNItem(Pos, Buffer,svt);
   TrapHost := ASNItem(Pos, Buffer,svt);
   GenTrap := StrToIntDef(ASNItem(Pos, Buffer,svt), 0);
   Spectrap := StrToIntDef(ASNItem(Pos, Buffer,svt), 0);
