@@ -1,5 +1,5 @@
 {==============================================================================|
-| Project : Delphree - Synapse                                   | 001.000.000 |
+| Project : Delphree - Synapse                                   | 001.000.001 |
 |==============================================================================|
 | Content: Library base                                                        |
 |==============================================================================|
@@ -19,8 +19,8 @@
 |==============================================================================|
 | Contributor(s):                                                              |
 |==============================================================================|
-| History: 26.9.1999 Version 001.000.000                                        |
-|          First release                                                 |
+| History: see HISTORY.HTM from distribution package                           |
+|          (Found at URL: http://www.mlp.cz/space/gebauerl/synapse/)           |
 |==============================================================================}
 
 unit blcksock;
@@ -38,7 +38,6 @@ type
 {TBlockSocket}
 TBlockSocket = class (TObject)
 Protected
-{identifikator socketu}
   FSocket:TSocket;
   FLocalSin:TSockAddrIn;
   FRemoteSin:TSockAddrIn;
@@ -46,13 +45,10 @@ Protected
   FProtocol:integer;
   FBuffer:string;
 
-{vyhodnoti IP adresu a port (vcetne symbolickych nazvu)
- a naplni jimi strukturu SIN}
   procedure SetSin (var sin:TSockAddrIn;ip,port:string);
   function GetSinIP (sin:TSockAddrIn):string;
   function GetSinPort (sin:TSockAddrIn):integer;
 public
-{informace o WinSock}
   FWsaData : TWSADATA;
 
   constructor Create;
