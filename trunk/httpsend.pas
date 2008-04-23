@@ -93,7 +93,6 @@ end;
 {get}
 function get(Host,URI:string;Response:TStrings):Boolean;
 var
-  s:string;
   HTTP:THTTPSend;
   Query:TStringList;
 begin
