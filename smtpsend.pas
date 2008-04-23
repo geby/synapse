@@ -1,5 +1,5 @@
 {==============================================================================|
-| Project : Delphree - Synapse                                   | 001.001.000 |
+| Project : Delphree - Synapse                                   | 001.001.001 |
 |==============================================================================|
 | Content: SMTP client                                                         |
 |==============================================================================|
@@ -164,7 +164,7 @@ begin
   for n:=0 to Value.Count-1 do
     begin
       s:=value[n];
-      if Length(s)>1 then
+      if Length(s)>=1 then
         if s[1]='.' then s:='.'+s;
       Sock.SendString(s+CRLF);
     end;
