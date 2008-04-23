@@ -1,5 +1,5 @@
 {==============================================================================|
-| Project : Delphree - Synapse                                   | 001.001.000 |
+| Project : Delphree - Synapse                                   | 001.002.000 |
 |==============================================================================|
 | Content: support procedures and functions                                    |
 |==============================================================================|
@@ -14,10 +14,12 @@
 | The Original Code is Synapse Delphi Library.                                 |
 |==============================================================================|
 | The Initial Developer of the Original Code is Lukas Gebauer (Czech Republic).|
-| Portions created by Lukas Gebauer are Copyright (c) 1999.                    |
+| Portions created by Lukas Gebauer are Copyright (c) 1999, 2000.              |
+| Portions created by Hernan Sanchez are Copyright (c) 2000.                   |
 | All Rights Reserved.                                                         |
 |==============================================================================|
 | Contributor(s):                                                              |
+|   Hernan Sanchez (hernan.sanchez@iname.com)                                  |
 |==============================================================================|
 | History: see HISTORY.HTM from distribution package                           |
 |          (Found at URL: http://www.mlp.cz/space/gebauerl/synapse/)           |
@@ -40,6 +42,7 @@ procedure Dump (Buffer:string;DumpFile:string);
 Function MibToId(mib:string):string;
 Function IdToMib(id:string):string;
 Function IntMibToStr(int:string):string;
+function IPToID(Host: string): string;
 
 implementation
 
@@ -115,9 +118,9 @@ function DeCodeInt(Value:string;Index:integer):word;
 var
   x,y:Byte;
 begin
-  if Length(Value)<index then x:=Ord(Value[index])
+  if Length(Value)>index then x:=Ord(Value[index])
     else x:=0;
-  if Length(Value)<(Index+1) then y:=Ord(Value[Index+1])
+  if Length(Value)>(Index+1) then y:=Ord(Value[Index+1])
     else y:=0;
   Result:=x*256+y;
 end;
@@ -132,7 +135,7 @@ begin
   Result:=true;
   x:=0;
   for n:=1 to Length(Value) do
-    if not (Value[n] in ['1'..'0','.'])
+    if not (Value[n] in ['0'..'9','.'])
       then begin
         Result:=False;
         break;
@@ -153,11 +156,12 @@ begin
   Result:='';
   repeat
     x:=LastDelimiter('.',Value);
-    Result:=Result+Copy(Value,x,Length(Value)-x);
-    Delete(Value,x,Length(Value)-x);
+    Result:=Result+'.'+Copy(Value,x+1,Length(Value)-x);
+    Delete(Value,x,Length(Value)-x+1);
   until x<1;
   if Length(Result)>0 then
-    if Value[1]='.' then Delete(Result, 1, 1);
+    if Result[1]='.' then
+      Delete(Result, 1, 1);
 end;
 
 {==============================================================================}
@@ -255,5 +259,26 @@ end;
 
 {==============================================================================}
 
+{IPToID} //Hernan Sanchez
+function IPToID(Host: string): string;
+var
+  s, t: string;
+  i, x: integer;
+begin
+  Result := '';
+  for x:= 1 to 3 do
+    begin
+      t := '';
+      s := StrScan(PChar(Host), '.');
+      t := Copy(Host, 1, (Length(Host) - Length(s)));
+      Delete(Host, 1, (Length(Host) - Length(s) + 1));
+      i := StrTointDef(t, 0);
+      Result := Result + Chr(i);
+    end;
+  i := StrTointDef(Host, 0);
+  Result := Result + Chr(i);
+end;
+
+{==============================================================================}
 
 end.

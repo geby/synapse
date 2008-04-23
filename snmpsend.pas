@@ -1,5 +1,5 @@
 {==============================================================================|
-| Project : Delphree - Synapse                                   | 001.000.000 |
+| Project : Delphree - Synapse                                   | 001.001.000 |
 |==============================================================================|
 | Content: SNMP client                                                         |
 |==============================================================================|
@@ -28,7 +28,7 @@ unit SNMPSend;
 interface
 
 uses
-  BlckSock, synautil, classes, sysutils;
+  BlckSock, synautil, classes, sysutils, ASN1util;
 
 const
 
@@ -123,104 +123,21 @@ var
   Pos:integer;
   endpos:integer;
   sm,sv:string;
-
-    function ASNlen(var start:integer):integer;
-    var
-      x:integer;
-    begin
-      x:=ord(buffer[start]);
-      if x>$80 then
-        begin
-          inc(start);
-          x:=x and $7f;
-          x:=x*$80;
-          x:=x+ord(buffer[start]);
-        end;
-      inc(start);
-      result:=x;
-    end;
-
-    function ASNitem (var start:integer):string;
-    var
-      ASNType:integer;
-      ASNSize:integer;
-      y,n:integer;
-      s:string;
-      c:char;
-    begin
-      ASNType:=Ord(Buffer[start]);
-      Inc(start);
-      ASNSize:=ASNLen(start);
-      Result:='';
-      if (ASNType and $20)>0 then
-        begin
-          Result:='$'+IntToHex(ASNType,2);
-        end
-        else
-          case ASNType of
-            2, $41, $42, $43:  begin //integer
-                  y:=0;
-                  for n:=1 to ASNsize do
-                    begin
-                      y:=y*256+ord(buffer[start]);
-                      inc(start);
-                    end;
-                  result:=inttostr(y);
-                end;
-            4, $44:  begin //string
-                  for n:=1 to ASNSize do
-                    begin
-                      c:=char(buffer[start]);
-                      inc(start);
-                      s:=s+c;
-                    end;
-                  Result:=s;
-                end;
-            6:  begin //OID
-                  for n:=1 to ASNsize do
-                    begin
-                      c:=char(buffer[start]);
-                      inc(start);
-                      s:=s+c;
-                    end;
-                  result:=IdToMib(s);
-                end;
-            $40:  begin //IP address
-                  s:='';
-                  for n:=1 to ASNsize do
-                    begin
-                      if n<>1 then
-                        s:=s+'.';
-                      y:=Ord(buffer[start]);
-                      inc(start);
-                      s:=s+IntToStr(y);
-                    end;
-                  result:=s;
-                end;
-            else //NULL
-              begin
-                Result:='';
-                inc(start);
-                start:=start+ASNSize;
-              end;
-      end;
-    end;
-
 begin
   Pos:=2;
-  Endpos:=ASNLen(Pos);
-  Self.version:=StrToIntDef(ASNItem(Pos),0);
-  Self.community:=ASNItem(Pos);
-  Self.PDUType:=StrToIntDef(ASNItem(Pos),0);
-  Self.ID:=StrToIntDef(ASNItem(Pos),0);
-  Self.ErrorStatus:=StrToIntDef(ASNItem(Pos),0);
-  Self.ErrorIndex:=StrToIntDef(ASNItem(Pos),0);
-  ASNItem(Pos);
+  Endpos:=ASNDecLen(Pos,buffer);
+  Self.version:=StrToIntDef(ASNItem(Pos,buffer),0);
+  Self.community:=ASNItem(Pos,buffer);
+  Self.PDUType:=StrToIntDef(ASNItem(Pos,buffer),0);
+  Self.ID:=StrToIntDef(ASNItem(Pos,buffer),0);
+  Self.ErrorStatus:=StrToIntDef(ASNItem(Pos,buffer),0);
+  Self.ErrorIndex:=StrToIntDef(ASNItem(Pos,buffer),0);
+  ASNItem(Pos,buffer);
   while Pos<Endpos do
     begin
-      ASNItem(Pos);
-      Sm:=ASNItem(Pos);
-      Sv:=ASNItem(Pos);
+      ASNItem(Pos,buffer);
+      Sm:=ASNItem(Pos,buffer);
+      Sv:=ASNItem(Pos,buffer);
       Self.MIBadd(sm,sv);
     end;
 end;
@@ -230,23 +147,6 @@ function TSNMPRec.EncodeBuf:string;
 var
   data,s:string;
   n:integer;
-
-    function ASNEncLen (len:integer):string;
-    var
-      x,y:integer;
-    begin
-      Result:='';
-      x:=len div $80;
-      y:=len mod $80;
-      if x>0 then Result:=char(x);
-      Result:=Result+char(y);
-    end;
-
-    function ASNObject (data:string;ASNType:integer):string;
-    begin
-      Result:=char(ASNType)+ASNEncLen(Length(data))+data;
-    end;
-
 begin
   data:='';
   SyncMIB;
