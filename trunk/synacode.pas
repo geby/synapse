@@ -1,5 +1,5 @@
 {==============================================================================|
-| Project : Delphree - Synapse                                   | 001.001.000 |
+| Project : Delphree - Synapse                                   | 001.001.001 |
 |==============================================================================|
 | Content: Coding and decoding support                                         |
 |==============================================================================|
@@ -151,7 +151,7 @@ begin
       if c<>'='
         then result:=result+c
         else
-          if (x+1)<length(value)
+          if x<length(value)
             then
               begin
                 s:=copy(value,x,2);

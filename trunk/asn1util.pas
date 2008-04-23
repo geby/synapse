@@ -1,5 +1,5 @@
 {==============================================================================|
-| Project : Delphree - Synapse                                   | 001.002.000 |
+| Project : Delphree - Synapse                                   | 001.003.000 |
 |==============================================================================|
 | Content: support for ASN.1 coding and decoding                               |
 |==============================================================================|
@@ -30,7 +30,7 @@ unit ASN1Util;
 interface
 
 uses
-  SysUtils, SynaUtil;
+  SysUtils;
 
 const
   ASN1_INT = $02;
@@ -52,9 +52,15 @@ function ASNEncInt(Value: integer): string;
 function ASNEncUInt(Value: integer): string;
 function ASNObject(Data: string; ASNType: integer): string;
 function ASNItem(var Start: integer; Buffer: string; var ValueType:integer): string;
+Function MibToId(mib:string):string;
+Function IdToMib(id:string):string;
+Function IntMibToStr(int:string):string;
+function IPToID(Host: string): string;
 
 implementation
 
+{==============================================================================}
+{ASNEncOIDitem}
 function ASNEncOIDitem(Value: integer): string;
 var
   x,xm:integer;
@@ -74,6 +80,8 @@ begin
   until x=0;
 end;
 
+{==============================================================================}
+{ASNDecOIDitem}
 function ASNDecOIDitem(var Start: integer; Buffer: string): integer;
 var
   x:integer;
@@ -92,6 +100,8 @@ begin
   until false
 end;
 
+{==============================================================================}
+{ASNEncLen}
 function ASNEncLen(Len: integer): string;
 var
   x, y: integer;
@@ -113,6 +123,8 @@ begin
       end;
 end;
 
+{==============================================================================}
+{ASNDecLen}
 function ASNDecLen(var Start: integer; Buffer: string): integer;
 var
   x,n: integer;
@@ -135,6 +147,8 @@ begin
       end;
 end;
 
+{==============================================================================}
+{ASNEncInt}
 function ASNEncInt(Value: integer): string;
 var
   x,y:cardinal;
@@ -154,6 +168,8 @@ begin
     then result:=#0+result;
 end;
 
+{==============================================================================}
+{ASNEncUInt}
 function ASNEncUInt(Value: integer): string;
 var
   x,y:integer;
@@ -173,11 +189,15 @@ begin
     then result[1]:=char(ord(result[1]) or $80);
 end;
 
+{==============================================================================}
+{ASNObject}
 function ASNObject(Data: string; ASNType: integer): string;
 begin
   Result := Char(ASNType) + ASNEncLen(Length(Data)) + Data;
 end;
 
+{==============================================================================}
+{ASNItem}
 function ASNItem(var Start: integer; Buffer: string; var ValueType:integer): string;
 var
   ASNType: integer;
@@ -268,6 +288,98 @@ begin
       end;
     end;
 end;
+
+{==============================================================================}
+{MibToId}
+function MibToId(mib:string):string;
+var
+  x:integer;
+
+  Function walkInt(var s:string):integer;
+  var
+    x:integer;
+    t:string;
+  begin
+    x:=pos('.',s);
+    if x<1 then
+      begin
+        t:=s;
+        s:='';
+      end
+      else
+      begin
+        t:=copy(s,1,x-1);
+        s:=copy(s,x+1,length(s)-x);
+      end;
+    result:=StrToIntDef(t,0);
+  end;
+begin
+  result:='';
+  x:=walkint(mib);
+  x:=x*40+walkint(mib);
+  result:=ASNEncOIDItem(x);
+  while mib<>'' do
+    begin
+      x:=walkint(mib);
+      result:=result+ASNEncOIDItem(x);
+    end;
+end;
+
+{==============================================================================}
+{IdToMib}
+Function IdToMib(id:string):string;
+var
+  x,y,n:integer;
+begin
+  result:='';
+  n:=1;
+  while length(id)+1>n do
+    begin
+      x:=ASNDecOIDItem(n,id);
+      if (n-1)=1 then
+        begin
+          y:=x div 40;
+          x:=x mod 40;
+          result:=IntTostr(y);
+        end;
+      result:=result+'.'+IntToStr(x);
+    end;
+end;
+
+{==============================================================================}
+{IntMibToStr}
+Function IntMibToStr(int:string):string;
+Var
+  n,y:integer;
+begin
+  y:=0;
+  for n:=1 to length(int)-1 do
+    y:=y*256+ord(int[n]);
+  result:=IntToStr(y);
+end;
+
+{==============================================================================}
+{IPToID} //Hernan Sanchez
+function IPToID(Host: string): string;
+var
+  s, t: string;
+  i, x: integer;
+begin
+  Result := '';
+  for x:= 1 to 3 do
+    begin
+      t := '';
+      s := StrScan(PChar(Host), '.');
+      t := Copy(Host, 1, (Length(Host) - Length(s)));
+      Delete(Host, 1, (Length(Host) - Length(s) + 1));
+      i := StrTointDef(t, 0);
+      Result := Result + Chr(i);
+    end;
+  i := StrTointDef(Host, 0);
+  Result := Result + Chr(i);
+end;
+
+{==============================================================================}
 
 begin
   exit;
