@@ -1,5 +1,5 @@
 {==============================================================================|
-| Project : Delphree - Synapse                                   | 001.000.000 |
+| Project : Delphree - Synapse                                   | 001.001.000 |
 |==============================================================================|
 | Content: PING sender                                                         |
 |==============================================================================|
@@ -94,7 +94,7 @@ begin
   inherited Create;
   sock:=TICMPBlockSocket.create;
   sock.CreateSocket;
-  timeout:=5;
+  timeout:=5000;
   packetsize:=32;
   seq:=0;
 end;

@@ -1,5 +1,5 @@
 {==============================================================================|
-| Project : Delphree - Synapse                                   | 001.002.000 |
+| Project : Delphree - Synapse                                   | 001.002.001 |
 |==============================================================================|
 | Content: support procedures and functions                                    |
 |==============================================================================|
@@ -46,6 +46,9 @@ function IPToID(Host: string): string;
 
 implementation
 
+uses
+  ASN1util;
+
 {==============================================================================}
 {timezone}
 function timezone:string;
@@ -54,8 +57,12 @@ var
   bias:integer;
   h,m:integer;
 begin
-  GetTimeZoneInformation(Zoneinfo);
-  bias:=zoneinfo.bias;
+  case GetTimeZoneInformation(Zoneinfo) of
+    2:  bias:=zoneinfo.bias+zoneinfo.DaylightBias;
+    1:  bias:=zoneinfo.bias+zoneinfo.StandardBias;
+    else
+      bias:=zoneinfo.bias;
+  end;
   if bias<=0 then result:='+'
     else result:='-';
   bias:=abs(bias);
@@ -215,11 +222,11 @@ begin
   result:='';
   x:=walkint(mib);
   x:=x*40+walkint(mib);
-  result:=char(x);
+  result:=ASNEncOIDItem(x);
   while mib<>'' do
     begin
       x:=walkint(mib);
-      result:=result+char(x);
+      result:=result+ASNEncOIDItem(x);
     end;
 end;
 
@@ -231,10 +238,11 @@ var
   x,y,n:integer;
 begin
   result:='';
-  For n:=1 to length(id) do
+  n:=1;
+  while length(id)+1>n do
     begin
-      x:=ord(id[n]);
-      if n=1 then
+      x:=ASNDecOIDItem(n,id);
+      if (n-1)=1 then
         begin
           y:=x div 40;
           x:=x mod 40;

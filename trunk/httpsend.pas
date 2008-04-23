@@ -1,5 +1,5 @@
 {==============================================================================|
-| Project : Delphree - Synapse                                   | 001.000.000 |
+| Project : Delphree - Synapse                                   | 001.001.000 |
 |==============================================================================|
 | Content: HTTP client                                                        |
 |==============================================================================|
@@ -55,7 +55,7 @@ begin
   inherited Create;
   sock:=TTCPBlockSocket.create;
   sock.CreateSocket;
-  timeout:=300;
+  timeout:=300000;
   HTTPhost:='localhost';
   HTTPPort:=80;
 end;

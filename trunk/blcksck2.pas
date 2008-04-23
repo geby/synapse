@@ -1,5 +1,5 @@
 {==============================================================================|
-| Project : Delphree - Synapse                                   | 001.000.000 |
+| Project : Delphree - Synapse                                   | 001.001.000 |
 |==============================================================================|
 | Content: Library base for RAW sockets                                        |
 |==============================================================================|
@@ -116,7 +116,7 @@ begin
   Result:=False;
   r1:=False;
   r2:=False;
-  Value:=Timeout*1000;
+  Value:=Timeout;
   len:=SizeOf(Value);
   Res:=Winsock.setsockopt(sock,SOL_SOCKET,SO_RCVTIMEO,@Value,len);
   r1:=res<>SOCKET_ERROR;

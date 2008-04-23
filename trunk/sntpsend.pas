@@ -1,5 +1,5 @@
 {==============================================================================|
-| Project : Delphree - Synapse                                   | 001.000.000 |
+| Project : Delphree - Synapse                                   | 001.001.000 |
 |==============================================================================|
 | Content: SNTP client                                                         |
 |==============================================================================|
@@ -73,7 +73,7 @@ begin
   inherited Create;
   sock:=TUDPBlockSocket.create;
   sock.CreateSocket;
-  timeout:=5;
+  timeout:=5000;
   sntphost:='localhost';
 end;
 
