@@ -1,5 +1,5 @@
 {==============================================================================|
-| Project : Delphree - Synapse                                   | 001.000.001 |
+| Project : Delphree - Synapse                                   | 001.001.000 |
 |==============================================================================|
 | Content: Library base                                                        |
 |==============================================================================|
@@ -14,7 +14,7 @@
 | The Original Code is Synapse Delphi Library.                                 |
 |==============================================================================|
 | The Initial Developer of the Original Code is Lukas Gebauer (Czech Republic).|
-| Portions created by Lukas Gebauer are Copyright (c) 1999.                    |
+| Portions created by Lukas Gebauer are Copyright (c)1999,2000.                |
 | All Rights Reserved.                                                         |
 |==============================================================================|
 | Contributor(s):                                                              |
@@ -29,9 +29,6 @@ interface
 
 uses
   winsock, SysUtils, windows;
-
-const
-Copyright='Synapse Library 1.0.0 (c)1999 Lukas Gebauer';
 
 type
 
@@ -69,7 +66,6 @@ public
   function WaitingData:integer;
   procedure SetLinger(enable:boolean;Linger:integer);
   procedure GetSins;
-
   function SockCheck(SockResult:integer):integer;
   function LocalName:string;
   function GetLocalSinIP:string;
@@ -78,6 +74,8 @@ public
   function GetRemoteSinPort:integer;
   function CanRead(Timeout:integer):boolean;
   function CanWrite(Timeout:integer):boolean;
+  procedure SendBufferTo(buffer:pointer;length:integer);
+  function RecvBufferFrom(buffer:pointer;length:integer):integer;
 
 published
   property socket:TSocket read FSocket write FSocket;
@@ -91,8 +89,7 @@ end;
 TUDPBlockSocket = class (TBlockSocket)
 public
   procedure CreateSocket; override;
-  procedure SendBufferTo(buffer:pointer;length:integer);
-  function RecvBufferFrom(buffer:pointer;length:integer):integer;
+  function EnableBroadcast(Value:Boolean):Boolean;
 end;
 
 {TTCPBlockSocket}
@@ -113,7 +110,7 @@ begin
   inherited create;
   FSocket:=INVALID_SOCKET;
   FProtocol:=IPPROTO_IP;
-  winsock.WSAStartup($101, FWsaData);
+  SockCheck(winsock.WSAStartup($101, FWsaData));
 end;
 
 {TBlockSocket.Destroy}
@@ -140,12 +137,18 @@ begin
     Sin.sin_port:= htons(StrToIntDef(Port,0))
   else
     Sin.sin_port:= ServEnt^.s_port;
-  Sin.sin_addr.s_addr:= inet_addr(PChar(ip));
-  if SIn.sin_addr.s_addr = INADDR_NONE then
-    begin
-      HostEnt:= gethostbyname(PChar(ip));
-      SIn.sin_addr.S_addr:= longint(plongint(HostEnt^.h_addr_list^)^);
-    end;
+  if ip='255.255.255.255'
+    then Sin.sin_addr.s_addr:=u_long(INADDR_BROADCAST)
+    else
+      begin
+        Sin.sin_addr.s_addr:= inet_addr(PChar(ip));
+        if SIn.sin_addr.s_addr = u_long(INADDR_NONE) then
+          begin
+            HostEnt:= gethostbyname(PChar(ip));
+            if HostEnt <> nil then
+              SIn.sin_addr.S_addr:= longint(plongint(HostEnt^.h_addr_list^)^);
+          end;
+      end;
 end;
 
 {TBlockSocket.GetSinIP}
@@ -445,6 +448,26 @@ begin
   result:=x>0;
 end;
 
+{TBlockSocket.SendBufferTo}
+procedure TBlockSocket.SendBufferTo(buffer:pointer;length:integer);
+var
+  len:integer;
+begin
+  len:=sizeof(FRemoteSin);
+  sockcheck(winsock.sendto(FSocket,buffer^,length,0,FRemoteSin,len));
+end;
+
+{TBlockSocket.RecvBufferFrom}
+function TBlockSocket.RecvBufferFrom(buffer:pointer;length:integer):integer;
+var
+  len:integer;
+begin
+  len:=sizeof(FRemoteSin);
+  result:=winsock.recvfrom(FSocket,buffer^,length,0,FRemoteSin,len);
+  sockcheck(result);
+end;
+
+
 
 {======================================================================}
 
@@ -456,23 +479,16 @@ begin
   inherited createSocket;
 end;
 
-{TUDPBlockSocket.SendBufferTo}
-procedure TUDPBlockSocket.SendBufferTo(buffer:pointer;length:integer);
+{TUDPBlockSocket.EnableBroadcast}
+function TUDPBlockSocket.EnableBroadcast(Value:Boolean):Boolean;
 var
-  len:integer;
+  Opt:integer;
+  Res:integer;
 begin
-  len:=sizeof(FRemoteSin);
-  sockcheck(winsock.sendto(FSocket,buffer^,length,0,FRemoteSin,len));
-end;
-
-{TUDPBlockSocket.RecvBufferFrom}
-function TUDPBlockSocket.RecvBufferFrom(buffer:pointer;length:integer):integer;
-var
-  len:integer;
-begin
-  len:=sizeof(FRemoteSin);
-  result:=winsock.recvfrom(FSocket,buffer^,length,0,FRemoteSin,len);
-  sockcheck(result);
+  opt:=Ord(Value);
+  Res:=winsock.SetSockOpt(FSocket, SOL_SOCKET, SO_BROADCAST, @opt, SizeOf(opt));
+  SockCheck(Res);
+  Result:=res=0;
 end;
 
 
@@ -513,6 +529,7 @@ end;
 function GetErrorDesc(ErrorCode:integer): string;
 begin
   case ErrorCode of
+    0                  : Result:= 'OK';
     WSAEINTR           : Result:= 'Interrupted system call';
     WSAEBADF           : Result:= 'Bad file number';
     WSAEACCES          : Result:= 'Permission denied';
