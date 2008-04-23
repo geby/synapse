@@ -1,5 +1,5 @@
 {==============================================================================|
-| Project : Delphree - Synapse                                   | 001.001.000 |
+| Project : Delphree - Synapse                                   | 001.002.000 |
 |==============================================================================|
 | Content: support for ASN.1 coding and decoding                               |
 |==============================================================================|
@@ -42,12 +42,14 @@ const
   ASN1_COUNTER = $41;
   ASN1_GAUGE = $42;
   ASN1_TIMETICKS = $43;
+  ASN1_OPAQUE = $44;
 
 function ASNEncOIDitem(Value: integer): string;
 function ASNDecOIDitem(var Start: integer; Buffer: string): integer;
 function ASNEncLen(Len: integer): string;
 function ASNDecLen(var Start: integer; Buffer: string): integer;
 function ASNEncInt(Value: integer): string;
+function ASNEncUInt(Value: integer): string;
 function ASNObject(Data: string; ASNType: integer): string;
 function ASNItem(var Start: integer; Buffer: string; var ValueType:integer): string;
 
@@ -135,15 +137,40 @@ end;
 
 function ASNEncInt(Value: integer): string;
 var
-  x,y:integer;
+  x,y:cardinal;
+  neg:boolean;
 begin
-  x:=Value;
+  neg:=value<0;
+  x:=abs(Value);
+  if neg then
+    x:=not (x-1);
   result:='';
   repeat
     y:=x mod 256;
     x:=x div 256;
     result:=char(y)+result;
   until x=0;
+  if (not neg) and (result[1]>#$7F)
+    then result:=#0+result;
+end;
+
+function ASNEncUInt(Value: integer): string;
+var
+  x,y:integer;
+  neg:boolean;
+begin
+  neg:=value<0;
+  x:=Value;
+  if neg
+    then x:=x and $7FFFFFFF;
+  result:='';
+  repeat
+    y:=x mod 256;
+    x:=x div 256;
+    result:=char(y)+result;
+  until x=0;
+  if neg
+    then result[1]:=char(ord(result[1]) or $80);
 end;
 
 function ASNObject(Data: string; ASNType: integer): string;
@@ -155,9 +182,11 @@ function ASNItem(var Start: integer; Buffer: string; var ValueType:integer): str
 var
   ASNType: integer;
   ASNSize: integer;
-  y, n: integer;
+  y,n: integer;
+  x: byte;
   s: string;
   c: char;
+  neg: boolean;
 begin
   ASNType := Ord(Buffer[Start]);
   Valuetype:=ASNType;
@@ -170,7 +199,25 @@ begin
   end
   else
     case ASNType of
-      ASN1_INT, ASN1_COUNTER, ASN1_GAUGE, ASN1_TIMETICKS:
+      ASN1_INT:
+        begin
+          y := 0;
+          neg:=false;
+          for n := 1 to ASNSize do
+          begin
+            x:=Ord(Buffer[Start]);
+            if (n=1) and (x>$7F)
+              then neg:=true;
+            if neg
+              then x:=not x;
+            y := y * 256 + x;
+            Inc(Start);
+          end;
+          if neg
+            then y:=-(y+1);
+          Result := IntToStr(y);
+        end;
+      ASN1_COUNTER, ASN1_GAUGE, ASN1_TIMETICKS:
         begin
           y := 0;
           for n := 1 to ASNSize do
@@ -180,7 +227,7 @@ begin
           end;
           Result := IntToStr(y);
         end;
-      ASN1_OCTSTR, $44:
+      ASN1_OCTSTR, ASN1_OPAQUE:
         begin
           for n := 1 to ASNSize do
           begin

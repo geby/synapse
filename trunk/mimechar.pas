@@ -1,8 +1,7 @@
 {==============================================================================|
-| Project : Delphree - Synapse                                   | 001.000.000 |
+| Project : Delphree - Synapse                                   | 001.001.000 |
 |==============================================================================|
-| Content: MIME support character conversion tables
-|
+| Content: MIME support character conversion tables                            |
 |==============================================================================|
 | The contents of this file are subject to the Mozilla Public License Ver. 1.0 |
 | (the "License"); you may not use this file except in compliance with the     |
@@ -49,7 +48,8 @@ TMimeChar=(
            CP1255,
            CP1256,
            CP1257,
-           CP1258
+           CP1258,
+           KOI8_R
           );
 
 TSetChar=set of TMimeChar;
@@ -510,6 +510,28 @@ Lappish, Latvian, Lithuanian, Norwegian and Swedish.
       $00f8, $00f9, $00fa, $00fb, $00fc, $01b0, $20ab, $00ff
     );
 
+{Cyrillic
+}
+  CharKOI8_R:array [128..255] of word =
+    (
+      $2500, $2502, $250c, $2510, $2514, $2518, $251c, $2524,
+      $252c, $2534, $253c, $2580, $2584, $2588, $258c, $2590,
+      $2591, $2592, $2593, $2320, $25a0, $2219, $221a, $2248,
+      $2264, $2265, $00a0, $2321, $00b0, $00b2, $00b7, $00f7,
+      $2550, $2551, $2552, $0451, $2553, $2554, $2555, $2556,
+      $2557, $2558, $2559, $255a, $255b, $255c, $255d, $255e,
+      $255f, $2560, $2561, $0401, $2562, $2563, $2564, $2565,
+      $2566, $2567, $2568, $2569, $256a, $256b, $256c, $00a9,
+      $044e, $0430, $0431, $0446, $0434, $0435, $0444, $0433,
+      $0445, $0438, $0439, $043a, $043b, $043c, $043d, $043e,
+      $043f, $044f, $0440, $0441, $0442, $0443, $0436, $0432,
+      $044c, $044b, $0437, $0448, $044d, $0449, $0447, $044a,
+      $042e, $0410, $0411, $0426, $0414, $0415, $0424, $0413,
+      $0425, $0418, $0419, $041a, $041b, $041c, $041d, $041e,
+      $041f, $042f, $0420, $0421, $0422, $0423, $0416, $0412,
+      $042c, $042b, $0417, $0428, $042d, $0429, $0427, $042a
+    );
+
 {==============================================================================}
 Function DecodeChar(value:string;CharFrom:TMimeChar;CharTo:TMimeChar):string;
 Function GetCurCP:TMimeChar;
@@ -556,6 +578,7 @@ begin
     CP1256:        CopyArray(CharCP_1256,Result);
     CP1257:        CopyArray(CharCP_1257,Result);
     CP1258:        CopyArray(CharCP_1258,Result);
+    KOI8_R:        CopyArray(CharKOI8_R,Result);
   end;
 end;
 
@@ -714,6 +737,11 @@ begin
       Result:=CP1258;
       exit;
     end;
+  if Pos('KOI8-R',value)=1 then
+    begin
+      Result:=KOI8_R;
+      exit;
+    end;
 end;
 
 {==============================================================================}
@@ -738,6 +766,7 @@ begin
       CP1256     :  result:='WINDOWS-1256';
       CP1257     :  result:='WINDOWS-1257';
       CP1258     :  result:='WINDOWS-1258';
+      KOI8_R     :  result:='KOI8-R';
     else result:='ISO-8859-1';
   end;
 end;

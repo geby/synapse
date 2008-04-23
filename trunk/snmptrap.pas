@@ -1,5 +1,5 @@
 {==============================================================================|
-| Project : Delphree - Synapse                                   | 002.000.001 |
+| Project : Delphree - Synapse                                   | 002.001.000 |
 |==============================================================================|
 | Content: SNMP traps                                                          |
 |==============================================================================|
@@ -163,10 +163,15 @@ begin
     begin
       SNMPMib := SNMPMibList[n];
       case (SNMPMib.ValueType) of
-        ASN1_INT, ASN1_COUNTER, ASN1_GAUGE, ASN1_TIMETICKS:
+        ASN1_INT:
           begin
             s := ASNObject(MibToID(SNMPMib.OID),ASN1_OBJID)
               +ASNObject(ASNEncInt(strToIntDef(SNMPMib.Value,0)),SNMPMib.ValueType);
+          end;
+        ASN1_COUNTER, ASN1_GAUGE, ASN1_TIMETICKS:
+          begin
+            s := ASNObject(MibToID(SNMPMib.OID),ASN1_OBJID)
+              +ASNObject(ASNEncUInt(strToIntDef(SNMPMib.Value,0)),SNMPMib.ValueType);
           end;
         ASN1_OBJID:
           begin
