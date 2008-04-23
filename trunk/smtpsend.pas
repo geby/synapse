@@ -1,7 +1,7 @@
 {==============================================================================|
-| Project : Delphree - Synapse                                   | 001.000.001|
+| Project : Delphree - Synapse                                   | 001.001.000 |
 |==============================================================================|
-| Content: SMTP client                                                        |
+| Content: SMTP client                                                         |
 |==============================================================================|
 | The contents of this file are subject to the Mozilla Public License Ver. 1.0 |
 | (the "License"); you may not use this file except in compliance with the     |
@@ -40,6 +40,8 @@ type
   public
     timeout:integer;
     SMTPHost:string;
+    ResultCode:integer;
+    ResultString:string;
     Constructor Create;
     Destructor Destroy; override;
     function login:Boolean;
@@ -79,6 +81,7 @@ var
 begin
   Result:=0;
   s:=sock.recvstring(timeout);
+  ResultString:=s;
   if Length(s)>=3 then Result:=Strtointdef(Copy(s,1,3),0);
   while pos('-',s)=4 do
     begin
@@ -89,6 +92,7 @@ begin
           break;
         end;
     end;
+  ResultCode:=Result;
 end;
 
 {TSMTPSend.login}
