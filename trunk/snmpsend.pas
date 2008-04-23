@@ -1,5 +1,5 @@
 {==============================================================================|
-| Project : Delphree - Synapse                                   | 001.001.000 |
+| Project : Delphree - Synapse                                   | 002.000.000 |
 |==============================================================================|
 | Content: SNMP client                                                         |
 |==============================================================================|
@@ -18,6 +18,7 @@
 | All Rights Reserved.                                                         |
 |==============================================================================|
 | Contributor(s):                                                              |
+|   Jean-Fabien Connault (jfconnault@mail.dotcom.fr)                           |
 |==============================================================================|
 | History: see HISTORY.HTM from distribution package                           |
 |          (Found at URL: http://www.mlp.cz/space/gebauerl/synapse/)           |
@@ -49,9 +50,23 @@ EGenErr=5;
 
 type
 
+TSNMPMibValueType = (smvtInteger,
+                     smvtOctetString,
+                     smvtNull,
+                     smvtObjectId,
+                     smvtSequence,
+                     smvtIpAddress,
+                     smvtCounter,
+                     smvtGauge,
+                     smvtTimeTicks);
+
+TSNMPMib = class
+  OID: string;
+  Value: string;
+  ValueType: integer;
+end;
+
 TSNMPRec=class(TObject)
-  private
-    procedure SyncMIB;
   public
     version:integer;
     community:string;
@@ -59,16 +74,16 @@ TSNMPRec=class(TObject)
     ID:integer;
     ErrorStatus:integer;
     ErrorIndex:integer;
-    MIBOID:TStringList;
-    MIBValue:TStringList;
+    SNMPMibList: TList;
     constructor Create;
     destructor Destroy; override;
     procedure DecodeBuf(Buffer:string);
     function EncodeBuf:string;
     procedure Clear;
-    procedure MIBAdd(MIB,Value:string);
+    procedure MIBAdd(MIB,Value:string; ValueType:TSNMPMibValueType);
     procedure MIBdelete(Index:integer);
     function MIBGet(MIB:string):string;
+    function ConvertValueType(ValueType: TSNMPMibValueType): integer;
 end;
 
 TSNMPSend=class(TObject)
@@ -76,8 +91,8 @@ TSNMPSend=class(TObject)
     Sock:TUDPBlockSocket;
     Buffer:string;
   public
-    timeout:integer;
-    SNMPhost:string;
+    Timeout:integer;
+    Host:string;
     Query:TSNMPrec;
     Reply:TSNMPrec;
     constructor Create;
@@ -85,7 +100,8 @@ TSNMPSend=class(TObject)
     function DoIt:boolean;
 end;
 
-function SNMPget (Mib, Community, SNMPHost:string; var Value:string):Boolean;
+function SNMPget (Oid, Community, SNMPHost:string; var Value:string):Boolean;
+function SNMPSet (Oid, Community, SNMPHost, Value: string; ValueType: TSNMPMibValueType): boolean;
 
 implementation
 
@@ -95,26 +111,14 @@ implementation
 constructor TSNMPRec.Create;
 begin
   inherited create;
-  MIBOID:=TStringList.create;
-  MIBValue:=TStringList.create;
+  SNMPMibList := TList.create;
 end;
 
 {TSNMPRec.Destroy}
 destructor TSNMPRec.Destroy;
 begin
-  MIBValue.Free;
-  MIBOID.Free;
+  SNMPMibList.free;
   inherited destroy;
-end;
-
-{TSNMPRec.SyncMIB}
-procedure TSNMPRec.SyncMIB;
-var
-  n,x:integer;
-begin
-  x:=MIBValue.Count;
-  for n:=x to MIBOID.Count-1 do
-    MIBValue.Add('');
 end;
 
 {TSNMPRec.DecodeBuf}
@@ -123,6 +127,7 @@ var
   Pos:integer;
   endpos:integer;
   sm,sv:string;
+  svt: TSNMPMibValueType;
 begin
   Pos:=2;
   Endpos:=ASNDecLen(Pos,buffer);
@@ -138,22 +143,33 @@ begin
       ASNItem(Pos,buffer);
       Sm:=ASNItem(Pos,buffer);
       Sv:=ASNItem(Pos,buffer);
-      Self.MIBadd(sm,sv);
+      Svt:=smvtNull;
+      Self.MIBadd(sm,sv, svt);
     end;
 end;
 
 {TSNMPRec.EncodeBuf}
 function TSNMPRec.EncodeBuf:string;
 var
-  data,s:string;
+  data,s,t:string;
+  SNMPMib: TSNMPMib;
   n:integer;
 begin
   data:='';
-  SyncMIB;
-  for n:=0 to Self.MIBOID.Count-1 do
+  for n:=0 to SNMPMibList.Count-1 do
     begin
-      s:=ASNObject(MibToID(Self.MIBOID[n]),6)+ASNObject(Self.MIBValue[n],4);
-      data:=data+ASNObject(s,$30);
+      SNMPMib := SNMPMibList[n];
+      case (SNMPMib.ValueType) of
+        ASN1_INT, ASN1_COUNTER, ASN1_GAUGE, ASN1_TIMETICKS:
+          begin
+            t := chr(strToInt('$'+copy(inttohex(strToInt(SNMPMib.Value),4),1,2)));
+            t := t+chr(strToInt('$'+copy(inttohex(strToInt(SNMPMib.Value),4),3,2)));
+            s := ASNObject(MibToID(SNMPMib.OID),6) + ASNObject(t,SNMPMib.ValueType);
+          end;
+      else
+        s := ASNObject(MibToID(SNMPMib.OID),6) + ASNObject(SNMPMib.Value,SNMPMib.ValueType);
+      end;
+      data := data + ASNObject(s, $30);
     end;
   data:=ASNObject(data,$30);
   data:=ASNObject(char(Self.ID),2)
@@ -169,6 +185,8 @@ end;
 
 {TSNMPRec.Clear}
 procedure TSNMPRec.Clear;
+var
+  i:integer;
 begin
   version:=0;
   community:='';
@@ -176,40 +194,64 @@ begin
   ID:=0;
   ErrorStatus:=0;
   ErrorIndex:=0;
-  MIBOID.Clear;
-  MIBValue.Clear;
+  for i := 0 to SNMPMibList.count - 1 do
+    TSNMPMib(SNMPMibList[i]).Free;
+  SNMPMibList.Clear;
 end;
 
 {TSNMPRec.MIBAdd}
-procedure TSNMPRec.MIBAdd(MIB,Value:string);
+procedure TSNMPRec.MIBAdd(MIB,Value:string; ValueType:TSNMPMibValueType);
 var
-  x:integer;
+  SNMPMib: TSNMPMib;
 begin
-  SyncMIB;
-  MIBOID.Add(MIB);
-  x:=MIBOID.Count;
-  if MIBValue.Count>x then MIBvalue[x-1]:=value
-    else MIBValue.Add(Value);
+  SNMPMib := TSNMPMib.Create;
+  SNMPMib.OID := MIB;
+  SNMPMib.Value := Value;
+  SNMPMib.ValueType := ConvertValueType(ValueType);
+  SNMPMibList.Add(SNMPMib);
 end;
 
 {TSNMPRec.MIBdelete}
 procedure TSNMPRec.MIBdelete(Index:integer);
 begin
-  SyncMIB;
-  MIBOID.Delete(Index);
-  if (MIBValue.Count-1)>= Index then MIBValue.Delete(Index);
+  if (Index >= 0) and (Index < SNMPMibList.count) then
+    begin
+      TSNMPMib(SNMPMibList[Index]).Free;
+      SNMPMibList.Delete(Index);
+    end;
 end;
 
 {TSNMPRec.MIBGet}
 function TSNMPRec.MIBGet(MIB:string):string;
 var
-  x:integer;
+  i: integer;
 begin
-  SyncMIB;
-  x:=MIBOID.IndexOf(MIB);
-  if x<0 then Result:=''
-    else Result:=MIBValue[x];
+  Result := '';
+  for i := 0 to SNMPMibList.count - 1 do
+    begin
+      if ((TSNMPMib(SNMPMibList[i])).OID = MIB) then
+      begin
+        Result := (TSNMPMib(SNMPMibList[i])).Value;
+        break;
+      end;
+    end;
 end;
+
+{TSNMPRec.GetValueType}
+function TSNMPRec.ConvertValueType(ValueType: TSNMPMibValueType): integer;
+begin
+  result := ASN1_NULL;
+  if (ValueType = smvtInteger) then result := ASN1_INT;
+  if (ValueType = smvtOctetString) then result := ASN1_OCTSTR;
+  if (ValueType = smvtNull) then result := ASN1_NULL;
+  if (ValueType = smvtObjectId) then result := ASN1_OBJID;
+  if (ValueType = smvtSequence) then result := ASN1_SEQ;
+  if (ValueType = smvtIpAddress) then result := ASN1_IPADDR;
+  if (ValueType = smvtCounter) then result := ASN1_COUNTER;
+  if (ValueType = smvtGauge) then result := ASN1_GAUGE;
+  if (ValueType = smvtTimeTicks) then result := ASN1_TIMETICKS;
+end;
+
 
 {==============================================================================}
 
@@ -224,7 +266,7 @@ begin
   sock:=TUDPBlockSocket.create;
   sock.createsocket;
   timeout:=5;
-  SNMPhost:='localhost';
+  host:='localhost';
 end;
 
 {TSNMPSend.Destroy}
@@ -244,7 +286,7 @@ begin
   Result:=false;
   reply.clear;
   Buffer:=Query.Encodebuf;
-  sock.connect(SNMPhost,'161');
+  sock.connect(host,'161');
   sock.SendBuffer(PChar(Buffer),Length(Buffer));
   if sock.canread(timeout)
     then begin
@@ -256,12 +298,13 @@ begin
           result:=true;
         end;
     end;
-  if Result then reply.DecodeBuf(Buffer);
+  if Result
+    then reply.DecodeBuf(Buffer);
 end;
 
 {==============================================================================}
 
-function SNMPget (Mib, Community, SNMPHost:string; var Value:string):Boolean;
+function SNMPget (Oid, Community, SNMPHost:string; var Value:string):Boolean;
 var
   SNMP:TSNMPSend;
 begin
@@ -270,13 +313,29 @@ begin
   try
     Snmp.Query.community:=Community;
     Snmp.Query.PDUType:=PDUGetRequest;
-    Snmp.Query.MIBAdd(MIB,'');
-    Snmp.SNMPhost:=SNMPHost;
+    Snmp.Query.MIBAdd(Oid,'',smvtNull);
+    Snmp.host:=SNMPHost;
     Result:=Snmp.DoIt;
     if Result then
-      Value:=Snmp.Reply.MIBGet(MIB);
+      Value:=Snmp.Reply.MIBGet(Oid);
   finally
     SNMP.Free;
+  end;
+end;
+
+function SNMPSet(Oid, Community, SNMPHost, Value: string; ValueType: TSNMPMibValueType): boolean;
+var
+  SNMPSend: TSNMPSend;
+begin
+  SNMPSend := TSNMPSend.Create;
+  try
+    SNMPSend.Query.community := Community;
+    SNMPSend.Query.PDUType := PDUSetRequest;
+    SNMPSend.Query.MIBAdd(Oid, Value, ValueType);
+    SNMPSend.Host := SNMPHost;
+    result:= SNMPSend.DoIt=true;
+  finally
+    SNMPSend.Free;
   end;
 end;
 

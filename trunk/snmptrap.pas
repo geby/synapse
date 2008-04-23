@@ -1,5 +1,5 @@
 {==============================================================================|
-| Project : Delphree - Synapse                                   | 001.002.000 |
+| Project : Delphree - Synapse                                   | 001.002.001 |
 |==============================================================================|
 | Content: SNMP traps                                                          |
 |==============================================================================|
@@ -223,7 +223,7 @@ var
   x: integer;
 begin
   Result := 0;
-  Sock.Connect(SNMPHost, IntToStr(Trap.TrapPort));
+  Sock.Bind('0.0.0.0', IntToStr(Trap.TrapPort));
   if Sock.CanRead(Timeout) then
     begin
       x := Sock.WaitingData;
@@ -261,7 +261,7 @@ begin
 end;
 
 function RecvTrap(var Dest, Source, Enterprise, Community: string;
-  var Generic, Specific, Seconds: integer; var MIBName, MIBValue: TStringList): 
+  var Generic, Specific, Seconds: integer; var MIBName, MIBValue: TStringList):
 integer;
 var
   SNMP: TTrapSNMP;

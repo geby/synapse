@@ -33,14 +33,14 @@ uses
   SysUtils, SynaUtil;
 
 const
-  ASN1_INT       = $02;
-  ASN1_OCTSTR    = $04;
-  ASN1_NULL      = $05;
-  ASN1_OBJID     = $06;
-  ASN1_SEQ       = $30;
-  ASN1_IPADDR    = $40;
-  ASN1_COUNTER   = $41;
-  ASN1_GAUGE     = $42;
+  ASN1_INT = $02;
+  ASN1_OCTSTR = $04;
+  ASN1_NULL = $05;
+  ASN1_OBJID = $06;
+  ASN1_SEQ = $30;
+  ASN1_IPADDR = $40;
+  ASN1_COUNTER = $41;
+  ASN1_GAUGE = $42;
   ASN1_TIMETICKS = $43;
 
 function ASNEncLen(Len: integer): string;
@@ -61,11 +61,11 @@ begin
     if (Len < $FF) then
       Result := Char($81) + Char(Len)
     else
-      begin
-        x := Len div $FF;
-        y := Len mod $FF;
-        Result := Char($82) + Char(x) + Char(y);
-      end;
+    begin
+      x := Len div $FF;
+      y := Len mod $FF;
+      Result := Char($82) + Char(x) + Char(y);
+    end;
 end;
 
 function ASNDecLen(var Start: integer; Buffer: string): integer;
@@ -74,25 +74,25 @@ var
 begin
   x := Ord(Buffer[Start]);
   if (x < $80) then
-    begin
-      Inc(Start);
-      Result := x;
-    end
+  begin
+    Inc(Start);
+    Result := x;
+  end
   else
     if (x = $81) then
-      begin
-        Inc(Start);
-        Result := Ord(Buffer[Start]);
-        Inc(Start);
-      end
+    begin
+      Inc(Start);
+      Result := Ord(Buffer[Start]);
+      Inc(Start);
+    end
     else
-      begin
-        Inc(Start);
-        x := Ord(Buffer[Start]);
-        Inc(Start);
-        Result := x * $FF + Ord(Buffer[Start]);
-        Inc(Start);
-      end;
+    begin
+      Inc(Start);
+      x := Ord(Buffer[Start]);
+      Inc(Start);
+      Result := x * $FF + Ord(Buffer[Start]);
+      Inc(Start);
+    end;
 end;
 
 function ASNEncInt(Len: integer): string;
@@ -104,17 +104,17 @@ begin
   y := Len div $FFFFFF;
   Len := Len - (y * $FFFFFF);
   if ((y > 0) or (j = 1)) then
-    begin
-      j := 1;
-      Result := Result + Char(y);
-    end;
+  begin
+    j := 1;
+    Result := Result + Char(y);
+  end;
   y := Len div $FFFF;
   Len := Len - (y * $FFFF);
   if ((y > 0) or (j = 1)) then
-    begin
-      j := 1;
-      Result := Result + Char(y);
-    end;
+  begin
+    j := 1;
+    Result := Result + Char(y);
+  end;
   y := Len div $FF;
   Len := Len - (y * $FF);
   if ((y > 0) or (j = 1)) then
@@ -140,60 +140,60 @@ begin
   ASNSize := ASNDecLen(Start, Buffer);
   Result := '';
   if ((ASNType and $20) > 0) then
-    begin
-      Result := '$' + IntToHex(ASNType, 2);
-    end
+  begin
+    Result := '$' + IntToHex(ASNType, 2);
+  end
   else
     case ASNType of
       ASN1_INT, ASN1_COUNTER, ASN1_GAUGE, ASN1_TIMETICKS:
         begin
           y := 0;
-          for n:=1 to ASNSize do
-            begin
-              y := y * 256 + Ord(Buffer[Start]);
-              Inc(Start);
-            end;
+          for n := 1 to ASNSize do
+          begin
+            y := y * 256 + Ord(Buffer[Start]);
+            Inc(Start);
+          end;
           Result := IntToStr(y);
         end;
       ASN1_OCTSTR, $44:
         begin
-          for n:=1 to ASNSize do
-            begin
-              c := Char(Buffer[Start]);
-              Inc(Start);
-              s := s + c;
-            end;
+          for n := 1 to ASNSize do
+          begin
+            c := Char(Buffer[Start]);
+            Inc(Start);
+            s := s + c;
+          end;
           Result := s;
         end;
       ASN1_OBJID:
         begin
-          for n:=1 to ASNSize do
-            begin
-              c := Char(Buffer[Start]);
-              Inc(Start);
-              s := s + c;
-            end;
+          for n := 1 to ASNSize do
+          begin
+            c := Char(Buffer[Start]);
+            Inc(Start);
+            s := s + c;
+          end;
           Result := IdToMib(s);
         end;
       ASN1_IPADDR:
         begin
-          s:='';
-          for n:=1 to ASNSize do
-            begin
-              if (n<>1) then
-                s := s + '.';
-              y := Ord(Buffer[Start]);
-              Inc(Start);
-              s := s + IntToStr(y);
-            end;
+          s := '';
+          for n := 1 to ASNSize do
+          begin
+            if (n <> 1) then
+              s := s + '.';
+            y := Ord(Buffer[Start]);
+            Inc(Start);
+            s := s + IntToStr(y);
+          end;
           Result := s;
         end;
-      else  // NULL
-        begin
-          Result := '';
-          Inc(Start);
-          Start := Start + ASNSize;
-        end;
+    else // NULL
+      begin
+        Result := '';
+        Inc(Start);
+        Start := Start + ASNSize;
+      end;
     end;
 end;
 

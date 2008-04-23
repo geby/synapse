@@ -29,7 +29,7 @@ unit SNTPsend;
 interface
 
 uses
-  winsock, SysUtils, windows, blcksock, Synautil, dialogs;
+  winsock, SysUtils, windows, blcksock;
 
 type
 
