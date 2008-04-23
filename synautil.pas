@@ -1,5 +1,5 @@
 {==============================================================================|
-| Project : Delphree - Synapse                                   | 001.002.001 |
+| Project : Delphree - Synapse                                   | 001.003.000 |
 |==============================================================================|
 | Content: support procedures and functions                                    |
 |==============================================================================|
@@ -22,7 +22,7 @@
 |   Hernan Sanchez (hernan.sanchez@iname.com)                                  |
 |==============================================================================|
 | History: see HISTORY.HTM from distribution package                           |
-|          (Found at URL: http://www.mlp.cz/space/gebauerl/synapse/)           |
+|          (Found at URL: http://www.ararat.cz/synapse/)                       |
 |==============================================================================}
 
 unit SynaUtil;
@@ -43,6 +43,11 @@ Function MibToId(mib:string):string;
 Function IdToMib(id:string):string;
 Function IntMibToStr(int:string):string;
 function IPToID(Host: string): string;
+function SeparateLeft(value,delimiter:string):string;
+function SeparateRight(value,delimiter:string):string;
+function getparameter(value,parameter:string):string;
+function GetEmailAddr(value:string):string;
+function GetEmailDesc(value:string):string;
 
 implementation
 
@@ -253,7 +258,6 @@ begin
 end;
 
 {==============================================================================}
-
 {IntMibToStr}
 Function IntMibToStr(int:string):string;
 Var
@@ -266,7 +270,6 @@ begin
 end;
 
 {==============================================================================}
-
 {IPToID} //Hernan Sanchez
 function IPToID(Host: string): string;
 var
@@ -285,6 +288,97 @@ begin
     end;
   i := StrTointDef(Host, 0);
   Result := Result + Chr(i);
+end;
+
+{==============================================================================}
+{SeparateLeft}
+function SeparateLeft(value,delimiter:string):string;
+var
+  x:integer;
+begin
+  x:=pos(delimiter,value);
+  if x<1
+    then result:=trim(value)
+    else result:=trim(copy(value,1,x-1));
+end;
+
+{==============================================================================}
+{SeparateRight}
+function SeparateRight(value,delimiter:string):string;
+var
+  x:integer;
+begin
+  x:=pos(delimiter,value);
+  result:=trim(copy(value,x+1,length(value)-x));
+end;
+
+{==============================================================================}
+{GetParameter}
+function getparameter(value,parameter:string):string;
+var
+  x,x1,n:integer;
+  s:string;
+begin
+  x:=pos(uppercase(parameter),uppercase(value));
+  result:='';
+  if x>0 then
+    begin
+      s:=copy(value,x+length(parameter),length(value)-(x+length(parameter))+1);
+      s:=trim(s);
+      x1:=length(s);
+      if length(s)>1 then
+        begin
+          if s[1]='"'
+            then
+              begin
+                s:=copy(s,2,length(s)-1);
+                x:=pos('"',s);
+                if x>0 then x1:=x-1;
+              end
+            else
+              begin
+                x:=pos(' ',s);
+                if x>0 then x1:=x-1;
+              end;
+        end;
+      result:=copy(s,1,x1);
+    end;
+end;
+
+{==============================================================================}
+{GetEmailAddr}
+function GetEmailAddr(value:string):string;
+var
+  s:string;
+begin
+  s:=separateright(value,'<');
+  s:=separateleft(s,'>');
+  result:=trim(s);
+end;
+
+{==============================================================================}
+{GetEmailDesc}
+function GetEmailDesc(value:string):string;
+var
+  s:string;
+begin
+  value:=trim(value);
+  s:=separateright(value,'"');
+  if s<>value
+    then s:=separateleft(s,'"')
+    else
+      begin
+        s:=separateright(value,'(');
+        if s<>value
+          then s:=separateleft(s,')')
+          else
+            begin
+              s:=separateleft(value,'<');
+              if s=value
+                then s:='';
+            end;
+      end;
+  result:=trim(s);
 end;
 
 {==============================================================================}

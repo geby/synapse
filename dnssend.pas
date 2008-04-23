@@ -20,7 +20,7 @@
 | Contributor(s):                                                              |
 |==============================================================================|
 | History: see HISTORY.HTM from distribution package                           |
-|          (Found at URL: http://www.mlp.cz/space/gebauerl/synapse/)           |
+|          (Found at URL: http://www.ararat.cz/synapse/)                       |
 |==============================================================================}
 
 //RFC-1035, RFC-1183, RFC1706, RFC1712, RFC2163, RFC2230
