@@ -1,5 +1,5 @@
 {==============================================================================|
-| Project : Delphree - Synapse                                   | 001.000.001 |
+| Project : Delphree - Synapse                                   | 001.001.000 |
 |==============================================================================|
 | Content: MIME support procedures and functions                                    |
 |==============================================================================|
@@ -78,33 +78,38 @@ TMimePart=class
 end;
 
 const
-  MaxMimeType=15;
+  MaxMimeType=25;
   MimeType:array [0..MaxMimeType,0..2] of string=
     (
+      ('AU','audio','basic'),
+      ('AVI','video','x-msvideo'),
+      ('BMP','image','BMP'),
       ('DOC','application','MSWord'),
+      ('EPS','application','Postscript'),
       ('GIF','image','GIF'),
       ('JPEG','image','JPEG'),
       ('JPG','image','JPEG'),
+      ('MID','audio','midi'),
+      ('MOV','video','quicktime'),
       ('MPEG','video','MPEG'),
       ('MPG','video','MPEG'),
+      ('MP2','audio','mpeg'),
+      ('MP3','audio','mpeg'),
       ('PDF','application','PDF'),
       ('PNG','image','PNG'),
       ('PS','application','Postscript'),
-      ('MOV','video','quicktime'),
+      ('QT','video','quicktime'),
+      ('RA','audio','x-realaudio'),
       ('RTF','application','RTF'),
+      ('SND','audio','basic'),
       ('TIF','image','TIFF'),
       ('TIFF','image','TIFF'),
-      ('WAV','audio','basic'),
+      ('WAV','audio','x-wav'),
       ('WPD','application','Wordperfect5.1'),
       ('ZIP','application','ZIP')
     );
 
 procedure NormalizePart(value:Tstringlist);
-function InlineDecode(value:string;CP:TMimeChar):string;
-function InlineEncode(value:string;CP,MimeP:TMimeChar):string;
-Function NeedInline(value:string):boolean;
-function InlineCode(value:string):string;
-function InlineEmail(value:string):string;
 function GenerateBoundary:string;
 
 implementation
@@ -112,12 +117,10 @@ implementation
 procedure NormalizePart(value:Tstringlist);
 var
   t:tstringlist;
-  x:integer;
   s:string;
 begin
   t:=tstringlist.create;
   try
-    x:=0;
     while (value.Count-1) > 0 do
       begin
         s:=value[0];
@@ -183,7 +186,7 @@ end;
 {TMIMEPart.ExtractPart}
 function TMIMEPart.ExtractPart(value:TStringList; BeginLine:integer):integer;
 var
-  n,x,y,x1,x2:integer;
+  n,x,x1,x2:integer;
   t:tstringlist;
   s,su,b:string;
   st,st2:string;
@@ -512,128 +515,15 @@ end;
 
 {TMIMEPart.SetCharset}
 procedure TMIMEPart.SetCharset(Value:string);
-var
-  s:string;
 begin
   FCharset:=Value;
   CharsetCode:=GetCPfromID(value);
 end;
 
 {==============================================================================}
-{InlineDecode}
-function InlineDecode(value:string;CP:TMimeChar):string;
-var
-  s,su:string;
-  x,y,z,n:integer;
-  ichar:TMimeChar;
-  c:char;
-begin
-  result:=value;
-  x:=pos('=?',uppercase(value));
-  y:=pos('?=',value);
-  if y>x then
-    begin
-      s:=copy(value,x,y-x+2);
-      su:=copy(s,3,length(s)-4);
-      ichar:=GetCPfromID(su);
-      z:=pos('?',su);
-      if (length(su)>=(z+2)) and (su[z+2]='?') then
-        begin
-          c:=uppercase(su)[z+1];
-          su:=copy(su,z+3,length(su)-z-2);
-          if c='B' then
-            begin
-              s:=DecodeBase64(su);
-              s:=DecodeChar(s,ichar,CP);
-            end;
-          if c='Q' then
-            begin
-              s:='';
-              for n:=1 to length(su) do
-                if su[n]='_'
-                  then s:=s+' '
-                  else s:=s+su[n];
-              s:=DecodeQuotedprintable(s);
-              s:=DecodeChar(s,ichar,CP);
-            end;
-        end;
-      result:=copy(value,1,x-1)+s+copy(value,y+2,length(value)-y-1);
-      repeat
-        s:=InlineDecode(result,CP);
-        if s=result
-          then break;
-        result:=s;
-      until false;
-    end;
-end;
-
-{==============================================================================}
-{InlineEncode}
-function InlineEncode(value:string;CP,MimeP:TMimeChar):string;
-var
-  s,s1:string;
-  n:integer;
-begin
-  s:=DecodeChar(value,CP,MimeP);
-  s:=EncodeQuotedPrintable(s);
-  s1:='';
-  for n:=1 to length(s) do
-    if s[n]=' '
-      then s1:=s1+'=20'
-      else s1:=s1+s[n];
-  result:='=?'+GetIdFromCP(MimeP)+'?Q?'+s1+'?=';
-end;
-
-{==============================================================================}
-{NeedInline}
-Function NeedInline(value:string):boolean;
-var
-  n:integer;
-begin
-  result:=false;
-  for n:=1 to length(value) do
-    if value[n] in (SpecialChar+[char(1)..char(31),char(128)..char(255)]) then
-      begin
-        result:=true;
-        break;
-      end;
-end;
-
-{==============================================================================}
-{InlineCode}
-function InlineCode(value:string):string;
-var
-  c:TMimeChar;
-begin
-  if NeedInline(value)
-    then
-      begin
-        c:=IdealCoding(value,GetCurCP,
-          [ISO_8859_1, ISO_8859_2, ISO_8859_3, ISO_8859_4, ISO_8859_5,
-          ISO_8859_6, ISO_8859_7, ISO_8859_8, ISO_8859_9, ISO_8859_10]);
-        result:=InlineEncode(value,GetCurCP,c);
-      end
-    else result:=value;
-end;
-
-{==============================================================================}
-{InlineEmail}
-function InlineEmail(value:string):string;
-var
-  sd,se:string;
-begin
-  sd:=getEmaildesc(value);
-  se:=getEmailAddr(value);
-  if sd=''
-    then result:=se
-    else result:='"'+InlineCode(sd)+'"<'+se+'>';
-end;
-
-{==============================================================================}
 {GenerateBoundary}
 function GenerateBoundary:string;
 var
-  s:string;
   x:integer;
 begin
   randomize;

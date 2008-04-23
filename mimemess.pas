@@ -1,5 +1,5 @@
 {==============================================================================|
-| Project : Delphree - Synapse                                   | 001.000.000 |
+| Project : Delphree - Synapse                                   | 001.000.001 |
 |==============================================================================|
 | Content: MIME message object                                                 |
 |==============================================================================|
@@ -29,7 +29,7 @@ unit MIMEmess;
 interface
 
 uses
-  classes, Sysutils, MimePart, MimeChar, SynaUtil;
+  classes, Sysutils, MimePart, MimeChar, SynaUtil, MIMEInLn;
 
 type
 
@@ -103,7 +103,6 @@ end;
 function TMimeMess.AddPart:integer;
 var
   mp:TMimePart;
-  n:integer;
 begin
   mp:=TMimePart.create;
   result:=PartList.Add(mp);
@@ -134,8 +133,7 @@ end;
 {TMimeMess.AddPartBinary}
 procedure TMimeMess.AddPartBinary(value:string);
 var
-  n,x:integer;
-  s:string;
+  x:integer;
 begin
   x:=Addpart;
   with TMimePart(PartList[x]) do
@@ -189,7 +187,6 @@ end;
 {TMimeMess.FinalizeHeaders}
 procedure TMimeMess.FinalizeHeaders;
 var
-  s:string;
   n:integer;
 begin
   Lines.Insert(0,'x-mailer: Synapse - Delphi TCP/IP library by Lukas Gebauer');
@@ -236,8 +233,8 @@ procedure TMimeMess.DecodeMessage;
 var
   l:tstringlist;
   m:tmimepart;
-  x,i,n:integer;
-  bound,s:string;
+  x,i:integer;
+  bound:string;
 begin
   l:=tstringlist.create;
   m:=tmimepart.create;

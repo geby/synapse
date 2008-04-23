@@ -1,5 +1,5 @@
 {==============================================================================|
-| Project : Delphree - Synapse                                   | 001.004.000 |
+| Project : Delphree - Synapse                                   | 001.005.000 |
 |==============================================================================|
 | Content: support procedures and functions                                    |
 |==============================================================================|
@@ -30,7 +30,7 @@ unit SynaUtil;
 interface
 
 uses
-  Blcksock, sysutils, classes, windows;
+  sysutils, classes, windows;
 
 function timezone:string;
 function Rfc822DateTime(t:TDateTime):String;
@@ -39,10 +39,6 @@ function DeCodeInt(Value:string;Index:integer):word;
 function IsIP(Value:string):Boolean;
 function ReverseIP(Value:string):string;
 procedure Dump (Buffer:string;DumpFile:string);
-Function MibToId(mib:string):string;
-Function IdToMib(id:string):string;
-Function IntMibToStr(int:string):string;
-function IPToID(Host: string): string;
 function SeparateLeft(value,delimiter:string):string;
 function SeparateRight(value,delimiter:string):string;
 function getparameter(value,parameter:string):string;
@@ -51,9 +47,6 @@ function GetEmailDesc(value:string):string;
 function StrToHex(value:string):string;
 
 implementation
-
-uses
-  ASN1util;
 
 {==============================================================================}
 {timezone}
@@ -200,98 +193,6 @@ begin
 end;
 
 {==============================================================================}
-
-{MibToId}
-function MibToId(mib:string):string;
-var
-  x:integer;
-
-  Function walkInt(var s:string):integer;
-  var
-    x:integer;
-    t:string;
-  begin
-    x:=pos('.',s);
-    if x<1 then
-      begin
-        t:=s;
-        s:='';
-      end
-      else
-      begin
-        t:=copy(s,1,x-1);
-        s:=copy(s,x+1,length(s)-x);
-      end;
-    result:=StrToIntDef(t,0);
-  end;
-begin
-  result:='';
-  x:=walkint(mib);
-  x:=x*40+walkint(mib);
-  result:=ASNEncOIDItem(x);
-  while mib<>'' do
-    begin
-      x:=walkint(mib);
-      result:=result+ASNEncOIDItem(x);
-    end;
-end;
-
-{==============================================================================}
-
-{IdToMib}
-Function IdToMib(id:string):string;
-var
-  x,y,n:integer;
-begin
-  result:='';
-  n:=1;
-  while length(id)+1>n do
-    begin
-      x:=ASNDecOIDItem(n,id);
-      if (n-1)=1 then
-        begin
-          y:=x div 40;
-          x:=x mod 40;
-          result:=IntTostr(y);
-        end;
-      result:=result+'.'+IntToStr(x);
-    end;
-end;
-
-{==============================================================================}
-{IntMibToStr}
-Function IntMibToStr(int:string):string;
-Var
-  n,y:integer;
-begin
-  y:=0;
-  for n:=1 to length(int)-1 do
-    y:=y*256+ord(int[n]);
-  result:=IntToStr(y);
-end;
-
-{==============================================================================}
-{IPToID} //Hernan Sanchez
-function IPToID(Host: string): string;
-var
-  s, t: string;
-  i, x: integer;
-begin
-  Result := '';
-  for x:= 1 to 3 do
-    begin
-      t := '';
-      s := StrScan(PChar(Host), '.');
-      t := Copy(Host, 1, (Length(Host) - Length(s)));
-      Delete(Host, 1, (Length(Host) - Length(s) + 1));
-      i := StrTointDef(t, 0);
-      Result := Result + Chr(i);
-    end;
-  i := StrTointDef(Host, 0);
-  Result := Result + Chr(i);
-end;
-
-{==============================================================================}
 {SeparateLeft}
 function SeparateLeft(value,delimiter:string):string;
 var
@@ -310,6 +211,8 @@ var
   x:integer;
 begin
   x:=pos(delimiter,value);
+  if x>0
+    then x:=x+length(delimiter)-1;
   result:=trim(copy(value,x+1,length(value)-x));
 end;
 
