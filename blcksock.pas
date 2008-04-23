@@ -1,5 +1,5 @@
 {==============================================================================|
-| Project : Delphree - Synapse                                   | 001.001.000 |
+| Project : Delphree - Synapse                                   | 001.001.001 |
 |==============================================================================|
 | Content: Library base                                                        |
 |==============================================================================|
@@ -236,7 +236,9 @@ end;
 function TBlockSocket.RecvBuffer(buffer:pointer;length:integer):integer;
 begin
   result:=winsock.recv(FSocket,buffer^,length,0);
-  sockcheck(result);
+  if result=0
+    then FLastError:=WSAENOTCONN
+    else sockcheck(result);
 end;
 
 {TBlockSocket.RecvByte}
