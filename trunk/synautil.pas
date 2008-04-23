@@ -1,5 +1,5 @@
 {==============================================================================|
-| Project : Delphree - Synapse                                   | 001.000.000 |
+| Project : Delphree - Synapse                                   | 001.001.000 |
 |==============================================================================|
 | Content: support procedures and functions                                    |
 |==============================================================================|
@@ -32,13 +32,18 @@ uses
 
 function timezone:string;
 function Rfc822DateTime(t:TDateTime):String;
-function CodeInt(Value:integer):string;
+function CodeInt(Value:word):string;
+function DeCodeInt(Value:string;Index:integer):word;
 function IsIP(Value:string):Boolean;
 function ReverseIP(Value:string):string;
 procedure Dump (Buffer:string;DumpFile:string);
+Function MibToId(mib:string):string;
+Function IdToMib(id:string):string;
+Function IntMibToStr(int:string):string;
 
 implementation
 
+{==============================================================================}
 {timezone}
 function timezone:string;
 var
@@ -55,6 +60,8 @@ begin
   m:=bias mod 60;
   result:=result+format('%.2d%.2d',[h,m]);
 end;
+
+{==============================================================================}
 
 {Rfc822DateTime}
 function Rfc822DateTime(t:TDateTime):String;
@@ -93,15 +100,29 @@ begin
   Result:=Result+' '+Timezone;
 end;
 
+{==============================================================================}
+
 {CodeInt}
-function CodeInt(Value:integer):string;
+function CodeInt(Value:word):string;
+begin
+  Result := Chr(Hi(Value))+ Chr(Lo(Value))
+end;
+
+{==============================================================================}
+
+{DeCodeInt}
+function DeCodeInt(Value:string;Index:integer):word;
 var
   x,y:Byte;
 begin
-  x:=Value div 256;
-  y:=Value mod 256;
-  Result:=char(y)+char(x);
+  if Length(Value)<index then x:=Ord(Value[index])
+    else x:=0;
+  if Length(Value)<(Index+1) then y:=Ord(Value[Index+1])
+    else y:=0;
+  Result:=x*256+y;
 end;
+
+{==============================================================================}
 
 {IsIP}
 function IsIP(Value:string):Boolean;
@@ -122,6 +143,8 @@ begin
   if x<>3 then Result:=False;
 end;
 
+{==============================================================================}
+
 {ReverseIP}
 function ReverseIP(Value:string):string;
 var
@@ -137,6 +160,9 @@ begin
     if Value[1]='.' then Delete(Result, 1, 1);
 end;
 
+{==============================================================================}
+
+{dump}
 procedure dump (Buffer:string;DumpFile:string);
 var
   n:integer;
@@ -155,6 +181,79 @@ begin
     closefile(f);
   end;
 end;
+
+{==============================================================================}
+
+{MibToId}
+function MibToId(mib:string):string;
+var
+  x:integer;
+
+  Function walkInt(var s:string):integer;
+  var
+    x:integer;
+    t:string;
+  begin
+    x:=pos('.',s);
+    if x<1 then
+      begin
+        t:=s;
+        s:='';
+      end
+      else
+      begin
+        t:=copy(s,1,x-1);
+        s:=copy(s,x+1,length(s)-x);
+      end;
+    result:=StrToIntDef(t,0);
+  end;
+begin
+  result:='';
+  x:=walkint(mib);
+  x:=x*40+walkint(mib);
+  result:=char(x);
+  while mib<>'' do
+    begin
+      x:=walkint(mib);
+      result:=result+char(x);
+    end;
+end;
+
+{==============================================================================}
+
+{IdToMib}
+Function IdToMib(id:string):string;
+var
+  x,y,n:integer;
+begin
+  result:='';
+  For n:=1 to length(id) do
+    begin
+      x:=ord(id[n]);
+      if n=1 then
+        begin
+          y:=x div 40;
+          x:=x mod 40;
+          result:=IntTostr(y);
+        end;
+      result:=result+'.'+IntToStr(x);
+    end;
+end;
+
+{==============================================================================}
+
+{IntMibToStr}
+Function IntMibToStr(int:string):string;
+Var
+  n,y:integer;
+begin
+  y:=0;
+  for n:=1 to length(int)-1 do
+    y:=y*256+ord(int[n]);
+  result:=IntToStr(y);
+end;
+
+{==============================================================================}
 
 
 end.
