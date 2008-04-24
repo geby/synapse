@@ -1,5 +1,5 @@
 {==============================================================================|
-| Project : Ararat Synapse                                       | 003.000.000 |
+| Project : Ararat Synapse                                       | 003.000.002 |
 |==============================================================================|
 | Content: SSL support by OpenSSL                                              |
 |==============================================================================|
@@ -399,7 +399,7 @@ var
   [DllImport(DLLUtilName, CharSet = CharSet.Ansi,
     SetLastError = False, CallingConvention= CallingConvention.cdecl,
     EntryPoint =  'ERR_error_string')]
-    function ErrErrorString(e: integer; buf: String): String; external;
+    function ErrErrorString(e: integer; var buf: String): String; external;
 
   [DllImport(DLLUtilName, CharSet = CharSet.Ansi,
     SetLastError = False, CallingConvention= CallingConvention.cdecl,
@@ -538,7 +538,7 @@ var
   function SslX509Digest(data: PX509; _type: PEVP_MD; md: String; var len: Integer):Integer;
   function SslEvpMd5:PEVP_MD;
 //  function ErrErrorString(e: integer; buf: PChar): PChar;
-  function ErrErrorString(e: integer; buf: String): String;
+  function ErrErrorString(e: integer; var buf: String): String;
   function ErrGetError: integer;
   procedure ErrClearError;
   procedure ErrFreeStrings;
@@ -832,7 +832,7 @@ end;
 function SslCtxLoadVerifyLocations(ctx: PSSL_CTX; const CAfile: String; const CApath: String):Integer;
 begin
   if InitSSLInterface and Assigned(_SslCtxLoadVerifyLocations) then
-    Result := _SslCtxLoadVerifyLocations(ctx, PChar(CAfile), PChar(CApath))
+    Result := _SslCtxLoadVerifyLocations(ctx, Pointer(CAfile), Pointer(CApath))
   else
     Result := 0;
 end;
@@ -1029,10 +1029,10 @@ begin
 end;
 
 //function ErrErrorString(e: integer; buf: PChar): PChar;
-function ErrErrorString(e: integer; buf: String): String;
+function ErrErrorString(e: integer; var buf: String): String;
 begin
   if InitSSLInterface and Assigned(_ErrErrorString) then
-    Result := _ErrErrorString(e, PChar(buf))
+    Result := PChar(_ErrErrorString(e, PChar(buf)))
   else
     Result := '';
 end;

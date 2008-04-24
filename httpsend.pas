@@ -160,11 +160,11 @@ type
     {:Mime type of sending data. Default is: 'text/html'.}
     property MimeType: string read FMimeType Write FMimeType;
 
-    {:Define protocol version. Possible values are: '1.1' (default),
-     '1.0' and '0.9'.}
+    {:Define protocol version. Possible values are: '1.1', '1.0' (default)
+     and '0.9'.}
     property Protocol: string read FProtocol Write FProtocol;
 
-    {:If @true (default value), keppalives in HTTP protocol 1.1 is enabled.}
+    {:If @true (default value), keepalives in HTTP protocol 1.1 is enabled.}
     property KeepAlive: Boolean read FKeepAlive Write FKeepAlive;
 
     {:if @true, then server is requested for 100status capability when uploading

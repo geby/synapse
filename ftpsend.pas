@@ -1,5 +1,5 @@
 {==============================================================================|
-| Project : Ararat Synapse                                       | 003.000.004 |
+| Project : Ararat Synapse                                       | 003.001.000 |
 |==============================================================================|
 | Content: FTP client                                                          |
 |==============================================================================|
@@ -94,6 +94,7 @@ type
     FFileTime: TDateTime;
     FOriginalLine: string;
     FMask: string;
+    FPermission: string;
   public
     {: You can assign another TFTPListRec to this object.}
     procedure Assign(Value: TFTPListRec); virtual;
@@ -113,6 +114,8 @@ type
     property OriginalLine: string read FOriginalLine write FOriginalLine;
     {:mask what was used for parsing}
     property Mask: string read FMask write FMask;
+    {:permission string (depending on used mask!)}
+    property Permission: string read FPermission write FPermission;
   end;
 
   {:@abstract(This is TList of TFTPListRec objects.)
@@ -1753,6 +1756,7 @@ begin
     + EncodeTime(mHours, mminutes, mseconds, 0);
   if Permissions <> '' then
   begin
+    Value.Permission := Permissions;
     Value.Readable := Uppercase(permissions)[2] = 'R';
     if Uppercase(permissions)[1] = 'D' then
     begin
