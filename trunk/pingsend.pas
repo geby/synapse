@@ -1,5 +1,5 @@
 {==============================================================================|
-| Project : Delphree - Synapse                                   | 002.003.001 |
+| Project : Delphree - Synapse                                   | 003.000.002 |
 |==============================================================================|
 | Content: PING sender                                                         |
 |==============================================================================|
@@ -42,14 +42,8 @@
 |          (Found at URL: http://www.ararat.cz/synapse/)                       |
 |==============================================================================}
 
-{
-!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-See 'winsock2.txt' file in distribute package!
-!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-}
-
 {$Q-}
-{$WEAKPACKAGEUNIT ON}
+{$R-}
 
 unit PINGsend;
 
@@ -67,6 +61,8 @@ uses
 const
   ICMP_ECHO = 8;
   ICMP_ECHOREPLY = 0;
+  ICMP6_ECHO = 128;
+  ICMP6_ECHOREPLY = 129;
 
 type
   TIcmpEchoHeader = record
@@ -75,7 +71,17 @@ type
     i_checkSum: Word;
     i_Id: Word;
     i_seq: Word;
-    TimeStamp: ULONG;
+    TimeStamp: ULong;
+  end;
+
+  TICMP6Packet = record
+    in_source: TInAddr6;
+    in_dest: TInAddr6;
+    Length: integer;
+    free0: Byte;
+    free1: Byte;
+    free2: Byte;
+    proto: Byte;
   end;
 
   TPINGSend = class(TSynaClient)
@@ -86,7 +92,10 @@ type
     FId: Integer;
     FPacketSize: Integer;
     FPingTime: Integer;
-    function Checksum: Integer;
+    FIcmpEcho: Byte;
+    FIcmpEchoReply: Byte;
+    function Checksum(Value: string): Word;
+    function Checksum6(Value: string): Word;
     function ReadPacket: Boolean;
   public
     function Ping(const Host: string): Boolean;
@@ -108,7 +117,6 @@ constructor TPINGSend.Create;
 begin
   inherited Create;
   FSock := TICMPBlockSocket.Create;
-  FSock.CreateSocket;
   FTimeout := 5000;
   FPacketSize := 32;
   FSeq := 0;
@@ -136,13 +144,27 @@ var
   t: Boolean;
 begin
   Result := False;
+  FPingTime := -1;
   FSock.Bind(FIPInterface, cAnyPort);
   FSock.Connect(Host, '0');
+  if FSock.LastError <> 0 then
+    Exit;
+  FSock.SizeRecvBuffer := 60 * 1024;
+  if FSock.IP6used then
+  begin
+    FIcmpEcho := ICMP6_ECHO;
+    FIcmpEchoReply := ICMP6_ECHOREPLY;
+  end
+  else
+  begin
+    FIcmpEcho := ICMP_ECHO;
+    FIcmpEchoReply := ICMP_ECHOREPLY;
+  end;
   FBuffer := StringOfChar(#0, SizeOf(TICMPEchoHeader) + FPacketSize);
   IcmpEchoHeaderPtr := Pointer(FBuffer);
   with IcmpEchoHeaderPtr^ do
   begin
-    i_type := ICMP_ECHO;
+    i_type := FIcmpEcho;
     i_code := 0;
     i_CheckSum := 0;
     FId := Random(32767);
@@ -152,28 +174,43 @@ begin
     i_Seq := FSeq;
     for n := Succ(SizeOf(TIcmpEchoHeader)) to Length(FBuffer) do
       FBuffer[n] := #$55;
-    i_CheckSum := CheckSum;
   end;
+  if fSock.IP6used then
+    IcmpEchoHeaderPtr^.i_CheckSum := CheckSum6(FBuffer)
+  else
+    IcmpEchoHeaderPtr^.i_CheckSum := CheckSum(FBuffer);
   FSock.SendString(FBuffer);
   repeat
     t := ReadPacket;
     if not t then
       break;
-    IPHeadPtr := Pointer(FBuffer);
-    IpHdrLen := (IPHeadPtr^.VerLen and $0F) * 4;
-    IcmpEchoHeaderPtr := @FBuffer[IpHdrLen + 1];
-  until (IcmpEchoHeaderPtr^.i_type <> ICMP_ECHO) and (IcmpEchoHeaderPtr^.i_id = FId);
+    if fSock.IP6used then
+    begin
+{$IFDEF LINUX}
+      IcmpEchoHeaderPtr := Pointer(FBuffer);
+{$ELSE}
+      FBuffer := StringOfChar(#0, 4) + FBuffer;
+      IcmpEchoHeaderPtr := Pointer(FBuffer);
+      IcmpEchoHeaderPtr^.i_type := FIcmpEchoReply;
+{$ENDIF}
+    end
+    else
+    begin
+      IPHeadPtr := Pointer(FBuffer);
+      IpHdrLen := (IPHeadPtr^.VerLen and $0F) * 4;
+      IcmpEchoHeaderPtr := @FBuffer[IpHdrLen + 1];
+    end;
+  until (IcmpEchoHeaderPtr^.i_type <> FIcmpEcho) and (IcmpEchoHeaderPtr^.i_id = FId);
   //it discard sometimes possible 'echoes' of previosly sended packet...
   if t then
-    if (IcmpEchoHeaderPtr^.i_type = ICMP_ECHOREPLY) then
-      if (IcmpEchoHeaderPtr^.i_id = FId) then
-      begin
-        FPingTime := GetTick - IcmpEchoHeaderPtr^.TimeStamp;
-        Result := True;
-      end;
+    if (IcmpEchoHeaderPtr^.i_type = FIcmpEchoReply) then
+    begin
+      FPingTime := TickDelta(IcmpEchoHeaderPtr^.TimeStamp, GetTick);
+      Result := True;
+    end;
 end;
 
-function TPINGSend.Checksum: Integer;
+function TPINGSend.Checksum(Value: string): Word;
 type
   TWordArray = array[0..0] of Word;
 var
@@ -182,17 +219,50 @@ var
   Num, Remain: Integer;
   n: Integer;
 begin
-  Num := Length(FBuffer) div 2;
-  Remain := Length(FBuffer) mod 2;
-  WordArr := Pointer(FBuffer);
+  Num := Length(Value) div 2;
+  Remain := Length(Value) mod 2;
+  WordArr := Pointer(Value);
   CkSum := 0;
   for n := 0 to Num - 1 do
     CkSum := CkSum + WordArr^[n];
   if Remain <> 0 then
-    CkSum := CkSum + Ord(FBuffer[Length(FBuffer)]);
+    CkSum := CkSum + Ord(Value[Length(Value)]);
   CkSum := (CkSum shr 16) + (CkSum and $FFFF);
   CkSum := CkSum + (CkSum shr 16);
   Result := Word(not CkSum);
+end;
+
+function TPINGSend.Checksum6(Value: string): Word;
+const
+  IOC_OUT = $40000000;
+  IOC_IN = $80000000;
+  IOC_INOUT = (IOC_IN or IOC_OUT);
+  IOC_WS2 = $08000000;
+  SIO_ROUTING_INTERFACE_QUERY = 20 or IOC_WS2 or IOC_INOUT;
+var
+  ICMP6Ptr: ^TICMP6Packet;
+  s: string;
+  b: integer;
+  ip6: TSockAddrIn6;
+  x: integer;
+begin
+{$IFDEF LINUX}
+  Result := 0;
+{$ELSE}
+  s := StringOfChar(#0, SizeOf(TICMP6Packet)) + Value;
+  ICMP6Ptr := Pointer(s);
+  x := synsock.WSAIoctl(FSock.Socket, SIO_ROUTING_INTERFACE_QUERY,
+    @FSock.RemoteSin.IP6, SizeOf(FSock.RemoteSin.IP6),
+    @ip6, SizeOf(ip6), @b, nil, nil);
+  if x <> -1 then
+    ICMP6Ptr^.in_dest := ip6.sin6_addr
+  else
+    ICMP6Ptr^.in_dest := FSock.LocalSin.IP6.sin6_addr;
+  ICMP6Ptr^.in_source := FSock.RemoteSin.IP6.sin6_addr;
+  ICMP6Ptr^.Length := synsock.htonl(Length(Value));
+  ICMP6Ptr^.proto := IPPROTO_ICMPV6;
+  Result := Checksum(s);
+{$ENDIF}
 end;
 
 {==============================================================================}
@@ -201,10 +271,8 @@ function PingHost(const Host: string): Integer;
 begin
   with TPINGSend.Create do
   try
-    if Ping(Host) then
-      Result := PingTime
-    else
-      Result := -1;
+    Ping(Host);
+    Result := PingTime;
   finally
     Free;
   end;

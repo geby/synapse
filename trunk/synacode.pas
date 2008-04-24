@@ -1,5 +1,5 @@
 {==============================================================================|
-| Project : Delphree - Synapse                                   | 001.006.001 |
+| Project : Delphree - Synapse                                   | 001.007.001 |
 |==============================================================================|
 | Content: Coding and decoding support                                         |
 |==============================================================================|
@@ -43,7 +43,6 @@
 |==============================================================================}
 
 {$Q-}
-{$WEAKPACKAGEUNIT ON}
 
 unit SynaCode;
 
@@ -115,6 +114,7 @@ function EncodeBase64(const Value: string): string;
 function DecodeUU(const Value: string): string;
 function EncodeUU(const Value: string): string;
 function DecodeXX(const Value: string): string;
+function DecodeYEnc(const Value: string): string;
 function UpdateCrc32(Value: Byte; Crc32: Integer): Integer;
 function Crc32(const Value: string): Integer;
 function UpdateCrc16(Value: Byte; Crc16: Word): Word;
@@ -555,6 +555,30 @@ begin
   if s = '' then
     Exit;
   Result := Decode4to3(s, TableXX);
+end;
+
+{==============================================================================}
+
+function DecodeYEnc(const Value: string): string;
+var
+  C : Byte;
+  i: integer;
+begin
+  Result := '';
+  i := 1;
+  while i <= Length(Value) do
+  begin
+    c := Ord(Value[i]);
+    Inc(i);
+    if c = Ord('=') then
+    begin
+      c := Ord(Value[i]);
+      Inc(i);
+      Dec(c, 64);
+    end;
+    Dec(C, 42);
+    Result := Result + Char(C);
+  end;
 end;
 
 {==============================================================================}

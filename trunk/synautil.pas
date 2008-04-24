@@ -1,5 +1,5 @@
 {==============================================================================|
-| Project : Delphree - Synapse                                   | 003.003.000 |
+| Project : Delphree - Synapse                                   | 003.005.001 |
 |==============================================================================|
 | Content: support procedures and functions                                    |
 |==============================================================================|
@@ -45,6 +45,7 @@
 |==============================================================================}
 
 {$Q-}
+{$R-}
 
 unit SynaUtil;
 
@@ -70,11 +71,12 @@ function GetDateMDYFromStr(Value: string): TDateTime;
 function DecodeRfcDateTime(Value: string): TDateTime;
 function GetUTTime: TDateTime;
 function SetUTTime(Newdt: TDateTime): Boolean;
-function GetTick: Cardinal;
+function GetTick: ULong;
+function TickDelta(TickOld, TickNew: ULong): ULong;
 function CodeInt(Value: Word): string;
 function DecodeInt(const Value: string; Index: Integer): Word;
 function IsIP(const Value: string): Boolean;
-function ReverseIP(Value: string): string;
+function IsIP6(const Value: string): Boolean;
 function IPToID(Host: string): string;
 procedure Dump(const Buffer, DumpFile: string);
 procedure DumpEx(const Buffer, DumpFile: string);
@@ -479,7 +481,7 @@ end;
 {==============================================================================}
 
 {$IFDEF LINUX}
-function GetTick: Cardinal;
+function GetTick: ULong;
 var
   Stamp: TTimeStamp;
 begin
@@ -487,11 +489,32 @@ begin
   Result := Stamp.Time;
 end;
 {$ELSE}
-function GetTick: Cardinal;
+function GetTick: ULong;
 begin
   Result := Windows.GetTickCount;
 end;
 {$ENDIF}
+
+{==============================================================================}
+
+function TickDelta(TickOld, TickNew: ULong): ULong;
+begin
+//if DWord is signed type (older Deplhi),
+// then it not work properly on differencies larger then maxint!
+  Result := 0;
+  if TickOld <> TickNew then
+  begin
+    if TickNew < TickOld then
+    begin
+      TickNew := TickNew + ULong(MaxInt) + 1;
+      TickOld := TickOld + ULong(MaxInt) + 1;
+    end;
+    Result := TickNew - TickOld;
+    if TickNew < TickOld then
+      if Result > 0 then
+        Result := 0 - Result;
+  end;
+end;
 
 {==============================================================================}
 
@@ -522,7 +545,6 @@ end;
 function IsIP(const Value: string): Boolean;
 var
   TempIP: string;
-
   function ByteIsOk(const Value: string): Boolean;
   var
     x, n: integer;
@@ -539,7 +561,6 @@ var
           Break;
         end;
   end;
-
 begin
   TempIP := Value;
   Result := False;
@@ -555,19 +576,47 @@ end;
 
 {==============================================================================}
 
-function ReverseIP(Value: string): string;
+function IsIP6(const Value: string): Boolean;
 var
-  x: Integer;
+  TempIP: string;
+  s,t: string;
+  x: integer;
+  partcount: integer;
+  zerocount: integer;
+  First: Boolean;
 begin
-  Result := '';
-  repeat
-    x := LastDelimiter('.', Value);
-    Result := Result + '.' + Copy(Value, x + 1, Length(Value) - x);
-    Delete(Value, x, Length(Value) - x + 1);
-  until x < 1;
-  if Length(Result) > 0 then
-    if Result[1] = '.' then
-      Delete(Result, 1, 1);
+  TempIP := Value;
+  Result := False;
+  partcount := 0;
+  zerocount := 0;
+  First := True;
+  while tempIP <> '' do
+  begin
+    s := fetch(TempIP, ':');
+    if not(First) and (s = '') then
+      Inc(zerocount);
+    First := False;
+    if zerocount > 1 then
+      break;
+    Inc(partCount);
+    if s = '' then
+      Continue;
+    if partCount > 8 then
+      break;
+    if tempIP = '' then
+    begin
+      t := SeparateRight(s, '%');
+      s := SeparateLeft(s, '%');
+      x := StrToIntDef('$' + t, -1);
+      if (x < 0) or (x > $ffff) then
+        break;
+    end;
+    x := StrToIntDef('$' + s, -1);
+    if (x < 0) or (x > $ffff) then
+      break;
+    if tempIP = '' then
+      Result := True;
+  end;
 end;
 
 {==============================================================================}
@@ -878,14 +927,25 @@ begin
     s1 := sURL;
     s2 := '';
   end;
-  x := Pos(':', s1);
-  if x > 0 then
+  if Pos('[', s1) = 1 then
   begin
-    Host := SeparateLeft(s1, ':');
-    Port := SeparateRight(s1, ':');
+    Host := Separateleft(s1, ']');
+    Delete(Host, 1, 1);
+    s1 := SeparateRight(s1, ']');
+    if Pos(':', s1) = 1 then
+      Port := SeparateRight(s1, ':');
   end
   else
-    Host := s1;
+  begin
+    x := Pos(':', s1);
+    if x > 0 then
+    begin
+      Host := SeparateLeft(s1, ':');
+      Port := SeparateRight(s1, ':');
+    end
+    else
+      Host := s1;
+  end;
   Result := '/' + s2;
   x := Pos('?', s2);
   if x > 0 then

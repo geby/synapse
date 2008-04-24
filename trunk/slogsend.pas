@@ -1,5 +1,5 @@
 {==============================================================================|
-| Project : Delphree - Synapse                                   | 001.001.001 |
+| Project : Delphree - Synapse                                   | 001.001.004 |
 |==============================================================================|
 | Content: SysLog client                                                       |
 |==============================================================================|
@@ -45,7 +45,6 @@
 // RFC-3164
 
 {$Q-}
-{$WEAKPACKAGEUNIT ON}
 
 unit SLogSend;
 
@@ -114,13 +113,11 @@ constructor TSyslogSend.Create;
 begin
   inherited Create;
   FSock := TUDPBlockSocket.Create;
-  FSock.CreateSocket;
   FTargetPort := cSysLogProtocol;
   FFacility := FCL_Local0;
   FSeverity := Debug;
   FTag := ExtractFileName(ParamStr(0));
   FMessage := '';
-  FIPInterface := cAnyHost;
 end;
 
 destructor TSyslogSend.Destroy;
@@ -152,9 +149,9 @@ begin
   Buf := Buf + Tag + ': ' + FMessage;
   if Length(Buf) <= 1024 then
   begin
-    if FSock.EnableReuse(True) then
-      Fsock.Bind(FIPInterface, FTargetPort)
-    else
+    FSock.EnableReuse(True);
+    Fsock.Bind(FIPInterface, FTargetPort);
+    if FSock.LastError <> 0 then
       FSock.Bind(FIPInterface, cAnyPort);
     FSock.Connect(FTargetHost, FTargetPort);
     FSock.SendString(Buf);

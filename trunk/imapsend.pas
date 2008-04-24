@@ -1,5 +1,5 @@
 {==============================================================================|
-| Project : Delphree - Synapse                                   | 002.002.002 |
+| Project : Delphree - Synapse                                   | 002.003.005 |
 |==============================================================================|
 | Content: IMAP4rev1 client                                                    |
 |==============================================================================|
@@ -42,8 +42,6 @@
 |          (Found at URL: http://www.ararat.cz/synapse/)                       |
 |==============================================================================}
 
-{$WEAKPACKAGEUNIT ON}
-
 //RFC-2060
 //RFC-2595
 
@@ -53,6 +51,9 @@ interface
 
 uses
   SysUtils, Classes,
+  {$IFDEF STREAMSEC}
+  TlsInternalServer, TlsSynaSock,
+  {$ENDIF}
   blcksock, SynaUtil, SynaCode;
 
 const
@@ -61,7 +62,12 @@ const
 type
   TIMAPSend = class(TSynaClient)
   private
+    {$IFDEF STREAMSEC}
+    FSock: TSsTCPBlockSocket;
+    FTLSServer: TCustomTLSInternalServer;
+    {$ELSE}
     FSock: TTCPBlockSocket;
+    {$ENDIF}
     FTagCommand: integer;
     FResultString: string;
     FFullResult: TStringList;
@@ -83,6 +89,7 @@ type
     procedure ParseFolderList(Value:TStrings);
     procedure ParseSelect;
     procedure ParseSearch(Value:TStrings);
+    procedure ProcessLiterals;
   public
     constructor Create;
     destructor Destroy; override;
@@ -125,13 +132,18 @@ type
     property Password: string read FPassword Write FPassword;
     property AuthDone: Boolean read FAuthDone;
     property UID: Boolean read FUID Write FUID;
-    property Sock: TTCPBlockSocket read FSock;
     property SelectedFolder: string read FSelectedFolder;
     property SelectedCount: integer read FSelectedCount;
     property SelectedRecent: integer read FSelectedRecent;
     property SelectedUIDvalidity: integer read FSelectedUIDvalidity;
     property AutoTLS: Boolean read FAutoTLS Write FAutoTLS;
     property FullSSL: Boolean read FFullSSL Write FFullSSL;
+{$IFDEF STREAMSEC}                            
+    property Sock: TSsTCPBlockSocket read FSock;
+    property TLSServer: TCustomTLSInternalServer read FTLSServer write FTLSServer;
+{$ELSE}
+    property Sock: TTCPBlockSocket read FSock;
+{$ENDIF}
   end;
 
 implementation
@@ -141,12 +153,17 @@ begin
   inherited Create;
   FFullResult := TStringList.Create;
   FIMAPcap := TStringList.Create;
+{$IFDEF STREAMSEC}           
+  FTLSServer := GlobalTLSInternalServer;     
+  FSock := TSsTCPBlockSocket.Create;
+  FSock.BlockingRead := True;
+{$ELSE}
   FSock := TTCPBlockSocket.Create;
+{$ENDIF}
   FSock.ConvertLineEnd := True;
-  FSock.CreateSocket;
   FSock.SizeRecvBuffer := 32768;
   FSock.SizeSendBuffer := 32768;
-  FTimeout := 300000;
+  FTimeout := 60000;
   FTargetPort := cIMAPProtocol;
   FUsername := '';
   FPassword := '';
@@ -203,6 +220,47 @@ begin
   Result:=uppercase(separateleft(s, ' '));
 end;
 
+procedure TIMAPSend.ProcessLiterals;
+var
+  l: TStringList;
+  n, x: integer;
+  b: integer;
+  s: string;
+begin
+  l := TStringList.Create;
+  try
+    l.Assign(FFullResult);
+    FFullResult.Clear;
+    b := 0;
+    for n := 0 to l.Count - 1 do
+    begin
+      s := l[n];
+      if b > 0 then
+      begin
+        FFullResult[FFullresult.Count - 1] :=
+          FFullResult[FFullresult.Count - 1] + s;
+        inc(b);
+        if b > 2 then
+          b := 0;
+      end
+      else
+      begin
+        if (s <> '') and (s[Length(s)]='}') then
+        begin
+          x := RPos('{', s);
+          Delete(s, x, Length(s) - x + 1);
+          b := 1;
+        end
+        else
+          b := 0;
+        FFullResult.Add(s);
+      end;
+    end;
+  finally
+    l.Free;
+  end;
+end;
+
 function TIMAPSend.IMAPcommand(Value: string): string;
 begin
   Inc(FTagCommand);
@@ -240,6 +298,7 @@ var
   n, x: integer;
   s: string;
 begin
+  ProcessLiterals;
   Value.Clear;
   for n := 0 to FFullResult.Count - 1 do
   begin
@@ -264,6 +323,7 @@ var
   n: integer;
   s, t: string;
 begin
+  ProcessLiterals;
   FSelectedCount := 0;
   FSelectedRecent := 0;
   FSelectedUIDvalidity := 0;
@@ -296,6 +356,7 @@ var
   n: integer;
   s: string;
 begin
+  ProcessLiterals;
   Value.Clear;
   for n := 0 to FFullResult.Count - 1 do
   begin
@@ -326,17 +387,32 @@ end;
 
 function TIMAPSend.AuthLogin: Boolean;
 begin
-  Result := IMAPcommand('LOGIN ' + FUsername + ' ' + FPassword) = 'OK';
+  Result := IMAPcommand('LOGIN "' + FUsername + '" "' + FPassword + '"') = 'OK';
 end;
 
 function TIMAPSend.Connect: Boolean;
 begin
   FSock.CloseSocket;
-  FSock.CreateSocket;
+  FSock.Bind(FIPInterface, cAnyPort);
+{$IFDEF STREAMSEC}
+  if FFullSSL then
+  begin
+    if assigned(FTLSServer) then
+      FSock.TLSServer := FTLSServer
+    else
+    begin
+      Result := false;
+      exit;
+    end;
+  end
+  else
+    FSock.TLSServer := nil;
+{$ELSE}
   if FFullSSL then
     FSock.SSLEnabled := True;
-  FSock.Bind(FIPInterface, cAnyPort);
-  FSock.Connect(FTargetHost, FTargetPort);
+{$ENDIF}
+  if FSock.LastError = 0 then
+    FSock.Connect(FTargetHost, FTargetPort);
   Result := FSock.LastError = 0;
 end;
 
@@ -350,6 +426,7 @@ begin
   s := IMAPcommand('CAPABILITY');
   if s = 'OK' then
   begin
+    ProcessLiterals;
     for n := 0 to FFullResult.Count - 1 do
       if Pos('* CAPABILITY ', FFullResult[n]) = 1 then
       begin
@@ -475,10 +552,12 @@ begin
   Result := -1;
   Value := Uppercase(Value);
   if IMAPcommand('STATUS "' + FolderName + '" (' + Value + ')' ) = 'OK' then
+  begin
+    ProcessLiterals;
     for n := 0 to FFullResult.Count - 1 do
     begin
       s := UpperCase(FFullResult[n]);
-      if (Pos(FolderName, s) >= 1) and (Pos(Value, s) > 0 ) then
+      if (Pos('* ', s) = 1) and (Pos(FolderName, s) >= 1) and (Pos(Value, s) > 0 ) then
       begin
         t := SeparateRight(s, Value);
         t := SeparateLeft(t, ')');
@@ -487,6 +566,7 @@ begin
         Break;
       end;
     end;
+  end;
 end;
 
 function TIMAPSend.ExpungeFolder: Boolean;
@@ -546,6 +626,8 @@ begin
   if FUID then
     s := 'UID ' + s;
   if IMAPcommand(s) = 'OK' then
+  begin
+    ProcessLiterals;
     for n := 0 to FFullResult.Count - 1 do
     begin
       s := UpperCase(FFullResult[n]);
@@ -558,6 +640,7 @@ begin
         Break;
       end;
     end;
+  end;
 end;
 
 function TIMAPSend.CopyMess(MessID: integer; ToFolder: string): Boolean;
@@ -601,6 +684,7 @@ begin
   if FUID then
     s := 'UID ' + s;
   Result := IMAPcommand(s) = 'OK';
+  ProcessLiterals;
   for n := 0 to FFullResult.Count - 1 do
   begin
     s := uppercase(FFullResult[n]);
@@ -620,7 +704,14 @@ begin
   begin
     if IMAPcommand('STARTTLS') = 'OK' then
     begin
+{$IFDEF STREAMSEC}
+      if not assigned(FTLSServer) then
+        Exit;
+      Fsock.TLSServer := FTLSServer;
+      FSock.Connect('','');
+{$ELSE}
       Fsock.SSLDoConnect;
+{$ENDIF}
       Result := FSock.LastError = 0;
     end;
   end;
@@ -635,6 +726,7 @@ begin
   sUID := '';
   s := 'FETCH ' + IntToStr(MessID) + ' UID';
   Result := IMAPcommand(s) = 'OK';
+  ProcessLiterals;
   for n := 0 to FFullResult.Count - 1 do
   begin
     s := uppercase(FFullResult[n]);

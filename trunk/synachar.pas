@@ -1,5 +1,5 @@
 {==============================================================================|
-| Project : Delphree - Synapse                                   | 004.000.003 |
+| Project : Delphree - Synapse                                   | 004.000.005 |
 |==============================================================================|
 | Content: Charset conversion support                                          |
 |==============================================================================|
@@ -43,7 +43,6 @@
 |==============================================================================}
 
 {$Q-}
-{$WEAKPACKAGEUNIT ON}
 
 unit SynaChar;
 
@@ -797,51 +796,71 @@ end;
 {==============================================================================}
 procedure ReadMulti(const Value: string; var Index: Integer; mb: Byte;
   var b1, b2, b3, b4: Byte);
-var
-  b: array[0..3] of Byte;
-  n: Integer;
-  s: string;
-begin
-  b[0] := 0;
-  b[1] := 0;
-  b[2] := 0;
-  b[3] := 0;
+Begin
   b1 := 0;
   b2 := 0;
   b3 := 0;
   b4 := 0;
-  if length(Value) < (Index + mb - 1) then
+  if Index < 0 then
+    Index := 1;
+  if mb > 4 then
+    mb := 1;
+  if (Index + mb - 1) <= Length(Value) then
   begin
-    Inc(index, mb);
-    Exit;
-  end;
-  s := '';
-  for n := 1 to mb do
-  begin
-    s := Value[Index] + s;
-    Inc(Index);
-  end;
-  for n := 1 to mb do
-    b[n - 1] := Ord(s[n]);
-  b1 := b[0];
-  b2 := b[1];
-  b3 := b[2];
-  b4 := b[3];
-end;
+    Case mb Of
+      1:
+        b1 := Ord(Value[Index]);
+      2:
+        Begin
+          b1 := Ord(Value[Index]);
+          b2 := Ord(Value[Index + 1]);
+        End;
+      3:
+        Begin
+          b1 := Ord(Value[Index]);
+          b2 := Ord(Value[Index + 1]);
+          b3 := Ord(Value[Index + 2]);
+        End;
+      4:
+        Begin
+          b1 := Ord(Value[Index]);
+          b2 := Ord(Value[Index + 1]);
+          b3 := Ord(Value[Index + 2]);
+          b4 := Ord(Value[Index + 3]);
+        End;
+    end;
+    Inc(Index, mb);
+  End;
+End;
 
 {==============================================================================}
 function WriteMulti(b1, b2, b3, b4: Byte; mb: Byte): string;
-var
-  b: array[0..3] of Byte;
-  n: Integer;
 begin
-  Result := '';
-  b[0] := b1;
-  b[1] := b2;
-  b[2] := b3;
-  b[3] := b4;
-  for n := 1 to mb do
-    Result := Char(b[n - 1]) + Result;
+  if mb > 4 then
+    mb := 1;
+  SetLength(Result, mb);
+  case mb Of
+    1:
+      Result[1] := Char(b1);
+    2:
+      begin
+        Result[1] := Char(b1);
+        Result[2] := Char(b2);
+      end;
+    3:
+      begin
+        Result[1] := Char(b1);
+        Result[2] := Char(b2);
+        Result[3] := Char(b3);
+      end;
+    4:
+      begin
+        Result[1] := Char(b1);
+        Result[2] := Char(b2);
+        Result[3] := Char(b3);
+        Result[4] := Char(b4);
+      end;
+  end;
 end;
 
 {==============================================================================}

@@ -1,5 +1,5 @@
 {==============================================================================|
-| Project : Delphree - Synapse                                   | 002.001.001 |
+| Project : Delphree - Synapse                                   | 002.002.002 |
 |==============================================================================|
 | Content: DNS client                                                          |
 |==============================================================================|
@@ -45,7 +45,6 @@
 // RFC-1035, RFC-1183, RFC1706, RFC1712, RFC2163, RFC2230
 
 {$Q-}
-{$WEAKPACKAGEUNIT ON}
 
 unit DNSsend;
 
@@ -53,7 +52,7 @@ interface
 
 uses
   SysUtils, Classes,
-  blcksock, SynaUtil;
+  blcksock, SynaUtil, synsock;
 
 const
   cDnsProtocol = 'domain';
@@ -86,7 +85,7 @@ const
   QTYPE_KEY = 25; // RFC-2065
   QTYPE_PX = 26;
   QTYPE_GPOS = 27;
-  QTYPE_AAAA = 28; // IP6 Address  [Susan Thomson]
+  QTYPE_AAAA = 28;
   QTYPE_LOC = 29; // RFC-1876
   QTYPE_NXT = 30; // RFC-2065
 
@@ -112,6 +111,8 @@ type
     FNameserverInfo: TStringList;
     FAdditionalInfo: TStringList;
     FAuthoritative: Boolean;
+    function ReverseIP(Value: string): string;
+    function ReverseIP6(Value: string): string;
     function CompressName(const Value: string): string;
     function CodeHeader: string;
     function CodeQuery(const Name: string; QType: Integer): string;
@@ -165,6 +166,44 @@ begin
   FTCPSock.Free;
   FSock.Free;
   inherited Destroy;
+end;
+
+function TDNSSend.ReverseIP(Value: string): string;
+var
+  x: Integer;
+begin
+  Result := '';
+  repeat
+    x := LastDelimiter('.', Value);
+    Result := Result + '.' + Copy(Value, x + 1, Length(Value) - x);
+    Delete(Value, x, Length(Value) - x + 1);
+  until x < 1;
+  if Length(Result) > 0 then
+    if Result[1] = '.' then
+      Delete(Result, 1, 1);
+end;
+
+function TDNSSend.ReverseIP6(Value: string): string;
+var
+  ip6: TSockAddrIn6;
+begin
+  ip6 := FSock.StrToIP6(Value);
+  Result := ip6.sin6_addr.S_un_b.s_b16
+    + '.' + ip6.sin6_addr.S_un_b.s_b15
+    + '.' + ip6.sin6_addr.S_un_b.s_b14
+    + '.' + ip6.sin6_addr.S_un_b.s_b13
+    + '.' + ip6.sin6_addr.S_un_b.s_b12
+    + '.' + ip6.sin6_addr.S_un_b.s_b11
+    + '.' + ip6.sin6_addr.S_un_b.s_b10
+    + '.' + ip6.sin6_addr.S_un_b.s_b9
+    + '.' + ip6.sin6_addr.S_un_b.s_b8
+    + '.' + ip6.sin6_addr.S_un_b.s_b7
+    + '.' + ip6.sin6_addr.S_un_b.s_b6
+    + '.' + ip6.sin6_addr.S_un_b.s_b5
+    + '.' + ip6.sin6_addr.S_un_b.s_b4
+    + '.' + ip6.sin6_addr.S_un_b.s_b3
+    + '.' + ip6.sin6_addr.S_un_b.s_b2
+    + '.' + ip6.sin6_addr.S_un_b.s_b1;
 end;
 
 function TDNSSend.CompressName(const Value: string): string;
@@ -258,6 +297,7 @@ var
   RType, Len, j, x, n: Integer;
   R: string;
   t1, t2, ttl: integer;
+  ip6: TSockAddrIn6;
 begin
   Result := '';
   R := '';
@@ -273,72 +313,95 @@ begin
   Inc(i, 2); // i point to begin of data
   j := i;
   i := i + len; // i point to next record
-  case RType of
-    QTYPE_A:
-      begin
-        R := IntToStr(Ord(FBuffer[j]));
-        Inc(j);
-        R := R + '.' + IntToStr(Ord(FBuffer[j]));
-        Inc(j);
-        R := R + '.' + IntToStr(Ord(FBuffer[j]));
-        Inc(j);
-        R := R + '.' + IntToStr(Ord(FBuffer[j]));
-      end;
-    QTYPE_NS, QTYPE_MD, QTYPE_MF, QTYPE_CNAME, QTYPE_MB,
-      QTYPE_MG, QTYPE_MR, QTYPE_PTR, QTYPE_X25, QTYPE_NSAP,
-      QTYPE_NSAPPTR:
-      R := DecodeLabels(j);
-    QTYPE_SOA:
-      begin
-        R := DecodeLabels(j);
-        R := R + ',' + DecodeLabels(j);
-        for n := 1 to 5 do
+  if Length(FBuffer) >= i then
+    case RType of
+      QTYPE_A:
         begin
-          x := DecodeInt(FBuffer, j) * 65536 + DecodeInt(FBuffer, j + 2);
-          Inc(j, 4);
-          R := R + ',' + IntToStr(x);
+          R := IntToStr(Ord(FBuffer[j]));
+          Inc(j);
+          R := R + '.' + IntToStr(Ord(FBuffer[j]));
+          Inc(j);
+          R := R + '.' + IntToStr(Ord(FBuffer[j]));
+          Inc(j);
+          R := R + '.' + IntToStr(Ord(FBuffer[j]));
         end;
-      end;
-    QTYPE_NULL:
-      begin
-      end;
-    QTYPE_WKS:
-      begin
-      end;
-    QTYPE_HINFO:
-      begin
+      QTYPE_AAAA:
+        begin
+          FillChar(ip6, SizeOf(ip6), 0);
+          ip6.sin6_addr.S_un_b.s_b1 := FBuffer[j];
+          ip6.sin6_addr.S_un_b.s_b2 := FBuffer[j + 1];
+          ip6.sin6_addr.S_un_b.s_b3 := FBuffer[j + 2];
+          ip6.sin6_addr.S_un_b.s_b4 := FBuffer[j + 3];
+          ip6.sin6_addr.S_un_b.s_b5 := FBuffer[j + 4];
+          ip6.sin6_addr.S_un_b.s_b6 := FBuffer[j + 5];
+          ip6.sin6_addr.S_un_b.s_b7 := FBuffer[j + 6];
+          ip6.sin6_addr.S_un_b.s_b8 := FBuffer[j + 7];
+          ip6.sin6_addr.S_un_b.s_b9 := FBuffer[j + 8];
+          ip6.sin6_addr.S_un_b.s_b10 := FBuffer[j + 9];
+          ip6.sin6_addr.S_un_b.s_b11 := FBuffer[j + 10];
+          ip6.sin6_addr.S_un_b.s_b12 := FBuffer[j + 11];
+          ip6.sin6_addr.S_un_b.s_b13 := FBuffer[j + 12];
+          ip6.sin6_addr.S_un_b.s_b14 := FBuffer[j + 13];
+          ip6.sin6_addr.S_un_b.s_b15 := FBuffer[j + 14];
+          ip6.sin6_addr.S_un_b.s_b16 := FBuffer[j + 15];
+          ip6.sin6_family := AF_INET6;
+          R := FSock.IP6ToStr(ip6);
+        end;
+      QTYPE_NS, QTYPE_MD, QTYPE_MF, QTYPE_CNAME, QTYPE_MB,
+        QTYPE_MG, QTYPE_MR, QTYPE_PTR, QTYPE_X25, QTYPE_NSAP,
+        QTYPE_NSAPPTR:
+        R := DecodeLabels(j);
+      QTYPE_SOA:
+        begin
+          R := DecodeLabels(j);
+          R := R + ',' + DecodeLabels(j);
+          for n := 1 to 5 do
+          begin
+            x := DecodeInt(FBuffer, j) * 65536 + DecodeInt(FBuffer, j + 2);
+            Inc(j, 4);
+            R := R + ',' + IntToStr(x);
+          end;
+        end;
+      QTYPE_NULL:
+        begin
+        end;
+      QTYPE_WKS:
+        begin
+        end;
+      QTYPE_HINFO:
+        begin
+          R := DecodeString(j);
+          R := R + ',' + DecodeString(j);
+        end;
+      QTYPE_MINFO, QTYPE_RP, QTYPE_ISDN:
+        begin
+          R := DecodeLabels(j);
+          R := R + ',' + DecodeLabels(j);
+        end;
+      QTYPE_MX, QTYPE_AFSDB, QTYPE_RT, QTYPE_KX:
+        begin
+          x := DecodeInt(FBuffer, j);
+          Inc(j, 2);
+          R := IntToStr(x);
+          R := R + ',' + DecodeLabels(j);
+        end;
+      QTYPE_TXT:
         R := DecodeString(j);
-        R := R + ',' + DecodeString(j);
-      end;
-    QTYPE_MINFO, QTYPE_RP, QTYPE_ISDN:
-      begin
-        R := DecodeLabels(j);
-        R := R + ',' + DecodeLabels(j);
-      end;
-    QTYPE_MX, QTYPE_AFSDB, QTYPE_RT, QTYPE_KX:
-      begin
-        x := DecodeInt(FBuffer, j);
-        Inc(j, 2);
-        R := IntToStr(x);
-        R := R + ',' + DecodeLabels(j);
-      end;
-    QTYPE_TXT:
-      R := DecodeString(j);
-    QTYPE_GPOS:
-      begin
-        R := DecodeLabels(j);
-        R := R + ',' + DecodeLabels(j);
-        R := R + ',' + DecodeLabels(j);
-      end;
-    QTYPE_PX:
-      begin
-        x := DecodeInt(FBuffer, j);
-        Inc(j, 2);
-        R := IntToStr(x);
-        R := R + ',' + DecodeLabels(j);
-        R := R + ',' + DecodeLabels(j);
-      end;
-  end;
+      QTYPE_GPOS:
+        begin
+          R := DecodeLabels(j);
+          R := R + ',' + DecodeLabels(j);
+          R := R + ',' + DecodeLabels(j);
+        end;
+      QTYPE_PX:
+        begin
+          x := DecodeInt(FBuffer, j);
+          Inc(j, 2);
+          R := IntToStr(x);
+          R := R + ',' + DecodeLabels(j);
+          R := R + ',' + DecodeLabels(j);
+        end;
+    end;
   if R <> '' then
     Info.Add(RName + ',' + IntToStr(RType) + ',' + IntToStr(ttl) + ',' + R);
   if QType = RType then
@@ -415,6 +478,8 @@ begin
   Result := False;
   if IsIP(Name) then
     Name := ReverseIP(Name) + '.in-addr.arpa';
+  if IsIP6(Name) then
+    Name := ReverseIP6(Name) + '.ip6.int';
   FBuffer := CodeHeader + CodeQuery(Name, QType);
   if FUseTCP then
     WorkSock := FTCPSock

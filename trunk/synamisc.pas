@@ -1,5 +1,5 @@
 {==============================================================================|
-| Project : Delphree - Synapse                                   | 001.000.004 |
+| Project : Delphree - Synapse                                   | 001.000.006 |
 |==============================================================================|
 | Content: misc. procedures and functions                                      |
 |==============================================================================|
@@ -47,6 +47,14 @@
 unit SynaMisc;
 
 interface
+
+{$IFDEF VER125}
+  {$DEFINE BCB}
+{$ENDIF}
+{$IFDEF BCB}
+  {$ObjExportAll On}
+  {$HPPEMIT '#pragma comment( lib , "wininet.lib" )'}
+{$ENDIF}
 
 uses
   SynaUtil, blcksock, SysUtils, Classes,

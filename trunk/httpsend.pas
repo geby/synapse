@@ -1,5 +1,5 @@
 {==============================================================================|
-| Project : Delphree - Synapse                                   | 003.004.004 |
+| Project : Delphree - Synapse                                   | 003.006.004 |
 |==============================================================================|
 | Content: HTTP client                                                         |
 |==============================================================================|
@@ -42,14 +42,15 @@
 |          (Found at URL: http://www.ararat.cz/synapse/)                       |
 |==============================================================================}
 
-{$WEAKPACKAGEUNIT ON}
-
 unit HTTPSend;
 
 interface
 
 uses
   SysUtils, Classes,
+  {$IFDEF STREAMSEC}
+  TlsInternalServer, TlsSynaSock,
+  {$ENDIF}
   blcksock, SynaUtil, SynaCode;
 
 const
@@ -60,7 +61,12 @@ type
 
   THTTPSend = class(TSynaClient)
   private
+    {$IFDEF STREAMSEC}
+    FSock: TSsTCPBlockSocket;
+    FTLSServer: TCustomTLSInternalServer;
+    {$ELSE}
     FSock: TTCPBlockSocket;
+    {$ENDIF}
     FTransferEncoding: TTransferEncoding;
     FAliveHost: string;
     FAlivePort: string;
@@ -69,6 +75,7 @@ type
     FMimeType: string;
     FProtocol: string;
     FKeepAlive: Boolean;
+    FStatus100: Boolean;
     FProxyHost: string;
     FProxyPort: string;
     FProxyUser: string;
@@ -101,6 +108,7 @@ type
     property MimeType: string read FMimeType Write FMimeType;
     property Protocol: string read FProtocol Write FProtocol;
     property KeepAlive: Boolean read FKeepAlive Write FKeepAlive;
+    property Status100: Boolean read FStatus100 Write FStatus100;
     property ProxyHost: string read FProxyHost Write FProxyHost;
     property ProxyPort: string read FProxyPort Write FProxyPort;
     property ProxyUser: string read FProxyUser Write FProxyUser;
@@ -110,7 +118,12 @@ type
     property ResultString: string read FResultString;
     property DownloadSize: integer read FDownloadSize;
     property UploadSize: integer read FUploadSize;
+{$IFDEF STREAMSEC}                            
+    property Sock: TSsTCPBlockSocket read FSock;
+    property TLSServer: TCustomTLSInternalServer read FTLSServer write FTLSServer;
+{$ELSE}
     property Sock: TTCPBlockSocket read FSock;
+{$ENDIF}
   end;
 
 function HttpGetText(const URL: string; const Response: TStrings): Boolean;
@@ -128,11 +141,17 @@ begin
   FHeaders := TStringList.Create;
   FCookies := TStringList.Create;
   FDocument := TMemoryStream.Create;
+{$IFDEF STREAMSEC}           
+  FTLSServer := GlobalTLSInternalServer;     
+  FSock := TSsTCPBlockSocket.Create;
+  FSock.BlockingRead := True;
+{$ELSE}
   FSock := TTCPBlockSocket.Create;
+{$ENDIF}
   FSock.ConvertLineEnd := True;
   FSock.SizeRecvBuffer := 65536;
   FSock.SizeSendBuffer := 65536;
-  FTimeout := 300000;
+  FTimeout := 90000;
   FTargetPort := cHttpProtocol;
   FProxyHost := '';
   FProxyPort := '8080';
@@ -142,6 +161,7 @@ begin
   FAlivePort := '';
   FProtocol := '1.0';
   FKeepAlive := True;
+  FStatus100 := False;
   FUserAgent := 'Mozilla/4.0 (compatible; Synapse)';
   FDownloadSize := 0;
   FUploadSize := 0;
@@ -198,10 +218,8 @@ begin
   FUploadSize := 0;
 
   URI := ParseURL(URL, Prot, User, Pass, Host, Port, Path, Para);
-
   if UpperCase(Prot) = 'HTTPS' then
   begin
-    FSock.SSLEnabled := True;
     HttpTunnel := FProxyHost <> '';
     FSock.HTTPTunnelIP := FProxyHost;
     FSock.HTTPTunnelPort := FProxyPort;
@@ -210,7 +228,6 @@ begin
   end
   else
   begin
-    FSock.SSLEnabled := False;
     HttpTunnel := False;
     FSock.HTTPTunnelIP := '';
     FSock.HTTPTunnelPort := '';
@@ -220,7 +237,7 @@ begin
 
   Sending := Document.Size > 0;
   {Headers for Sending data}
-  status100 := Sending and (FProtocol = '1.1');
+  status100 := FStatus100 and Sending and (FProtocol = '1.1');
   if status100 then
     FHeaders.Insert(0, 'Expect: 100-continue');
   if Sending then
@@ -247,12 +264,16 @@ begin
   if (FProxyHost <> '') and (FProxyUser <> '') and not(HttpTunnel) then
     FHeaders.Insert(0, 'Proxy-Authorization: Basic ' +
       EncodeBase64(FProxyUser + ':' + FProxyPass));
-  if Port<>'80' then
-     FHeaders.Insert(0, 'Host: ' + Host + ':' + Port)
+  if isIP6(Host) then
+    s := '[' + Host + ']'
   else
-     FHeaders.Insert(0, 'Host: ' + Host);
+    s := Host;
+  if Port<>'80' then
+     FHeaders.Insert(0, 'Host: ' + s + ':' + Port)
+  else
+     FHeaders.Insert(0, 'Host: ' + s);
   if (FProxyHost <> '') and not(HttpTunnel)then
-    URI := Prot + '://' + Host + ':' + Port + URI;
+    URI := Prot + '://' + s + ':' + Port + URI;
   if URI = '/*' then
     URI := '*';
   if FProtocol = '0.9' then
@@ -276,8 +297,19 @@ begin
   if (FAliveHost <> FTargetHost) or (FAlivePort <> FTargetPort) then
   begin
     FSock.CloseSocket;
-    FSock.CreateSocket;
     FSock.Bind(FIPInterface, cAnyPort);
+    if FSock.LastError <> 0 then
+      Exit;
+{$IFDEF STREAMSEC}
+    FSock.TLSServer := nil;
+    if UpperCase(Prot) = 'HTTPS' then
+      if assigned(FTLSServer) then
+        FSock.TLSServer := FTLSServer
+      else
+        exit;
+{$ELSE}
+    FSock.SSLEnabled := UpperCase(Prot) = 'HTTPS';
+{$ENDIF}
     if FSock.LastError <> 0 then
       Exit;
     FSock.Connect(FTargetHost, FTargetPort);
@@ -291,8 +323,19 @@ begin
     if FSock.CanRead(0) then
     begin
       FSock.CloseSocket;
-      FSock.CreateSocket;
       FSock.Bind(FIPInterface, cAnyPort);
+      if FSock.LastError <> 0 then
+        Exit;
+{$IFDEF STREAMSEC}
+      FSock.TLSServer := nil;
+      if UpperCase(Prot) = 'HTTPS' then
+        if assigned(FTLSServer) then
+          FSock.TLSServer := FTLSServer
+        else
+          exit;
+{$ELSE}
+      FSock.SSLEnabled := UpperCase(Prot) = 'HTTPS';
+{$ENDIF}
       if FSock.LastError <> 0 then
         Exit;
       FSock.Connect(FTargetHost, FTargetPort);
