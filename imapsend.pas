@@ -1,5 +1,5 @@
 {==============================================================================|
-| Project : Delphree - Synapse                                   | 001.001.001 |
+| Project : Delphree - Synapse                                   | 002.000.000 |
 |==============================================================================|
 | Content: IMAP4rev1 client                                                         |
 |==============================================================================|
@@ -14,7 +14,7 @@
 | The Original Code is Synapse Delphi Library.                                 |
 |==============================================================================|
 | The Initial Developer of the Original Code is Lukas Gebauer (Czech Republic).|
-| Portions created by Lukas Gebauer are Copyright (c)2001.                     |
+| Portions created by Lukas Gebauer are Copyright (c)2001-2002.                |
 | All Rights Reserved.                                                         |
 |==============================================================================|
 | Contributor(s):                                                              |
@@ -26,6 +26,7 @@
 {$WEAKPACKAGEUNIT ON}
 
 //RFC-2060
+//RFC-2595
 
 unit IMAPsend;
 
@@ -57,7 +58,8 @@ type
     FSelectedRecent: integer;
     FSelectedUIDvalidity: integer;
     FUID: Boolean;
-
+    FAutoTLS: Boolean;
+    FFullSSL: Boolean;
     function ReadResult: string;
     function AuthLogin: Boolean;
     function Connect: Boolean;
@@ -70,6 +72,7 @@ type
     destructor Destroy; override;
     function IMAPcommand(Value: string): string;
     function IMAPuploadCommand(Value: string; const Data:TStrings): string;
+    function Capability: Boolean;
     function Login: Boolean;
     procedure Logout;
     function NoOp: Boolean;
@@ -95,7 +98,7 @@ type
     function SearchMess(Criteria: string; const FoundMess: TStrings): Boolean;
     function SetFlagsMess(MessID: integer; Flags: string): Boolean;
     function GetFlagsMess(MessID: integer; var Flags: string): Boolean;
-
+    function StartTLS: Boolean;
     function FindCap(const Value: string): string;
   published
     property Timeout: Integer read FTimeout Write FTimeout;
@@ -113,6 +116,8 @@ type
     property SelectedCount: integer read FSelectedCount;
     property SelectedRecent: integer read FSelectedRecent;
     property SelectedUIDvalidity: integer read FSelectedUIDvalidity;
+    property AutoTLS: Boolean read FAutoTLS Write FAutoTLS;
+    property FullSSL: Boolean read FFullSSL Write FFullSSL;
   end;
 
 implementation
@@ -140,6 +145,8 @@ begin
   FSelectedRecent := 0;
   FSelectedUIDvalidity := 0;
   FUID := False;
+  FAutoTLS := False;
+  FFullSSL := False;
 end;
 
 destructor TIMAPSend.Destroy;
@@ -307,31 +314,18 @@ function TIMAPSend.Connect: Boolean;
 begin
   FSock.CloseSocket;
   FSock.CreateSocket;
+  if FFullSSL then
+    FSock.SSLEnabled := True;
   FSock.Connect(FIMAPHost, FIMAPPort);
   Result := FSock.LastError = 0;
 end;
 
-function TIMAPSend.Login: Boolean;
+function TIMAPSend.Capability: Boolean;
 var
   n: Integer;
   s, t: string;
 begin
-  FSelectedFolder := '';
-  FSelectedCount := 0;
-  FSelectedRecent := 0;
-  FSelectedUIDvalidity := 0;
   Result := False;
-  FAuthDone := False;
-  if not Connect then
-    Exit;
-  s := FSock.RecvString(FTimeout);
-  if Pos('* PREAUTH', s) = 1 then
-    FAuthDone := True
-  else
-    if Pos('* OK', s) = 1 then
-      FAuthDone := False
-    else
-      Exit;
   FIMAPcap.Clear;
   s := IMAPcommand('CAPABILITY');
   if s = 'OK' then
@@ -349,8 +343,37 @@ begin
           FIMAPcap.Add(t);
         end;
       end;
+    Result := True;
+  end;
+end;
+
+function TIMAPSend.Login: Boolean;
+var
+  s: string;
+begin
+  FSelectedFolder := '';
+  FSelectedCount := 0;
+  FSelectedRecent := 0;
+  FSelectedUIDvalidity := 0;
+  Result := False;
+  FAuthDone := False;
+  if not Connect then
+    Exit;
+  s := FSock.RecvString(FTimeout);
+  if Pos('* PREAUTH', s) = 1 then
+    FAuthDone := True
+  else
+    if Pos('* OK', s) = 1 then
+      FAuthDone := False
+    else
+      Exit;
+  if Capability then
+  begin
     if Findcap('IMAP4rev1') = '' then
       Exit;
+    if FAutoTLS and (Findcap('STARTTLS') <> '') then
+      if StartTLS then
+        Capability;
   end;
   Result := AuthLogin;
 end;
@@ -566,6 +589,19 @@ begin
       s := SeparateRight(s, 'FLAGS');
       s := Separateright(s, '(');
       Flags := SeparateLeft(s, ')');
+    end;
+  end;
+end;
+
+function TIMAPSend.StartTLS: Boolean;
+begin
+  Result := False;
+  if FindCap('STARTTLS') <> '' then
+  begin
+    if IMAPcommand('STARTTLS') = 'OK' then
+    begin
+      Fsock.SSLDoConnect;
+      Result := FSock.LastError = 0;
     end;
   end;
 end;

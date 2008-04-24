@@ -1,5 +1,5 @@
 {==============================================================================|
-| Project : Delphree - Synapse                                   | 003.000.000 |
+| Project : Delphree - Synapse                                   | 003.000.003 |
 |==============================================================================|
 | Content: HTTP client                                                         |
 |==============================================================================|
@@ -14,7 +14,7 @@
 | The Original Code is Synapse Delphi Library.                                 |
 |==============================================================================|
 | The Initial Developer of the Original Code is Lukas Gebauer (Czech Republic).|
-| Portions created by Lukas Gebauer are Copyright (c) 1999,2000,2001.          |
+| Portions created by Lukas Gebauer are Copyright (c) 1999-2002.               |
 | All Rights Reserved.                                                         |
 |==============================================================================|
 | Contributor(s):                                                              |
@@ -115,7 +115,7 @@ begin
   FProxyPass := '';
   FAliveHost := '';
   FAlivePort := '';
-  FProtocol := '1.1';
+  FProtocol := '1.0';
   FKeepAlive := True;
   Clear;
 end;
@@ -254,10 +254,10 @@ begin
   end;
 
   { send Headers }
-  FSock.SendString(Headers[0] + CRLF);
-  if FProtocol <> '0.9' then
-    for n := 1 to FHeaders.Count - 1 do
-      FSock.SendString(FHeaders[n] + CRLF);
+  if FProtocol = '0.9' then
+    FSock.SendString(FHeaders[0] + CRLF)
+  else
+    FSock.SendString(FHeaders.Text);
   if FSock.LastError <> 0 then
     Exit;
 
@@ -470,7 +470,7 @@ begin
   HTTP := THTTPSend.Create;
   try
     HTTP.Document.Write(Pointer(URLData)^, Length(URLData));
-    HTTP.MimeType := 'application/x-url-encoded';
+    HTTP.MimeType := 'application/x-www-form-urlencoded';
     Result := HTTP.HTTPMethod('POST', URL);
     Data.CopyFrom(HTTP.Document, 0);
   finally
@@ -486,16 +486,16 @@ var
   HTTP: THTTPSend;
   Bound, s: string;
 begin
-  Bound := '--' + IntToHex(Random(MaxInt), 8) + '_Synapse_boundary';
+  Bound := IntToHex(Random(MaxInt), 8) + '_Synapse_boundary';
   HTTP := THTTPSend.Create;
   try
-    s := Bound + CRLF;
+    s := '--' + Bound + CRLF;
     s := s + 'content-disposition: form-data; name="' + FieldName + '";';
     s := s + ' filename="' + FileName +'"' + CRLF;
     s := s + 'Content-Type: Application/octet-string' + CRLF + CRLF;
     HTTP.Document.Write(Pointer(s)^, Length(s));
     HTTP.Document.CopyFrom(Data, 0);
-    s := CRLF + Bound + '--' + CRLF;
+    s := CRLF + '--' + Bound + '--' + CRLF;
     HTTP.Document.Write(Pointer(s)^, Length(s));
     HTTP.MimeType := 'multipart/form-data, boundary=' + Bound;
     Result := HTTP.HTTPMethod('POST', URL);

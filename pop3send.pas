@@ -1,5 +1,5 @@
 {==============================================================================|
-| Project : Delphree - Synapse                                   | 001.002.000 |
+| Project : Delphree - Synapse                                   | 002.000.000 |
 |==============================================================================|
 | Content: POP3 client                                                         |
 |==============================================================================|
@@ -14,7 +14,7 @@
 | The Original Code is Synapse Delphi Library.                                 |
 |==============================================================================|
 | The Initial Developer of the Original Code is Lukas Gebauer (Czech Republic).|
-| Portions created by Lukas Gebauer are Copyright (c)2001.                     |
+| Portions created by Lukas Gebauer are Copyright (c)2001-2002.                |
 | All Rights Reserved.                                                         |
 |==============================================================================|
 | Contributor(s):                                                              |
@@ -24,6 +24,12 @@
 |==============================================================================}
 
 {$WEAKPACKAGEUNIT ON}
+
+//RFC-1734
+//RFC-1939
+//RFC-2195
+//RFC-2449
+//RFC-2595
 
 unit POP3send;
 
@@ -54,6 +60,9 @@ type
     FStatSize: Integer;
     FTimeStamp: string;
     FAuthType: TPOP3AuthType;
+    FPOP3cap: TStringList;
+    FAutoTLS: Boolean;
+    FFullSSL: Boolean;
     function ReadResult(Full: Boolean): Integer;
     function Connect: Boolean;
     function AuthLogin: Boolean;
@@ -61,6 +70,7 @@ type
   public
     constructor Create;
     destructor Destroy; override;
+    function Capability: Boolean;
     function Login: Boolean;
     procedure Logout;
     function Reset: Boolean;
@@ -71,6 +81,8 @@ type
     function Dele(Value: Integer): Boolean;
     function Top(Value, Maxlines: Integer): Boolean;
     function Uidl(Value: Integer): Boolean;
+    function StartTLS: Boolean;
+    function FindCap(const Value: string): string;
   published
     property Timeout: Integer read FTimeout Write FTimeout;
     property POP3Host: string read FPOP3Host Write FPOP3Host;
@@ -85,6 +97,8 @@ type
     property TimeStamp: string read FTimeStamp;
     property AuthType: TPOP3AuthType read FAuthType Write FAuthType;
     property Sock: TTCPBlockSocket read FSock;
+    property AutoTLS: Boolean read FAutoTLS Write FAutoTLS;
+    property FullSSL: Boolean read FFullSSL Write FFullSSL;
   end;
 
 implementation
@@ -96,6 +110,7 @@ constructor TPOP3Send.Create;
 begin
   inherited Create;
   FFullResult := TStringList.Create;
+  FPOP3cap := TStringList.Create;
   FSock := TTCPBlockSocket.Create;
   FSock.CreateSocket;
   FTimeout := 300000;
@@ -106,11 +121,14 @@ begin
   FStatCount := 0;
   FStatSize := 0;
   FAuthType := POP3AuthAll;
+  FAutoTLS := False;
+  FFullSSL := False;
 end;
 
 destructor TPOP3Send.Destroy;
 begin
   FSock.Free;
+  FPOP3cap.Free;
   FullResult.Free;
   inherited Destroy;
 end;
@@ -162,8 +180,20 @@ begin
   FSock.CloseSocket;
   FSock.LineBuffer := '';
   FSock.CreateSocket;
+  if FFullSSL then
+    FSock.SSLEnabled := True;
   FSock.Connect(POP3Host, POP3Port);
   Result := FSock.LastError = 0;
+end;
+
+function TPOP3Send.Capability: Boolean;
+begin
+  FPOP3cap.Clear;
+  Result := False;
+  FSock.SendString('CAPA' + CRLF);
+  Result := ReadResult(True) = 1;
+  if Result then
+    FPOP3cap.AddStrings(FFullResult);
 end;
 
 function TPOP3Send.Login: Boolean;
@@ -184,6 +214,10 @@ begin
       FTimeStamp := '<' + s1 + '>';
   end;
   Result := False;
+  if Capability then
+    if FAutoTLS and (Findcap('STLS') <> '') then
+      if StartTLS then
+        Capability;
   if (FTimeStamp <> '') and not (FAuthType = POP3AuthLogin) then
   begin
     Result := AuthApop;
@@ -266,6 +300,32 @@ begin
   else
     FSock.SendString('UIDL ' + IntToStr(Value) + CRLF);
   Result := ReadResult(Value = 0) = 1;
+end;
+
+function TPOP3Send.StartTLS: Boolean;
+begin
+  Result := False;
+  FSock.SendString('STLS' + CRLF);
+  if ReadResult(False) = 1 then
+  begin
+    Fsock.SSLDoConnect;
+    Result := FSock.LastError = 0;
+  end;
+end;
+
+function TPOP3Send.FindCap(const Value: string): string;
+var
+  n: Integer;
+  s: string;
+begin
+  s := UpperCase(Value);
+  Result := '';
+  for n := 0 to FPOP3cap.Count - 1 do
+    if Pos(s, UpperCase(FPOP3cap[n])) = 1 then
+    begin
+      Result := FPOP3cap[n];
+      Break;
+    end;
 end;
 
 end.

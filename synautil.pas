@@ -1,5 +1,5 @@
 {==============================================================================|
-| Project : Delphree - Synapse                                   | 002.008.001 |
+| Project : Delphree - Synapse                                   | 002.011.001 |
 |==============================================================================|
 | Content: support procedures and functions                                    |
 |==============================================================================|
@@ -14,7 +14,7 @@
 | The Original Code is Synapse Delphi Library.                                 |
 |==============================================================================|
 | The Initial Developer of the Original Code is Lukas Gebauer (Czech Republic).|
-| Portions created by Lukas Gebauer are Copyright (c) 1999,2000,2001.          |
+| Portions created by Lukas Gebauer are Copyright (c) 1999-2002.               |
 | Portions created by Hernan Sanchez are Copyright (c) 2000.                   |
 | All Rights Reserved.                                                         |
 |==============================================================================|
@@ -44,6 +44,10 @@ function TimeZone: string;
 function Rfc822DateTime(t: TDateTime): string;
 function CDateTime(t: TDateTime): string;
 function SimpleDateTime(t: TDateTime): string;
+function AnsiCDateTime(t: TDateTime): string;
+function GetMonthNumber(Value: string): integer;
+function GetTimeFromStr(Value: string): TDateTime;
+function GetDateMDYFromStr(Value: string): TDateTime;
 function DecodeRfcDateTime(Value: string): TDateTime;
 function GetUTTime: TDateTime;
 function SetUTTime(Newdt: TDateTime): Boolean;
@@ -66,6 +70,7 @@ function BinToInt(const Value: string): Integer;
 function ParseURL(URL: string; var Prot, User, Pass, Host, Port, Path,
   Para: string): string;
 function StringReplace(Value, Search, Replace: string): string;
+function RPosEx(const Sub, Value: string; From: integer): Integer;
 function RPos(const Sub, Value: String): Integer;
 function Fetch(var Value: string; const Delimiter: string): string;
 
@@ -194,6 +199,18 @@ end;
 
 {==============================================================================}
 
+function AnsiCDateTime(t: TDateTime): string;
+begin
+  SaveNames;
+  try
+    Result := FormatDateTime('ddd mmm d hh:nn:ss yyyy', t);
+  finally
+    RestoreNames;
+  end;
+end;
+
+{==============================================================================}
+
 function DecodeTimeZone(Value: string; var Zone: integer): Boolean;
 var
   x: integer;
@@ -281,98 +298,142 @@ end;
 
 {==============================================================================}
 
+function GetMonthNumber(Value: string): integer;
+var
+  n: integer;
+begin
+  Result := 0;
+  Value := Uppercase(Value);
+  for n := 1 to 12 do
+    if Value = uppercase(MyMonthNames[n]) then
+    begin
+      Result := n;
+      Break;
+    end;
+end;
+
+{==============================================================================}
+
+function GetTimeFromStr(Value: string): TDateTime;
+var
+  SaveSeparator: char;
+begin
+  SaveSeparator := TimeSeparator;
+  try
+    TimeSeparator := ':';
+    Result := 0;
+    try
+      Result := StrToTime(Value);
+    except
+      on Exception do ;
+    end;
+  finally
+    TimeSeparator := SaveSeparator;
+  end;
+end;
+
+{==============================================================================}
+
+function GetDateMDYFromStr(Value: string): TDateTime;
+var
+  SaveSeparator: char;
+  SaveFormat: string;
+begin
+  SaveSeparator := DateSeparator;
+  SaveFormat := ShortDateFormat;
+  try
+    DateSeparator := '-';
+    ShortDateFormat := 'm-d-y';
+    Result := 0;
+    try
+      Result := StrToDate(Value);
+    except
+      on Exception do ;
+    end;
+  finally
+    ShortDateFormat := SaveFormat;
+    DateSeparator := SaveSeparator;
+  end;
+end;
+
+{==============================================================================}
+
 function DecodeRfcDateTime(Value: string): TDateTime;
 var
   day, month, year: Word;
   zone: integer;
   x: integer;
   s: string;
-  SaveSeparator: char;
-  n: integer;
   t: TDateTime;
 begin
 // ddd, d mmm yyyy hh:mm:ss
 // ddd, d mmm yy hh:mm:ss
 // ddd, mmm d yyyy hh:mm:ss
 // ddd mmm dd hh:mm:ss yyyy
-//       Sun, 06 Nov 1994 08:49:37 GMT    ; RFC 822, updated by RFC 1123
-//       Sunday, 06-Nov-94 08:49:37 GMT   ; RFC 850, obsoleted by RFC 1036
-//       Sun Nov  6 08:49:37 1994         ; ANSI C's asctime() Format
+// Sun, 06 Nov 1994 08:49:37 GMT    ; RFC 822, updated by RFC 1123
+// Sunday, 06-Nov-94 08:49:37 GMT   ; RFC 850, obsoleted by RFC 1036
+// Sun Nov  6 08:49:37 1994         ; ANSI C's asctime() Format
 
   Result := 0;
-  SaveSeparator := TimeSeparator;
-  try
-    TimeSeparator := ':';
-    day := 0;
-    month := 0;
-    year := 0;
-    zone := 0;
-    Value := StringReplace(Value, ' -', ' #');
-    Value := StringReplace(Value, '-', ' ');
-    Value := StringReplace(Value, ' #', ' -');
-    while Value <> '' do
+  if Value = '' then
+    Exit;
+  day := 0;
+  month := 0;
+  year := 0;
+  zone := 0;
+  Value := StringReplace(Value, ' -', ' #');
+  Value := StringReplace(Value, '-', ' ');
+  Value := StringReplace(Value, ' #', ' -');
+  while Value <> '' do
+  begin
+    s := Fetch(Value, ' ');
+    s := uppercase(s);
+    // timezone
+    if DecodetimeZone(s, x) then
     begin
-      s := Fetch(Value, ' ');
-      s := uppercase(s);
-      // timezone
-      if DecodetimeZone(s, x) then
-      begin
-        zone := x;
-        continue;
-      end;
-      x := StrToIntDef(s, 0);
-      // day or year
-      if x > 0 then
-        if (x < 32) and (day = 0) then
-        begin
-          day := x;
-          continue;
-        end
-        else
-        begin
-          year := x;
-          if year < 32 then
-            year := year + 2000;
-          if year < 1000 then
-           year := year + 1900;
-          continue;
-        end;
-      // time
-      if rpos(':', s) > Pos(':', s) then
-      begin
-        t := 0;
-        try
-          t := StrToTime(s);
-        except
-          on Exception do ;
-        end;
-        if t <> 0 then
-          Result := t;
-        continue;
-      end;
-      //timezone daylight saving time
-      if s = 'DST' then
-      begin
-        zone := zone + 60;
-        continue;
-      end;
-      // month
-      for n := 1 to 12 do
-        if s = uppercase(MyMonthNames[n]) then
-        begin
-          month := n;
-          break;
-        end;
+      zone := x;
+      continue;
     end;
-    Result := Result + Encodedate(year, month, day);
-    zone := zone - TimeZoneBias;
-    t := EncodeTime(Abs(zone) div 60, Abs(zone) mod 60, 0, 0);
-    if zone < 0 then
-      t := 0 - t;
-    Result := Result - t;
-  finally
-    TimeSeparator := SaveSeparator;
+    x := StrToIntDef(s, 0);
+    // day or year
+    if x > 0 then
+      if (x < 32) and (day = 0) then
+      begin
+        day := x;
+        continue;
+      end
+      else
+      begin
+        year := x;
+        if year < 32 then
+          year := year + 2000;
+        if year < 1000 then
+         year := year + 1900;
+        continue;
+      end;
+    // time
+    if rpos(':', s) > Pos(':', s) then
+    begin
+      t := GetTimeFromStr(s);
+      if t <> 0 then
+        Result := t;
+      continue;
+    end;
+    //timezone daylight saving time
+    if s = 'DST' then
+    begin
+      zone := zone + 60;
+      continue;
+    end;
+    // month
+    month := GetMonthNumber(s);
   end;
+  Result := Result + Encodedate(year, month, day);
+  zone := zone - TimeZoneBias;
+  t := EncodeTime(Abs(zone) div 60, Abs(zone) mod 60, 0, 0);
+  if zone < 0 then
+    t := 0 - t;
+  Result := Result - t;
 end;
 
 {==============================================================================}
@@ -836,14 +897,14 @@ end;
 
 {==============================================================================}
 
-function RPos(const Sub, Value: String): Integer;
+function RPosEx(const Sub, Value: string; From: integer): Integer;
 var
   n: Integer;
   l: Integer;
 begin
   result := 0;
   l := Length(Sub);
-  for n := Length(Value) - l + 1 downto 1 do
+  for n := From - l + 1 downto 1 do
   begin
     if Copy(Value, n, l) = Sub then
     begin
@@ -851,6 +912,13 @@ begin
       break;
     end;
   end;
+end;
+
+{==============================================================================}
+
+function RPos(const Sub, Value: String): Integer;
+begin
+  Result := RPosEx(Sub, Value, Length(Value));
 end;
 
 {==============================================================================}
