@@ -1,5 +1,5 @@
 {==============================================================================|
-| Project : Delphree - Synapse                                   | 001.003.000 |
+| Project : Delphree - Synapse                                   | 001.003.001 |
 |==============================================================================|
 | Content: support for ASN.1 coding and decoding                               |
 |==============================================================================|
@@ -14,7 +14,7 @@
 | The Original Code is Synapse Delphi Library.                                 |
 |==============================================================================|
 | The Initial Developer of the Original Code is Lukas Gebauer (Czech Republic).|
-| Portions created by Lukas Gebauer are Copyright (c) 1999, 2000.              |
+| Portions created by Lukas Gebauer are Copyright (c) 1999,2000,2001.          |
 | Portions created by Hernan Sanchez are Copyright (c) 2000.                   |
 | All Rights Reserved.                                                         |
 |==============================================================================|
@@ -207,12 +207,19 @@ var
   s: string;
   c: char;
   neg: boolean;
+  l:integer;
 begin
+  Result:='';
+  ValueType:=ASN1_NULL;
+  l:=length(buffer);
+  if l<(start+1)
+    then exit;
   ASNType := Ord(Buffer[Start]);
   Valuetype:=ASNType;
   Inc(start);
   ASNSize := ASNDecLen(Start, Buffer);
-  Result := '';
+  if (Start+ASNSize-1)>l
+    then exit;
   if ((ASNType and $20) > 0) then
   begin
     Result := '$' + IntToHex(ASNType, 2);

@@ -1,5 +1,5 @@
 {==============================================================================|
-| Project : Delphree - Synapse                                   | 002.000.000 |
+| Project : Delphree - Synapse                                   | 002.000.001 |
 |==============================================================================|
 | Content: Library base                                                        |
 |==============================================================================|
@@ -14,7 +14,7 @@
 | The Original Code is Synapse Delphi Library.                                 |
 |==============================================================================|
 | The Initial Developer of the Original Code is Lukas Gebauer (Czech Republic).|
-| Portions created by Lukas Gebauer are Copyright (c)1999,2000.                |
+| Portions created by Lukas Gebauer are Copyright (c)1999,2000,2001.           |
 | All Rights Reserved.                                                         |
 |==============================================================================|
 | Contributor(s):                                                              |
@@ -91,6 +91,7 @@ published
   property RemoteSin:TSockAddrIn read FRemoteSin;
   property LastError:integer read FLastError;
   property Protocol:integer read FProtocol;
+  property LineBuffer:string read FBuffer write FBuffer;
   property RaiseExcept:boolean read FRaiseExcept write FRaiseExcept;
 end;
 
@@ -120,6 +121,7 @@ begin
   FRaiseExcept:=false;
   FSocket:=INVALID_SOCKET;
   FProtocol:=IPPROTO_IP;
+  Fbuffer:='';
   SockCheck(winsock.WSAStartup($101, FWsaData));
   ExceptCheck;
 end;
@@ -181,6 +183,7 @@ end;
 {TBlockSocket.CreateSocket}
 Procedure TBlockSocket.CreateSocket;
 begin
+  Fbuffer:='';
   if FSocket=INVALID_SOCKET then FLastError:=winsock.WSAGetLastError
     else FLastError:=0;
   ExceptCheck;
@@ -203,6 +206,7 @@ begin
   SockCheck(winsock.bind(FSocket,sin,sizeof(sin)));
   len:=sizeof(FLocalSin);
   Winsock.GetSockName(FSocket,FLocalSin,Len);
+  Fbuffer:='';
   ExceptCheck;
 end;
 
@@ -214,6 +218,7 @@ begin
   SetSin(sin,ip,port);
   SockCheck(winsock.connect(FSocket,sin,sizeof(sin)));
   GetSins;
+  Fbuffer:='';
   ExceptCheck;
 end;
 
@@ -286,13 +291,10 @@ const
 var
   x:integer;
   s:string;
-  bp:array[0..maxbuf] of char;
   c:char;
-  pp:pchar;
   r:integer;
 begin
   s:='';
-  pp:=bp;
   FLastError:=0;
   c:=#0;
   repeat
@@ -309,12 +311,11 @@ begin
           end
         else
           begin
-            r:=Winsock.recv(FSocket,pp^,x,0);
+            setlength(Fbuffer,x);
+            r:=Winsock.recv(FSocket,pointer(FBuffer)^,x,0);
             SockCheck(r);
             if r=0 then FLastError:=WSAENOTCONN;
             if FLastError<>0 then break;
-            bp[r]:=#0;
-            Fbuffer:=pp;
           end;
       end;
     x:=pos(#10,Fbuffer);
