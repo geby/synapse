@@ -1,17 +1,36 @@
 {==============================================================================|
-| Project : Delphree - Synapse                                   | 002.011.001 |
+| Project : Delphree - Synapse                                   | 003.002.001 |
 |==============================================================================|
 | Content: support procedures and functions                                    |
 |==============================================================================|
-| The contents of this file are subject to the Mozilla Public License Ver. 1.1 |
-| (the "License"); you may not use this file except in compliance with the     |
-| License. You may obtain a Copy of the License at http://www.mozilla.org/MPL/ |
+| Copyright (c)1999-2002, Lukas Gebauer                                        |
+| All rights reserved.                                                         |
 |                                                                              |
-| Software distributed under the License is distributed on an "AS IS" basis,   |
-| WITHOUT WARRANTY OF ANY KIND, either express or implied. See the License for |
-| the specific language governing rights and limitations under the License.    |
-|==============================================================================|
-| The Original Code is Synapse Delphi Library.                                 |
+| Redistribution and use in source and binary forms, with or without           |
+| modification, are permitted provided that the following conditions are met:  |
+|                                                                              |
+| Redistributions of source code must retain the above copyright notice, this  |
+| list of conditions and the following disclaimer.                             |
+|                                                                              |
+| Redistributions in binary form must reproduce the above copyright notice,    |
+| this list of conditions and the following disclaimer in the documentation    |
+| and/or other materials provided with the distribution.                       |
+|                                                                              |
+| Neither the name of Lukas Gebauer nor the names of its contributors may      |
+| be used to endorse or promote products derived from this software without    |
+| specific prior written permission.                                           |
+|                                                                              |
+| THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"  |
+| AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE    |
+| IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE   |
+| ARE DISCLAIMED. IN NO EVENT SHALL THE REGENTS OR CONTRIBUTORS BE LIABLE FOR  |
+| ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL       |
+| DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR   |
+| SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER   |
+| CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT           |
+| LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY    |
+| OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH  |
+| DAMAGE.                                                                      |
 |==============================================================================|
 | The Initial Developer of the Original Code is Lukas Gebauer (Czech Republic).|
 | Portions created by Lukas Gebauer are Copyright (c) 1999-2002.               |
@@ -62,6 +81,8 @@ procedure DumpEx(const Buffer, DumpFile: string);
 function SeparateLeft(const Value, Delimiter: string): string;
 function SeparateRight(const Value, Delimiter: string): string;
 function GetParameter(const Value, Parameter: string): string;
+procedure ParseParameters(Value: string; const Parameters: TStrings);
+function IndexByBegin(Value: string; const List: TStrings): integer;
 function GetEmailAddr(const Value: string): string;
 function GetEmailDesc(Value: string): string;
 function StrToHex(const Value: string): string;
@@ -73,45 +94,22 @@ function StringReplace(Value, Search, Replace: string): string;
 function RPosEx(const Sub, Value: string; From: integer): Integer;
 function RPos(const Sub, Value: String): Integer;
 function Fetch(var Value: string; const Delimiter: string): string;
+function IsBinaryString(const Value: string): Boolean;
+function PosCRLF(const Value: string; var Terminator: string): integer;
+Procedure StringsTrim(const value: TStrings);
+function PosFrom(const SubStr, Value: String; From: integer): integer;
 
 implementation
+
 {==============================================================================}
-var
-  SaveDayNames: array[1..7] of string;
-  SaveMonthNames: array[1..12] of string;
+
 const
   MyDayNames: array[1..7] of string =
-  ('Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat');
+    ('Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat');
   MyMonthNames: array[1..12] of string =
-  ('Jan', 'Feb', 'Mar', 'Apr',
-    'May', 'Jun', 'Jul', 'Aug',
-    'Sep', 'Oct', 'Nov', 'Dec');
+    ('Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+     'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec');
 
-procedure SaveNames;
-var
-  I: integer;
-begin
-  for I := Low(ShortDayNames) to High(ShortDayNames) do
-  begin
-    SaveDayNames[I] := ShortDayNames[I];
-    ShortDayNames[I] := MyDayNames[I];
-  end;
-  for I := Low(ShortMonthNames) to High(ShortMonthNames) do
-  begin
-    SaveMonthNames[I] := ShortMonthNames[I];
-    ShortMonthNames[I] := MyMonthNames[I];
-  end;
-end;
-
-procedure RestoreNames;
-var
-  I: integer;
-begin
-  for I := Low(ShortDayNames) to High(ShortDayNames) do
-    ShortDayNames[I] := SaveDayNames[I];
-  for I := Low(ShortMonthNames) to High(ShortMonthNames) do
-    ShortMonthNames[I] := SaveMonthNames[I];
-end;
 {==============================================================================}
 
 function TimeZoneBias: integer;
@@ -161,52 +159,41 @@ end;
 {==============================================================================}
 
 function Rfc822DateTime(t: TDateTime): string;
+var
+  wYear, wMonth, wDay: word;
 begin
-  SaveNames;
-  try
-    Result := FormatDateTime('ddd, d mmm yyyy hh:nn:ss', t);
-    Result := Result + ' ' + Timezone;
-  finally
-    RestoreNames;
-  end;
+  DecodeDate(t, wYear, wMonth, wDay);
+  Result := Format('%s, %d %s %s %s', [MyDayNames[DayOfWeek(t)], wDay,
+    MyMonthNames[wMonth], FormatDateTime('yyyy hh:nn:ss', t), TimeZone]);
 end;
 
 {==============================================================================}
 
 function CDateTime(t: TDateTime): string;
+var
+  wYear, wMonth, wDay: word;
 begin
-  SaveNames;
-  try
-    Result := FormatDateTime('mmm dd hh:nn:ss', t);
-    if Result[5] = '0' then
-      Result[5] := ' ';
-  finally
-    RestoreNames;
-  end;
+  DecodeDate(t, wYear, wMonth, wDay);
+  Result:= Format('%s %2d %s', [MyMonthNames[wMonth], wDay,
+    FormatDateTime('hh:nn:ss', t)]);
 end;
 
 {==============================================================================}
 
 function SimpleDateTime(t: TDateTime): string;
 begin
-  SaveNames;
-  try
-    Result := FormatDateTime('yymmdd hhnnss', t);
-  finally
-    RestoreNames;
-  end;
+  Result := FormatDateTime('yymmdd hhnnss', t);
 end;
 
 {==============================================================================}
 
 function AnsiCDateTime(t: TDateTime): string;
+var
+  wYear, wMonth, wDay: word;
 begin
-  SaveNames;
-  try
-    Result := FormatDateTime('ddd mmm d hh:nn:ss yyyy', t);
-  finally
-    RestoreNames;
-  end;
+  DecodeDate(t, wYear, wMonth, wDay);
+  Result := Format('%s %s %d %s', [MyDayNames[DayOfWeek(t)], MyMonthNames[wMonth],
+    wDay, FormatDateTime('hh:nn:ss yyyy ', t)]);
 end;
 
 {==============================================================================}
@@ -316,19 +303,17 @@ end;
 
 function GetTimeFromStr(Value: string): TDateTime;
 var
-  SaveSeparator: char;
+  x: integer;
 begin
-  SaveSeparator := TimeSeparator;
+  x := rpos(':', Value);
+  if (x > 0) and ((Length(Value) - x) > 2) then
+    Value := Copy(Value, 1, x + 2);
+  Value := StringReplace(Value, ':', TimeSeparator);
+  Result := 0;
   try
-    TimeSeparator := ':';
-    Result := 0;
-    try
-      Result := StrToTime(Value);
-    except
-      on Exception do ;
-    end;
-  finally
-    TimeSeparator := SaveSeparator;
+    Result := StrToTime(Value);
+  except
+    on Exception do ;
   end;
 end;
 
@@ -336,23 +321,27 @@ end;
 
 function GetDateMDYFromStr(Value: string): TDateTime;
 var
-  SaveSeparator: char;
-  SaveFormat: string;
+  wYear, wMonth, wDay: word;
+  s: string;
 begin
-  SaveSeparator := DateSeparator;
-  SaveFormat := ShortDateFormat;
+  Result := 0;
+  s := Fetch(Value, '-');
+  wMonth := StrToIntDef(s, 12);
+  s := Fetch(Value, '-');
+  wDay := StrToIntDef(s, 30);
+  wYear := StrToIntDef(Value, 1899);
+  if wYear < 1000 then
+    if (wYear > 99) then
+      wYear := wYear + 1900
+    else
+      if wYear > 50 then
+        wYear := wYear + 1900
+      else
+        wYear := wYear + 2000;
   try
-    DateSeparator := '-';
-    ShortDateFormat := 'm-d-y';
-    Result := 0;
-    try
-      Result := StrToDate(Value);
-    except
-      on Exception do ;
-    end;
-  finally
-    ShortDateFormat := SaveFormat;
-    DateSeparator := SaveSeparator;
+    Result := EncodeDate(wYear, wMonth, wDay);
+  except
+    on Exception do ;
   end;
 end;
 
@@ -362,7 +351,7 @@ function DecodeRfcDateTime(Value: string): TDateTime;
 var
   day, month, year: Word;
   zone: integer;
-  x: integer;
+  x, y: integer;
   s: string;
   t: TDateTime;
 begin
@@ -426,8 +415,14 @@ begin
       continue;
     end;
     // month
-    month := GetMonthNumber(s);
+    y := GetMonthNumber(s);
+    if y > 0 then
+      month := y;
   end;
+  if (month < 1) or (month > 12) then
+    month := 1;
+  if (day < 1) or (day > 31) then
+    day := 1;
   Result := Result + Encodedate(year, month, day);
   zone := zone - TimeZoneBias;
   t := EncodeTime(Abs(zone) div 60, Abs(zone) mod 60, 0, 0);
@@ -523,34 +518,36 @@ end;
 
 function IsIP(const Value: string): Boolean;
 var
-  n, x, i: Integer;
-begin
-  Result := true;
-  if Pos('..',Value) > 0 then
-    Result := False
-  else
+  TempIP: string;
+
+  function ByteIsOk(const Value: string): Boolean;
+  var
+    x, n: integer;
   begin
-    i := 0;
-    x := 0;
-    for n := 1 to Length(Value) do
-    begin
-      if (Value[n] in ['0'..'9']) then
-        i := i +1
-      else
-        if (Value[n] in ['.']) then
-          i := 0
-        else
+    x := StrToIntDef(Value, -1);
+    Result := (x >= 0) and (x < 256);
+    // X may be in correct range, but value still may not be correct value!
+    // i.e. "$80"
+    if Result then
+      for n := 1 to length(Value) do
+        if not (Value[n] in ['0'..'9']) then
+        begin
           Result := False;
-      if Value[n] = '.'
-        then Inc(x);
-      if i > 3 then
-        result := False;
-      if result = false then
-        Break;
-    end;
-    if x <> 3 then
-      Result := False;
+          Break;
+        end;
   end;
+
+begin
+  TempIP := Value;
+  Result := False;
+  if not ByteIsOk(Fetch(TempIP, '.')) then
+    Exit;
+  if not ByteIsOk(Fetch(TempIP, '.')) then
+    Exit;
+  if not ByteIsOk(Fetch(TempIP, '.')) then
+    Exit;
+  if ByteIsOk(TempIP) then
+    Result := True;
 end;
 
 {==============================================================================}
@@ -699,6 +696,40 @@ begin
       end;
     end;
     Result := Copy(s, 1, x1);
+  end;
+end;
+
+{==============================================================================}
+
+procedure ParseParameters(Value: string; const Parameters: TStrings);
+var
+  s: string;
+begin
+  Parameters.Clear;
+  while Value <> '' do
+  begin
+    s := Fetch(Value, ';');
+    Parameters.Add(s);
+  end;
+end;
+
+{==============================================================================}
+
+function IndexByBegin(Value: string; const List: TStrings): integer;
+var
+  n: integer;
+  s: string;
+begin
+  Result := -1;
+  Value := uppercase(Value);
+  for n := 0 to List.Count -1 do
+  begin
+    s := UpperCase(List[n]);
+    if Pos(Value, s) = 1 then
+    begin
+      Result := n;
+      Break;
+    end;
   end;
 end;
 
@@ -935,5 +966,99 @@ begin
     Value := Trim(s);
   Result := Trim(Result);
 end;
+
+{==============================================================================}
+
+function IsBinaryString(const Value: string): Boolean;
+var
+  n: integer;
+begin
+  Result := False;
+  for n := 1 to Length(Value) do
+    if Value[n] in [#0..#8, #10..#31] then
+    begin
+      Result := True;
+      Break;
+    end;
+end;
+
+{==============================================================================}
+
+function PosCRLF(const Value: string; var Terminator: string): integer;
+var
+  p1, p2, p3, p4: integer;
+const
+  t1 = #$0d + #$0a;
+  t2 = #$0a + #$0d;
+  t3 = #$0d;
+  t4 = #$0a;
+begin
+  Terminator := '';
+  p1 := Pos(t1, Value);
+  p2 := Pos(t2, Value);
+  p3 := Pos(t3, Value);
+  p4 := Pos(t4, Value);
+  if p1 > 0 then
+    Terminator := t1;
+  Result := p1;
+  if (p2 > 0) then
+    if (Result = 0) or (p2 < Result) then
+    begin
+      Result := p2;
+      Terminator := t2;
+    end;
+  if (p3 > 0) then
+    if (Result = 0) or (p3 < Result) then
+    begin
+      Result := p3;
+      Terminator := t3;
+    end;
+  if (p4 > 0) then
+    if (Result = 0) or (p4 < Result) then
+    begin
+      Result := p4;
+      Terminator := t4;
+    end;
+end;
+
+{==============================================================================}
+
+Procedure StringsTrim(const Value: TStrings);
+var
+  n: integer;
+begin
+  for n := Value.Count - 1 downto 0 do
+    if Value[n] = '' then
+      Value.Delete(n)
+    else
+      Break;
+end;
+
+{==============================================================================}
+
+function PosFrom(const SubStr, Value: String; From: integer): integer;
+var
+  ls,lv: integer;
+begin
+  Result := 0;
+  ls := Length(SubStr);
+  lv := Length(Value);
+  if (ls = 0) or (lv = 0) then
+    Exit;
+  if From < 1 then
+    From := 1;
+  while (ls + from - 1) <= (lv) do
+  begin
+    if CompareMem(@SubStr[1],@Value[from],ls) then
+    begin
+      result := from;
+      break;
+    end
+    else
+      inc(from);
+  end;
+end;
+
+{==============================================================================}
 
 end.

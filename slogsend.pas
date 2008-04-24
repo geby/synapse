@@ -1,17 +1,36 @@
 {==============================================================================|
-| Project : Delphree - Synapse                                   | 001.000.001 |
+| Project : Delphree - Synapse                                   | 001.001.000 |
 |==============================================================================|
 | Content: SysLog client                                                       |
 |==============================================================================|
-| The contents of this file are subject to the Mozilla Public License Ver. 1.1 |
-| (the "License"); you may not use this file except in compliance with the     |
-| License. You may obtain a copy of the License at http://www.mozilla.org/MPL/ |
+| Copyright (c)1999-2002, Lukas Gebauer                                        |
+| All rights reserved.                                                         |
 |                                                                              |
-| Software distributed under the License is distributed on an "AS IS" basis,   |
-| WITHOUT WARRANTY OF ANY KIND, either express or implied. See the License for |
-| the specific language governing rights and limitations under the License.    |
-|==============================================================================|
-| The Original Code is Synapse Delphi Library.                                 |
+| Redistribution and use in source and binary forms, with or without           |
+| modification, are permitted provided that the following conditions are met:  |
+|                                                                              |
+| Redistributions of source code must retain the above copyright notice, this  |
+| list of conditions and the following disclaimer.                             |
+|                                                                              |
+| Redistributions in binary form must reproduce the above copyright notice,    |
+| this list of conditions and the following disclaimer in the documentation    |
+| and/or other materials provided with the distribution.                       |
+|                                                                              |
+| Neither the name of Lukas Gebauer nor the names of its contributors may      |
+| be used to endorse or promote products derived from this software without    |
+| specific prior written permission.                                           |
+|                                                                              |
+| THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"  |
+| AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE    |
+| IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE   |
+| ARE DISCLAIMED. IN NO EVENT SHALL THE REGENTS OR CONTRIBUTORS BE LIABLE FOR  |
+| ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL       |
+| DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR   |
+| SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER   |
+| CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT           |
+| LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY    |
+| OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH  |
+| DAMAGE.                                                                      |
 |==============================================================================|
 | The Initial Developer of the Original Code is Lukas Gebauer (Czech Republic).|
 | Portions created by Lukas Gebauer are Copyright (c)2001.                     |
@@ -68,10 +87,8 @@ type
   TSyslogSeverity = (Emergency, Alert, Critical, Error, Warning, Notice, Info,
     Debug);
 
-  TSyslogSend = class(TObject)
+  TSyslogSend = class(TSynaClient)
   private
-    FSyslogHost: string;
-    FSyslogPort: string;
     FSock: TUDPBlockSocket;
     FFacility: Byte;
     FSeverity: TSyslogSeverity;
@@ -82,8 +99,6 @@ type
     destructor Destroy; override;
     function DoIt: Boolean;
   published
-    property SyslogHost: string read FSyslogHost Write FSyslogHost;
-    property SyslogPort: string read FSyslogPort Write FSyslogPort;
     property Facility: Byte read FFacility Write FFacility;
     property Severity: TSyslogSeverity read FSeverity Write FSeverity;
     property Tag: string read FTag Write FTag;
@@ -100,12 +115,12 @@ begin
   inherited Create;
   FSock := TUDPBlockSocket.Create;
   FSock.CreateSocket;
-  FSyslogHost := cLocalhost;
-  FSyslogPort := cSysLogProtocol;
+  FTargetPort := cSysLogProtocol;
   FFacility := FCL_Local0;
   FSeverity := Debug;
   FTag := ExtractFileName(ParamStr(0));
   FMessage := '';
+  FIPInterface := cAnyHost;
 end;
 
 destructor TSyslogSend.Destroy;
@@ -138,8 +153,10 @@ begin
   if Length(Buf) <= 1024 then
   begin
     if FSock.EnableReuse(True) then
-      Fsock.Bind('0.0.0.0', FSyslogPort);
-    FSock.Connect(FSyslogHost, FSyslogPort);
+      Fsock.Bind(FIPInterface, FTargetPort)
+    else
+      FSock.Bind(FIPInterface, cAnyPort);
+    FSock.Connect(FTargetHost, FTargetPort);
     FSock.SendString(Buf);
     Result := FSock.LastError = 0;
   end;
@@ -153,7 +170,7 @@ begin
   Result := False;
   with TSyslogSend.Create do
     try
-      SyslogHost :=SyslogServer;
+      TargetHost :=SyslogServer;
       Facility := Facil;
       Severity := Sever;
       LogMessage := Content;

@@ -1,17 +1,36 @@
 {==============================================================================|
-| Project : Delphree - Synapse                                   | 005.007.000 |
+| Project : Delphree - Synapse                                   | 006.001.004 |
 |==============================================================================|
 | Content: Library base                                                        |
 |==============================================================================|
-| The contents of this file are subject to the Mozilla Public License Ver. 1.1 |
-| (the "License"); you may not use this file except in compliance with the     |
-| License. You may obtain a copy of the License at http://www.mozilla.org/MPL/ |
+| Copyright (c)1999-2002, Lukas Gebauer                                        |
+| All rights reserved.                                                         |
 |                                                                              |
-| Software distributed under the License is distributed on an "AS IS" basis,   |
-| WITHOUT WARRANTY OF ANY KIND, either express or implied. See the License for |
-| the specific language governing rights and limitations under the License.    |
-|==============================================================================|
-| The Original Code is Synapse Delphi Library.                                 |
+| Redistribution and use in source and binary forms, with or without           |
+| modification, are permitted provided that the following conditions are met:  |
+|                                                                              |
+| Redistributions of source code must retain the above copyright notice, this  |
+| list of conditions and the following disclaimer.                             |
+|                                                                              |
+| Redistributions in binary form must reproduce the above copyright notice,    |
+| this list of conditions and the following disclaimer in the documentation    |
+| and/or other materials provided with the distribution.                       |
+|                                                                              |
+| Neither the name of Lukas Gebauer nor the names of its contributors may      |
+| be used to endorse or promote products derived from this software without    |
+| specific prior written permission.                                           |
+|                                                                              |
+| THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"  |
+| AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE    |
+| IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE   |
+| ARE DISCLAIMED. IN NO EVENT SHALL THE REGENTS OR CONTRIBUTORS BE LIABLE FOR  |
+| ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL       |
+| DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR   |
+| SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER   |
+| CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT           |
+| LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY    |
+| OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH  |
+| DAMAGE.                                                                      |
 |==============================================================================|
 | The Initial Developer of the Original Code is Lukas Gebauer (Czech Republic).|
 | Portions created by Lukas Gebauer are Copyright (c)1999-2002.                |
@@ -22,6 +41,11 @@
 | History: see HISTORY.HTM from distribution package                           |
 |          (Found at URL: http://www.ararat.cz/synapse/)                       |
 |==============================================================================}
+{
+Special thanks to Gregor Ibic <gregor.ibic@intelicom.si>
+ (Intelicom d.o.o., http://www.intelicom.si)
+ for good inspiration about SSL programming.
+}
 
 {$Q-}
 {$WEAKPACKAGEUNIT ON}
@@ -41,6 +65,9 @@ uses
 
 const
   cLocalhost = 'localhost';
+  cAnyHost = '0.0.0.0';
+  cBroadcast = '255.255.255.255';
+  cAnyPort = '0';
 
 type
 
@@ -75,12 +102,16 @@ type
     FLocalSin: TSockAddrIn;
     FRemoteSin: TSockAddrIn;
     FLastError: Integer;
+    FLastErrorDesc: string;
     FBuffer: string;
     FRaiseExcept: Boolean;
     FNonBlockMode: Boolean;
     FMaxLineLength: Integer;
-    FMaxBandwidth: Integer;
+    FMaxSendBandwidth: Integer;
     FNextSend: Cardinal;
+    FMaxRecvBandwidth: Integer;
+    FNextRecv: Cardinal;
+    FConvertLineEnd: Boolean;
     function GetSizeRecvBuffer: Integer;
     procedure SetSizeRecvBuffer(Size: Integer);
     function GetSizeSendBuffer: Integer;
@@ -95,7 +126,8 @@ type
     function GetSinIP(Sin: TSockAddrIn): string;
     function GetSinPort(Sin: TSockAddrIn): Integer;
     procedure DoStatus(Reason: THookSocketReason; const Value: string);
-    procedure LimitBandwidth(Length: Integer);
+    procedure LimitBandwidth(Length: Integer; MaxB: integer; var Next: Cardinal);
+    procedure SetBandwidth(Value: Integer);
   public
     constructor Create;
     constructor CreateAlternate(Stub: string);
@@ -115,7 +147,7 @@ type
     function RecvPacket(Timeout: Integer): string; virtual;
     function PeekBuffer(Buffer: Pointer; Length: Integer): Integer; virtual;
     function PeekByte(Timeout: Integer): Byte; virtual;
-    function WaitingData: Integer;
+    function WaitingData: Integer; virtual;
     function WaitingDataEx: Integer;
     procedure SetLinger(Enable: Boolean; Linger: Integer);
     procedure GetSins;
@@ -150,6 +182,7 @@ type
     class function GetErrorDesc(ErrorCode: Integer): string;
     property Socket: TSocket read FSocket write FSocket;
     property LastError: Integer read FLastError;
+    property LastErrorDesc: string read FLastErrorDesc;
     property Protocol: Integer read FProtocol;
     property LineBuffer: string read FBuffer write FBuffer;
     property RaiseExcept: Boolean read FRaiseExcept write FRaiseExcept;
@@ -159,7 +192,10 @@ type
     property OnStatus: THookSocketStatus read FOnStatus write FOnStatus;
     property NonBlockMode: Boolean read FNonBlockMode Write SetNonBlockMode;
     property MaxLineLength: Integer read FMaxLineLength Write FMaxLineLength;
-    property MaxBandwidth: Integer read FMaxBandwidth Write FMaxBandwidth;
+    property MaxSendBandwidth: Integer read FMaxSendBandwidth Write FMaxSendBandwidth;
+    property MaxRecvBandwidth: Integer read FMaxRecvBandwidth Write FMaxRecvBandwidth;
+    property MaxBandwidth: Integer Write SetBandwidth;
+    property ConvertLineEnd: Boolean read FConvertLineEnd Write FConvertLineEnd;
   end;
 
   TSocksBlockSocket = class(TBlockSocket)
@@ -207,6 +243,9 @@ type
     FSSLCertificateFile: string;
     FSSLPrivateKeyFile: string;
     FSSLCertCAFile: string;
+    FSSLLastError: integer;
+    FSSLLastErrorDesc: string;
+    FSSLverifyCert: Boolean;
     FHTTPTunnelIP: string;
     FHTTPTunnelPort: string;
     FHTTPTunnel: Boolean;
@@ -223,6 +262,7 @@ type
     destructor Destroy; override;
     procedure CreateSocket; override;
     procedure CloseSocket; override;
+    function WaitingData: Integer; override;
     procedure Listen;
     function Accept: TSocket;
     procedure Connect(IP, Port: string); override;
@@ -241,6 +281,7 @@ type
     function SSLGetPeerSubjectHash: Cardinal;
     function SSLGetPeerIssuerHash: Cardinal;
     function SSLGetPeerFingerprint: string;
+    function SSLCheck: Boolean;
   published
     property SSLEnabled: Boolean read FSslEnabled write SetSslEnabled;
     property SSLBypass: Boolean read FSslBypass write FSslBypass;
@@ -249,6 +290,9 @@ type
     property SSLCertificateFile: string read FSSLCertificateFile write FSSLCertificateFile;
     property SSLPrivateKeyFile: string read FSSLPrivateKeyFile write FSSLPrivateKeyFile;
     property SSLCertCAFile: string read FSSLCertCAFile write FSSLCertCAFile;
+    property SSLLastError: integer read FSSLLastError;
+    property SSLLastErrorDesc: string read FSSLLastErrorDesc;
+    property SSLverifyCert: Boolean read FSSLverifyCert write FSSLverifyCert;
     property HTTPTunnelIP: string read FHTTPTunnelIP Write FHTTPTunnelIP;
     property HTTPTunnelPort: string read FHTTPTunnelPort Write FHTTPTunnelPort;
     property HTTPTunnel: Boolean read FHTTPTunnel;
@@ -299,6 +343,21 @@ type
     Options: DWORD;
   end;
 
+  TSynaClient = Class(TObject)
+  protected
+    FTargetHost: string;
+    FTargetPort: string;
+    FIPInterface: string;
+    FTimeout: integer;
+  public
+    constructor Create;
+  published
+    property TargetHost: string read FTargetHost Write FTargetHost;
+    property TargetPort: string read FTargetPort Write FTargetPort;
+    property IPInterface: string read FIPInterface Write FIPInterface;
+    property Timeout: integer read FTimeout Write FTimeout;
+  end;
+
 implementation
 
 type
@@ -318,8 +377,11 @@ begin
   FBuffer := '';
   FNonBlockMode := False;
   FMaxLineLength := 0;
-  FMaxBandwidth := 0;
+  FMaxSendBandwidth := 0;
   FNextSend := 0;
+  FMaxRecvBandwidth := 0;
+  FNextRecv := 0;
+  FConvertLineEnd := False;
   if not InitSocketInterface('') then
   begin
     e := ESynapseError.Create('Error loading Winsock DLL!');
@@ -378,7 +440,7 @@ begin
     Sin.sin_port := synsock.htons(StrToIntDef(Port, 0))
   else
     Sin.sin_port := ServEnt^.s_port;
-  if IP = '255.255.255.255' then
+  if IP = cBroadcast then
     Sin.sin_addr.s_addr := u_long(INADDR_BROADCAST)
   else
   begin
@@ -472,27 +534,33 @@ begin
   synsock.GetPeerName(FSocket, FremoteSin, Len);
 end;
 
-procedure TBlockSocket.LimitBandwidth(Length: Integer);
+procedure TBlockSocket.SetBandwidth(Value: Integer);
+begin
+  MaxSendBandwidth := Value;
+  MaxRecvBandwidth := Value;
+end;
+
+procedure TBlockSocket.LimitBandwidth(Length: Integer; MaxB: integer; var Next: Cardinal);
 var
   x: Cardinal;
-  y: integer;
+  y: Cardinal;
 begin
-  if FMaxBandwidth > 0 then
+  if MaxB > 0 then
   begin
-    y:= GetTick;
-    if FNextSend > y then
+    y := GetTick;
+    if Next > y then
     begin
-      x:= FNextSend - y;
+      x := Next - y;
       if x > 0 then
         sleep(x);
     end;
-    FNextSend:= y + Trunc((Length / FMaxBandwidth) * 1000);
+    Next := y + Trunc((Length / MaxB) * 1000);
   end;
 end;
 
 function TBlockSocket.SendBuffer(Buffer: Pointer; Length: Integer): Integer;
 begin
-  LimitBandwidth(Length);
+  LimitBandwidth(Length, FMaxSendBandwidth, FNextsend);
   Result := synsock.Send(FSocket, Buffer^, Length, 0);
   SockCheck(Result);
   ExceptCheck;
@@ -511,6 +579,7 @@ end;
 
 function TBlockSocket.RecvBuffer(Buffer: Pointer; Length: Integer): Integer;
 begin
+  LimitBandwidth(Length, FMaxRecvBandwidth, FNextRecv);
   Result := synsock.Recv(FSocket, Buffer^, Length, 0);
   if Result = 0 then
     FLastError := WSAECONNRESET
@@ -602,7 +671,8 @@ begin
       begin
         SetLength(Result, x);
         x := RecvBuffer(Pointer(Result), x);
-        SetLength(Result, x);
+        if x >= 0 then
+          SetLength(Result, x);
       end;
     end
     else
@@ -634,31 +704,57 @@ var
   x: Integer;
   s: string;
   l: Integer;
+  CorCRLF: Boolean;
+  t: string;
+  tl: integer;
 begin
   FLastError := 0;
   Result := '';
   l := system.Length(Terminator);
   if l = 0 then
     Exit;
+  tl := l;
+  CorCRLF := FConvertLineEnd and (Terminator = #$0d + #$0a);
   // if FBuffer contains requested data, return it...
   if FBuffer<>'' then
   begin
-    x := pos(Terminator, FBuffer);
+    if CorCRLF then
+    begin
+      t := '';
+      x := PosCRLF(FBuffer, t);
+      tl := system.Length(t);
+    end
+    else
+    begin
+      x := pos(Terminator, FBuffer);
+      tl := l;
+    end;
     if x > 0 then
     begin
       Result := copy(FBuffer, 1, x - 1);
-      System.Delete(FBuffer, 1, x + l - 1);
-      exit;
+      System.Delete(FBuffer, 1, x + tl - 1);
+      Exit;
     end;
   end;
   // now FBuffer is empty or not contains all data...
   s := '';
   x := 0;
   repeat
+    //get rest of FBuffer or incomming new data...
     s := s + RecvPacket(Timeout);
     if FLastError <> 0 then
       Break;
-    x := Pos(Terminator, s);
+    if CorCRLF then
+    begin
+      t := '';
+      x := PosCRLF(s, t);
+      tl := system.Length(t);
+    end
+    else
+    begin
+      x := pos(Terminator, s);
+      tl := l;
+    end;
     if (FMaxLineLength <> 0) and (system.Length(s) > FMaxLineLength) then
     begin
       FLastError := WSAENOBUFS;
@@ -668,7 +764,7 @@ begin
   if x > 0 then
   begin
     Result := Copy(s, 1, x - 1);
-    System.Delete(s, 1, x + l - 1);
+    System.Delete(s, 1, x + tl - 1);
   end;
   FBuffer := s;
   ExceptCheck;
@@ -710,8 +806,12 @@ end;
 
 function TBlockSocket.SockCheck(SockResult: Integer): Integer;
 begin
-  if SockResult = SOCKET_ERROR then
-    Result := synsock.WSAGetLastError
+  FLastErrorDesc := '';
+  if SockResult = integer(SOCKET_ERROR) then
+  begin
+    Result := synsock.WSAGetLastError;
+    FLastErrorDesc := GetErrorDesc(Result);
+  end
   else
     Result := 0;
   FLastError := Result;
@@ -931,7 +1031,7 @@ function TBlockSocket.SendBufferTo(Buffer: Pointer; Length: Integer): Integer;
 var
   Len: Integer;
 begin
-  LimitBandwidth(Length);
+  LimitBandwidth(Length, FMaxSendBandwidth, FNextsend);
   Len := SizeOf(FRemoteSin);
   Result := synsock.SendTo(FSocket, Buffer^, Length, 0, FRemoteSin, Len);
   SockCheck(Result);
@@ -943,6 +1043,7 @@ function TBlockSocket.RecvBufferFrom(Buffer: Pointer; Length: Integer): Integer;
 var
   Len: Integer;
 begin
+  LimitBandwidth(Length, FMaxRecvBandwidth, FNextRecv);
   Len := SizeOf(FRemoteSin);
   Result := synsock.RecvFrom(FSocket, Buffer^, Length, 0, FRemoteSin, Len);
   SockCheck(Result);
@@ -1256,7 +1357,6 @@ function TSocksBlockSocket.SocksRequest(Cmd: Byte;
 var
   Buf: string;
 begin
-  Result := False;
   FBypassFlag := True;
   try
     Buf := #5 + char(Cmd) + #0 + SocksCode(IP, Port);
@@ -1330,9 +1430,9 @@ begin
         y := Ord(Value[5]);
         if Length(Value) < (5 + y + 2) then
           Exit;
-        for n := 6 to 6 + y do
+        for n := 6 to 6 + y - 1 do
           FSocksResponseIP := FSocksResponseIP + Value[n];
-        Result := 5 + y +1;
+        Result := 5 + y + 1;
       end;
   else
     Exit;
@@ -1498,11 +1598,10 @@ begin
   Password := '';
   if TTCPBlockSocket(userdata) is TTCPBlockSocket then
     Password := TTCPBlockSocket(userdata).SSLPassword;
-  FillChar(buf, Size, 0);
   if Length(Password) > (Size - 1) then
     SetLength(Password, Size - 1);
-  StrPCopy(buf, Password);
   Result := Length(Password);
+  StrLCopy(buf, PChar(Password + #0), Result + 1);
 end;
 
 constructor TTCPBlockSocket.Create;
@@ -1516,6 +1615,9 @@ begin
   FSSLPassword  := '';
   FSsl := nil;
   Fctx := nil;
+  FSSLLastError := 0;
+  FSSLLastErrorDesc := '';
+  FSSLverifyCert := False;
   FHTTPTunnelIP := '';
   FHTTPTunnelPort := '';
   FHTTPTunnel := False;
@@ -1543,6 +1645,15 @@ procedure TTCPBlockSocket.CloseSocket;
 begin
   synsock.Shutdown(FSocket, 1);
   inherited CloseSocket;
+end;
+
+function TTCPBlockSocket.WaitingData: Integer;
+begin
+  Result := 0;
+  if FSslEnabled and not(FSslBypass) and not(FBypassFlag) then
+    Result := sslpending(Fssl);
+  if Result = 0 then
+    Result := inherited WaitingData;
 end;
 
 procedure TTCPBlockSocket.Listen;
@@ -1677,10 +1788,14 @@ begin
   FLastError := 0;
   if not FSSLEnabled then
     SSLEnabled := True;
-  if sslsetfd(FSsl, FSocket) < 0 then
-    FLastError := WSASYSNOTREADY;
   if (FLastError = 0) then
-    if sslconnect(FSsl) < 0 then
+    if sslsetfd(FSsl, FSocket) < 1 then
+    begin
+      FLastError := WSASYSNOTREADY;
+      SSLCheck;
+    end;
+  if (FLastError = 0) then
+    if sslconnect(FSsl) < 1 then
       FLastError := WSASYSNOTREADY;
   ExceptCheck;
 end;
@@ -1732,46 +1847,114 @@ begin
       Result := inherited GetRemoteSinPort;
 end;
 
+function TTCPBlockSocket.SSLCheck: Boolean;
+var
+  ErrBuf: array[0..255] of Char;
+begin
+  Result := true;
+  FSSLLastErrorDesc := '';
+  FSSLLastError := ErrGetError;
+  ErrClearError;
+  if FSSLLastError <> 0 then
+  begin
+    Result := False;
+    ErrErrorString(FSSLLastError, ErrBuf);
+    FSSLLastErrorDesc := ErrBuf;
+  end;
+end;
+
 function TTCPBlockSocket.SetSslKeys: boolean;
 begin
-  Result := False;
-  if FSSLCertificateFile <> '' then
-    SslCtxUseCertificateChainFile(FCtx, PChar(FSSLCertificateFile));
-  if FSSLPrivateKeyFile <> '' then
-    SslCtxUsePrivateKeyFile(FCtx, PChar(FSSLPrivateKeyFile), 1);
-  if FSSLCertCAFile <> '' then
-    SslCtxLoadVerifyLocations(FCtx, PChar(FSSLCertCAFile), nil);
   Result := True;
+  if FSSLCertificateFile <> '' then
+    if SslCtxUseCertificateChainFile(FCtx, PChar(FSSLCertificateFile)) <> 1 then
+    begin
+      Result := False;
+      SSLCheck;
+      Exit;
+    end;
+  if FSSLPrivateKeyFile <> '' then
+    if SslCtxUsePrivateKeyFile(FCtx, PChar(FSSLPrivateKeyFile), 1) <> 1 then
+    begin
+      Result := False;
+      SSLCheck;
+      Exit;
+    end;
+  if FSSLCertCAFile <> '' then
+    if SslCtxLoadVerifyLocations(FCtx, PChar(FSSLCertCAFile), nil) <> 1 then
+    begin
+      Result := False;
+      SSLCheck;
+    end;
 end;
 
 procedure TTCPBlockSocket.SetSslEnabled(Value: Boolean);
+var
+  err: Boolean;
 begin
+  FLastError := 0;
   if Value <> FSslEnabled then
     if Value then
     begin
+      FBuffer := '';
+      FSSLLastErrorDesc := '';
+      FSSLLastError := 0;
       if InitSSLInterface then
       begin
         SslLibraryInit;
         SslLoadErrorStrings;
+        err := False;
         Fctx := nil;
         Fctx := SslCtxNew(SslMethodV23);
-        SslCtxSetCipherList(Fctx, PChar(FSSLCiphers));
-        SslCtxSetDefaultPasswdCb(FCtx, @PasswordCallback);
-        SslCtxSetDefaultPasswdCbUserdata(FCtx, self);
-        SetSSLKeys;
-        Fssl := nil;
-        Fssl := SslNew(Fctx);
-        FSslEnabled := True;
+        if Fctx = nil then
+        begin
+          SSLCheck;
+          FlastError := WSAEPROTONOSUPPORT;
+          err := True;
+        end
+        else
+        begin
+          SslCtxSetCipherList(Fctx, PChar(FSSLCiphers));
+          if FSSLverifyCert then
+            SslCtxSetVerify(FCtx, SSL_VERIFY_PEER, nil)
+          else
+            SslCtxSetVerify(FCtx, SSL_VERIFY_NONE, nil);
+          SslCtxSetDefaultPasswdCb(FCtx, @PasswordCallback);
+          SslCtxSetDefaultPasswdCbUserdata(FCtx, self);
+          if not SetSSLKeys then
+            FLastError := WSAEINVAL
+          else
+          begin
+            Fssl := nil;
+            Fssl := SslNew(Fctx);
+            if Fssl = nil then
+            begin
+              SSLCheck;
+              FlastError := WSAEPROTONOSUPPORT;
+              err := True;
+            end;
+          end;
+        end;
+        if err then
+          DestroySSLInterface
+        else
+          FSslEnabled := True;
       end
-      else DestroySSLInterface;
+      else
+      begin
+        DestroySSLInterface;
+        FlastError := WSAEPROTONOSUPPORT;
+      end;
     end
     else
     begin
+      FBuffer := '';
       sslfree(Fssl);
       SslCtxFree(Fctx);
       DestroySSLInterface;
       FSslEnabled := False;
     end;
+  ExceptCheck;
 end;
 
 function TTCPBlockSocket.RecvBuffer(Buffer: Pointer; Length: Integer): Integer;
@@ -1784,7 +1967,7 @@ begin
     repeat
       Result := SslRead(FSsl, Buffer, Length);
       err := SslGetError(FSsl, Result);
-    until (err <> SSL_ERROR_WANT_READ) or (err <> SSL_ERROR_WANT_WRITE);
+    until (err <> SSL_ERROR_WANT_READ) and (err <> SSL_ERROR_WANT_WRITE);
     if err = SSL_ERROR_ZERO_RETURN then
       Result := 0
     else
@@ -1807,7 +1990,7 @@ begin
     repeat
       Result := SslWrite(FSsl, Buffer, Length);
       err := SslGetError(FSsl, Result);
-    until (err <> SSL_ERROR_WANT_READ) or (err <> SSL_ERROR_WANT_WRITE);
+    until (err <> SSL_ERROR_WANT_READ) and (err <> SSL_ERROR_WANT_WRITE);
     if err = SSL_ERROR_ZERO_RETURN then
       Result := 0
     else
@@ -1822,14 +2005,17 @@ end;
 
 function TTCPBlockSocket.SSLAcceptConnection: Boolean;
 begin
-  Result := False;
   FLastError := 0;
   if not FSSLEnabled then
     SSLEnabled := True;
-  if sslsetfd(FSsl, FSocket) < 0 then
-    FLastError := WSASYSNOTREADY;
   if (FLastError = 0) then
-    if sslAccept(FSsl) < 0 then
+    if sslsetfd(FSsl, FSocket) < 1 then
+    begin
+      FLastError := WSASYSNOTREADY;
+      SSLCheck;
+    end;
+  if (FLastError = 0) then
+    if sslAccept(FSsl) < 1 then
       FLastError := WSASYSNOTREADY;
   ExceptCheck;
   Result := FLastError = 0;
@@ -1912,6 +2098,17 @@ begin
   FSocket := synsock.Socket(PF_INET, Integer(SOCK_RAW), IPPROTO_RAW);
   FProtocol := IPPROTO_RAW;
   inherited CreateSocket;
+end;
+
+{======================================================================}
+
+constructor TSynaClient.Create;
+begin
+  inherited Create;
+  FIPInterface := cAnyHost;
+  FTargetHost := cLocalhost;
+  FTargetPort := cAnyPort;
+  FTimeout := 5000;
 end;
 
 end.

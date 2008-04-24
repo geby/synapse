@@ -1,17 +1,36 @@
 {==============================================================================|
-| Project : Delphree - Synapse                                   | 002.000.000 |
+| Project : Delphree - Synapse                                   | 002.003.001 |
 |==============================================================================|
 | Content: FTP client                                                          |
 |==============================================================================|
-| The contents of this file are Subject to the Mozilla Public License Ver. 1.1 |
-| (the "License"); you may not use this file except in compliance with the     |
-| License. You may obtain a Copy of the License at http://www.mozilla.org/MPL/ |
+| Copyright (c)1999-2002, Lukas Gebauer                                        |
+| All rights reserved.                                                         |
 |                                                                              |
-| Software distributed under the License is distributed on an "AS IS" basis,   |
-| WITHOUT WARRANTY OF ANY KIND, either express or implied. See the License for |
-| the specific language governing rights and limitations under the License.    |
-|==============================================================================|
-| The Original Code is Synapse Delphi Library.                                 |
+| Redistribution and use in source and binary forms, with or without           |
+| modification, are permitted provided that the following conditions are met:  |
+|                                                                              |
+| Redistributions of source code must retain the above copyright notice, this  |
+| list of conditions and the following disclaimer.                             |
+|                                                                              |
+| Redistributions in binary form must reproduce the above copyright notice,    |
+| this list of conditions and the following disclaimer in the documentation    |
+| and/or other materials provided with the distribution.                       |
+|                                                                              |
+| Neither the name of Lukas Gebauer nor the names of its contributors may      |
+| be used to endorse or promote products derived from this software without    |
+| specific prior written permission.                                           |
+|                                                                              |
+| THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"  |
+| AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE    |
+| IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE   |
+| ARE DISCLAIMED. IN NO EVENT SHALL THE REGENTS OR CONTRIBUTORS BE LIABLE FOR  |
+| ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL       |
+| DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR   |
+| SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER   |
+| CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT           |
+| LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY    |
+| OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH  |
+| DAMAGE.                                                                      |
 |==============================================================================|
 | The Initial Developer of the Original Code is Lukas Gebauer (Czech Republic).|
 | Portions created by Lukas Gebauer are Copyright (c) 1999-2002.               |
@@ -68,14 +87,11 @@ type
     property List: TList read FList;
   end;
 
-  TFTPSend = class(TObject)
+  TFTPSend = class(TSynaClient)
   private
     FOnStatus: TFTPStatus;
     FSock: TTCPBlockSocket;
     FDSock: TTCPBlockSocket;
-    FTimeout: Integer;
-    FFTPHost: string;
-    FFTPPort: string;
     FResultCode: Integer;
     FResultString: string;
     FFullResult: TStringList;
@@ -114,6 +130,7 @@ type
     function FTPCommand(const Value: string): integer;
     function Login: Boolean;
     procedure Logout;
+    procedure Abort;
     function List(Directory: string; NameList: Boolean): Boolean;
     function RetriveFile(const FileName: string; Restore: Boolean): Boolean;
     function StoreFile(const FileName: string; Restore: Boolean): Boolean;
@@ -129,9 +146,6 @@ type
     function CreateDir(const Directory: string): Boolean;
     function GetCurrentDir: String;
   published
-    property Timeout: Integer read FTimeout Write FTimeout;
-    property FTPHost: string read FFTPHost Write FFTPHost;
-    property FTPPort: string read FFTPPort Write FFTPPort;
     property ResultCode: Integer read FResultCode;
     property ResultString: string read FResultString;
     property FullResult: TStringList read FFullResult;
@@ -179,8 +193,7 @@ begin
   FDSock := TTCPBlockSocket.Create;
   FFtpList := TFTPList.Create;
   FTimeout := 300000;
-  FFTPHost := cLocalhost;
-  FFTPPort := cFtpProtocol;
+  FTargetPort := cFtpProtocol;
   FUsername := 'anonymous';
   FPassword := 'anonymous@' + FSock.LocalName;
   FDirectFile := False;
@@ -285,10 +298,10 @@ begin
   Result := False;
   if FFWHost = '' then
     Mode := 0;
-  if (FFTPPort = cFtpProtocol) or (FFTPPort = '21') then
-    FTPServer := FFTPHost
+  if (FTargetPort = cFtpProtocol) or (FTargetPort = '21') then
+    FTPServer := FTargetHost
   else
-    FTPServer := FFTPHost + ':' + FFTPPort;
+    FTPServer := FTargetHost + ':' + FTargetPort;
   case Mode of
     -1:
       LogonActions := CustomLogon;
@@ -349,8 +362,9 @@ function TFTPSend.Connect: Boolean;
 begin
   FSock.CloseSocket;
   FSock.CreateSocket;
+  FSock.Bind(FIPInterface, cAnyPort);
   if FFWHost = '' then
-    FSock.Connect(FFTPHost, FFTPPort)
+    FSock.Connect(FTargetHost, FTargetPort)
   else
     FSock.Connect(FFWHost, FFWPort);
   Result := FSock.LastError = 0;
@@ -362,7 +376,7 @@ begin
   FCanResume := False;
   if not Connect then
     Exit;
-  if ReadResult <> 220 then
+  if (ReadResult div 100) <> 2 then
     Exit;
   if not Auth(FFWMode) then
     Exit;
@@ -420,11 +434,12 @@ begin
   Result := False;
   if FPassiveMode then
   begin
-    if FTPCommand('PASV') <> 227 then
+    if (FTPCommand('PASV') div 100) <> 2 then
       Exit;
     ParseRemote(FResultString);
     FDSock.CloseSocket;
     FDSock.CreateSocket;
+    FSock.Bind(FIPInterface, cAnyPort);
     FDSock.Connect(FDataIP, FDataPort);
     Result := FDSock.LastError = 0;
   end
@@ -436,7 +451,11 @@ begin
       s := cFtpDataProtocol
     else
       s := '0';
-    FDSock.Bind(FDSock.LocalName, s);
+    //IP cannot be '0.0.0.0'!
+    if FIPInterface = cAnyHost then
+      FDSock.Bind(FDSock.LocalName, s)
+    else
+      FSock.Bind(FIPInterface, s);
     if FDSock.LastError <> 0 then
       Exit;
     FDSock.Listen;
@@ -447,7 +466,7 @@ begin
     s := StringReplace(FDataIP, '.', ',');
     s := 'PORT ' + s + ',' + IntToStr(FDSock.GetLocalSinPort div 256)
       + ',' + IntToStr(FDSock.GetLocalSinPort mod 256);
-    Result := FTPCommand(s) = 200;
+    Result := (FTPCommand(s) div 100) = 2;
   end;
 end;
 
@@ -485,9 +504,9 @@ begin
       if FDSock.LastError = 0 then
         DestStream.Write(Pointer(buf)^, Length(buf));
     until FDSock.LastError <> 0;
+    FDSock.CloseSocket;
     x := ReadResult;
-    if (x = 226) or (x = 250) then
-      Result := True;
+    Result := (x div 100) = 2;
   finally
     FDSock.CloseSocket;
   end;
@@ -524,8 +543,7 @@ begin
       Exit;
     FDSock.CloseSocket;
     x := ReadResult;
-    if (x = 226) or (x = 250) then
-      Result := True;
+    Result := (x div 100) = 2;
   finally
     FDSock.CloseSocket;
   end;
@@ -577,7 +595,7 @@ begin
   if FDirectFile then
     if Restore and FileExists(FDirectFileName) then
       RetrStream := TFileStream.Create(FDirectFileName,
-        fmOpenReadWrite	 or fmShareExclusive)
+        fmOpenReadWrite  or fmShareExclusive)
     else
       RetrStream := TFileStream.Create(FDirectFileName,
         fmCreate or fmShareDenyWrite)
@@ -590,7 +608,7 @@ begin
     if Restore then
     begin
       RetrStream.Seek(0, soFromEnd);
-      if FTPCommand('REST ' + IntToStr(RetrStream.Size)) <> 350 then
+      if (FTPCommand('REST ' + IntToStr(RetrStream.Size)) div 100) <> 3 then
         Exit;
     end
     else
@@ -637,7 +655,7 @@ begin
       RestoreAt := 0;
     FTPCommand('ALLO ' + IntToStr(StorSize - RestoreAt));
     if FCanResume then
-      if FTPCommand('REST ' + IntToStr(RestoreAt)) <> 350 then
+      if (FTPCommand('REST ' + IntToStr(RestoreAt)) div 100) <> 3 then
         Exit;
     SendStream.Seek(RestoreAt, soFromBeginning);
     if (FTPCommand(Command) div 100) <> 1 then
@@ -688,14 +706,14 @@ end;
 function TFTPSend.RenameFile(const OldName, NewName: string): Boolean;
 begin
   Result := False;
-  if FTPCommand('RNFR ' + OldName) <> 350 then
+  if (FTPCommand('RNFR ' + OldName) div 100) <> 3  then
     Exit;
-  Result := FTPCommand('RNTO ' + NewName) = 250;
+  Result := (FTPCommand('RNTO ' + NewName) div 100) = 2;
 end;
 
 function TFTPSend.DeleteFile(const FileName: string): Boolean;
 begin
-  Result := FTPCommand('DELE ' + FileName) = 250;
+  Result := (FTPCommand('DELE ' + FileName) div 100) = 2;
 end;
 
 function TFTPSend.FileSize(const FileName: string): integer;
@@ -703,7 +721,7 @@ var
   s: string;
 begin
   Result := -1;
-  if FTPCommand('SIZE ' + FileName) = 213 then
+  if (FTPCommand('SIZE ' + FileName) div 100) = 2 then
   begin
     s := SeparateRight(ResultString, ' ');
     s := SeparateLeft(s, ' ');
@@ -713,28 +731,28 @@ end;
 
 function TFTPSend.ChangeWorkingDir(const Directory: string): Boolean;
 begin
-  Result := FTPCommand('CWD ' + Directory) = 250;
+  Result := (FTPCommand('CWD ' + Directory) div 100) = 2;
 end;
 
 function TFTPSend.ChangeToRootDir: Boolean;
 begin
-  Result := FTPCommand('CDUP') = 200;
+  Result := (FTPCommand('CDUP') div 100) = 2;
 end;
 
 function TFTPSend.DeleteDir(const Directory: string): Boolean;
 begin
-  Result := FTPCommand('RMD ' + Directory) = 250;
+  Result := (FTPCommand('RMD ' + Directory) div 100) = 2;
 end;
 
 function TFTPSend.CreateDir(const Directory: string): Boolean;
 begin
-  Result := FTPCommand('MKD ' + Directory) = 257;
+  Result := (FTPCommand('MKD ' + Directory) div 100) = 2;
 end;
 
 function TFTPSend.GetCurrentDir: String;
 begin
   Result := '';
-  if FTPCommand('PWD') = 257 then
+  if (FTPCommand('PWD') div 100) = 2 then
   begin
     Result := SeparateRight(FResultString, '"');
     Result := Separateleft(Result, '"');
@@ -767,6 +785,7 @@ begin
 end;
 
 // based on idea by D. J. Bernstein, djb@pobox.com
+// fixed UNIX style decoding by Alex, akudrin@rosbi.ru
 function TFTPList.ParseLine(Value: string): Boolean;
 var
   flr: TFTPListRec;
@@ -777,10 +796,12 @@ var
   mday: Word;
   t: TDateTime;
   x: integer;
+  al_tmp : array[1..2] of string; // alex
 begin
   Result := False;
   if Length(Value) < 2 then
     Exit;
+
   year := 0;
   month := 0;
   mday := 0;
@@ -853,68 +874,69 @@ begin
        (Value[1] = 's') or
        (Value[1] = '-') then
     begin
-      if Value[1] = 'd' then
-        flr.Directory := True;
-      if Value[1] = '-' then
-        flr.Readable := True;
-      if Value[1] = 'l' then
+
+      // alex begin
+      // default year
+      DecodeDate(date,year,month,mday);  // alex
+      month:=0;
+      mday :=0;
+
+      if Value[1] = 'd'      then flr.Directory := True
+      else if Value[1] = '-' then flr.Readable := True
+      else if Value[1] = 'l' then
       begin
         flr.Directory := True;
         flr.Readable := True;
       end;
-      state := 1;
+
+      state:=1;
       s := Fetch(Value, ' ');
-      while s <> '' do
+      while s<>'' do
       begin
-        case state of
-          1:
-            begin
-              state := 2;
-              if (s[1] = 'f') and (Pos(' ', s) = 6) then
-                state := 3;
-            end;
-          2:
-            state := 3;
-          3:
-            begin
-              flr.FileSize := StrToIntDef(s, 0);
-              state := 4;
-            end;
-          4:
-            begin
-              month := GetMonthNumber(s);
-              if month > 0 then
-                state := 5
-              else
-                flr.FileSize := StrToIntDef(s, 0);
-            end;
-          5:
-            begin
-              mday := StrToIntDef(s, 0);
-              state := 6;
-            end;
-          6:
-            begin
-              if (Pos(':', s) > 0) then
-                t := GetTimeFromStr(s)
-              else
-                if Length(s) = 4 then
-                  year := StrToIntDef(s, 0)
-                else Exit;
-              if (year = 0) or (month = 0) or (mday = 0) then
-                Exit;
-              flr.FileTime := t + Encodedate(year, month, mday);
-              state := 7;
-            end;
-          7:
-            begin
-              flr.FileName := s;
-              Result := True;
-            end;
-        end;
-        s := Fetch(Value, ' ');
+          month:=GetMonthNumber(s);
+          if month>0 then
+             break;
+          al_tmp[state]:=s;
+          if state=1 then state:=2
+          else            state:=1;
+          s := Fetch(Value, ' ');
       end;
-      Exit;
+      if month>0 then begin
+         if state=1 then
+              flr.FileSize := StrToIntDef(al_tmp[2], 0)
+         else flr.FileSize := StrToIntDef(al_tmp[1], 0);
+
+         state:=1;
+         s := Fetch(Value, ' ');
+         while s <> '' do
+         begin
+              case state of
+                 1 : mday := StrToIntDef(s, 0);
+                 2 : begin
+                       if (Pos(':', s) > 0) then
+                          t := GetTimeFromStr(s)
+                       else if Length(s) = 4 then
+                          year := StrToIntDef(s, 0)
+                       else Exit;
+                       if (year = 0) or (month = 0) or (mday = 0) then
+                           Exit;
+                       flr.FileTime := t + Encodedate(year, month, mday);
+                     end;
+                 3 : begin
+                       if Value <> '' then
+                         s := s + ' ' + Value;
+                       s := SeparateLeft(s, ' -> ');
+                       flr.FileName := s;
+                       Result := True;
+                       break;
+                     end;
+              end;
+              inc(state);
+              s := Fetch(Value, ' ');
+         end;
+      end;
+      // alex end
+      exit;
     end;
   {Microsoft NT 4.0 FTP Service
   10-20-98  08:57AM               619098 rizrem.zip
@@ -947,8 +969,7 @@ begin
       end;
       if Value = '' then
         Exit;
-      s := Fetch(Value, ' ');
-      flr.FileName := s;
+      flr.FileName := Trim(s);
       Result := True;
       Exit;
     end;
@@ -1015,8 +1036,8 @@ begin
       Username := User;
       Password := Pass;
     end;
-    FTPHost := IP;
-    FTPPort := Port;
+    TargetHost := IP;
+    TargetPort := Port;
     if not Login then
       Exit;
     DirectFileName := LocalFile;
@@ -1039,8 +1060,8 @@ begin
       Username := User;
       Password := Pass;
     end;
-    FTPHost := IP;
-    FTPPort := Port;
+    TargetHost := IP;
+    TargetPort := Port;
     if not Login then
       Exit;
     DirectFileName := LocalFile;
@@ -1074,10 +1095,10 @@ begin
       ToFTP.Username := ToUser;
       ToFTP.Password := ToPass;
     end;
-    FromFTP.FTPHost := FromIP;
-    FromFTP.FTPPort := FromPort;
-    ToFTP.FTPHost := ToIP;
-    ToFTP.FTPPort := ToPort;
+    FromFTP.TargetHost := FromIP;
+    FromFTP.TargetPort := FromPort;
+    ToFTP.TargetHost := ToIP;
+    ToFTP.TargetPort := ToPort;
     if not FromFTP.Login then
       Exit;
     if not ToFTP.Login then
@@ -1109,6 +1130,11 @@ begin
     ToFTP.Free;
     FromFTP.Free;
   end;
+end;
+
+procedure TFTPSend.Abort;
+begin
+  FDSock.CloseSocket;
 end;
 
 end.

@@ -1,17 +1,36 @@
 {==============================================================================|
-| Project : Delphree - Synapse                                   | 003.001.000 |
+| Project : Delphree - Synapse                                   | 003.002.001 |
 |==============================================================================|
 | Content: SMTP client                                                         |
 |==============================================================================|
-| The contents of this file are Subject to the Mozilla Public License Ver. 1.1 |
-| (the "License"); you may not use this file except in compliance with the     |
-| License. You may obtain a Copy of the License at http://www.mozilla.org/MPL/ |
+| Copyright (c)1999-2002, Lukas Gebauer                                        |
+| All rights reserved.                                                         |
 |                                                                              |
-| Software distributed under the License is distributed on an "AS IS" basis,   |
-| WITHOUT WARRANTY OF ANY KIND, either express or implied. See the License for |
-| the specific language governing rights and limitations under the License.    |
-|==============================================================================|
-| The Original Code is Synapse Delphi Library.                                 |
+| Redistribution and use in source and binary forms, with or without           |
+| modification, are permitted provided that the following conditions are met:  |
+|                                                                              |
+| Redistributions of source code must retain the above copyright notice, this  |
+| list of conditions and the following disclaimer.                             |
+|                                                                              |
+| Redistributions in binary form must reproduce the above copyright notice,    |
+| this list of conditions and the following disclaimer in the documentation    |
+| and/or other materials provided with the distribution.                       |
+|                                                                              |
+| Neither the name of Lukas Gebauer nor the names of its contributors may      |
+| be used to endorse or promote products derived from this software without    |
+| specific prior written permission.                                           |
+|                                                                              |
+| THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"  |
+| AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE    |
+| IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE   |
+| ARE DISCLAIMED. IN NO EVENT SHALL THE REGENTS OR CONTRIBUTORS BE LIABLE FOR  |
+| ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL       |
+| DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR   |
+| SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER   |
+| CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT           |
+| LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY    |
+| OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH  |
+| DAMAGE.                                                                      |
 |==============================================================================|
 | The Initial Developer of the Original Code is Lukas Gebauer (Czech Republic).|
 | Portions created by Lukas Gebauer are Copyright (c) 1999-2002.          |
@@ -37,12 +56,9 @@ const
   cSmtpProtocol = 'smtp';
 
 type
-  TSMTPSend = class(TObject)
+  TSMTPSend = class(TSynaClient)
   private
     FSock: TTCPBlockSocket;
-    FTimeout: Integer;
-    FSMTPHost: string;
-    FSMTPPort: string;
     FResultCode: Integer;
     FResultString: string;
     FFullResult: TStringList;
@@ -82,9 +98,6 @@ type
     function EnhCodeString: string;
     function FindCap(const Value: string): string;
   published
-    property Timeout: Integer read FTimeout Write FTimeout;
-    property SMTPHost: string read FSMTPHost Write FSMTPHost;
-    property SMTPPort: string read FSMTPPort Write FSMTPPort;
     property ResultCode: Integer read FResultCode;
     property ResultString: string read FResultString;
     property FullResult: TStringList read FFullResult;
@@ -123,9 +136,9 @@ begin
   FESMTPcap := TStringList.Create;
   FSock := TTCPBlockSocket.Create;
   FSock.CreateSocket;
+  FSock.ConvertLineEnd := True;
   FTimeout := 300000;
-  FSMTPhost := cLocalhost;
-  FSMTPPort := cSmtpProtocol;
+  FTargetPort := cSmtpProtocol;
   FUsername := '';
   FPassword := '';
   FSystemName := FSock.LocalName;
@@ -232,7 +245,8 @@ begin
   FSock.CreateSocket;
   if FFullSSL then
     FSock.SSLEnabled := True;
-  FSock.Connect(FSMTPHost, FSMTPPort);
+  FSock.Bind(FIPInterface, cAnyPort);
+  FSock.Connect(FTargetHost, FTargetPort);
   Result := FSock.LastError = 0;
 end;
 
@@ -302,8 +316,6 @@ begin
         if (Pos('LOGIN', auths) > 0) and (not FauthDone) then
           FAuthDone := AuthLogin;
       end;
-      if FAuthDone then
-        Ehlo;
     end;
     s := FindCap('SIZE');
     if s <> '' then
@@ -498,10 +510,10 @@ begin
     // SMTP.AutoTLS := True;
 // if you need support for TSL/SSL tunnel, uncomment next lines:
     // SMTP.FullSSL := True;
-    SMTP.SMTPHost := SeparateLeft(SMTPHost, ':');
+    SMTP.TargetHost := SeparateLeft(SMTPHost, ':');
     s := SeparateRight(SMTPHost, ':');
     if (s <> '') and (s <> SMTPHost) then
-      SMTP.SMTPPort := s;
+      SMTP.TargetPort := s;
     SMTP.Username := Username;
     SMTP.Password := Password;
     if SMTP.Login then

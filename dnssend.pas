@@ -1,17 +1,36 @@
 {==============================================================================|
-| Project : Delphree - Synapse                                   | 001.001.004 |
+| Project : Delphree - Synapse                                   | 001.002.000 |
 |==============================================================================|
 | Content: DNS client                                                          |
 |==============================================================================|
-| The contents of this file are subject to the Mozilla Public License Ver. 1.1 |
-| (the "License"); you may not use this file except in compliance with the     |
-| License. You may obtain a copy of the License at http://www.mozilla.org/MPL/ |
+| Copyright (c)1999-2002, Lukas Gebauer                                        |
+| All rights reserved.                                                         |
 |                                                                              |
-| Software distributed under the License is distributed on an "AS IS" basis,   |
-| WITHOUT WARRANTY OF ANY KIND, either express or implied. See the License for |
-| the specific language governing rights and limitations under the License.    |
-|==============================================================================|
-| The Original Code is Synapse Delphi Library.                                 |
+| Redistribution and use in source and binary forms, with or without           |
+| modification, are permitted provided that the following conditions are met:  |
+|                                                                              |
+| Redistributions of source code must retain the above copyright notice, this  |
+| list of conditions and the following disclaimer.                             |
+|                                                                              |
+| Redistributions in binary form must reproduce the above copyright notice,    |
+| this list of conditions and the following disclaimer in the documentation    |
+| and/or other materials provided with the distribution.                       |
+|                                                                              |
+| Neither the name of Lukas Gebauer nor the names of its contributors may      |
+| be used to endorse or promote products derived from this software without    |
+| specific prior written permission.                                           |
+|                                                                              |
+| THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"  |
+| AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE    |
+| IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE   |
+| ARE DISCLAIMED. IN NO EVENT SHALL THE REGENTS OR CONTRIBUTORS BE LIABLE FOR  |
+| ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL       |
+| DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR   |
+| SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER   |
+| CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT           |
+| LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY    |
+| OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH  |
+| DAMAGE.                                                                      |
 |==============================================================================|
 | The Initial Developer of the Original Code is Lukas Gebauer (Czech Republic).|
 | Portions created by Lukas Gebauer are Copyright (c)2000,2001.                |
@@ -81,10 +100,8 @@ const
   QTYPE_ALL = 255; //
 
 type
-  TDNSSend = class(TObject)
+  TDNSSend = class(TSynaClient)
   private
-    FTimeout: Integer;
-    FDNSHost: string;
     FRCode: Integer;
     FBuffer: string;
     FSock: TUDPBlockSocket;
@@ -100,8 +117,6 @@ type
     function DNSQuery(Name: string; QType: Integer;
       const Reply: TStrings): Boolean;
   published
-    property Timeout: Integer read FTimeout Write FTimeout;
-    property DNSHost: string read FDNSHost Write FDNSHost;
     property RCode: Integer read FRCode;
     property Sock: TUDPBlockSocket read FSock;
   end;
@@ -117,7 +132,7 @@ begin
   FSock := TUDPBlockSocket.Create;
   FSock.CreateSocket;
   FTimeout := 5000;
-  FDNSHost := cLocalhost;
+  FTargetPort := cDnsProtocol;
 end;
 
 destructor TDNSSend.Destroy;
@@ -290,7 +305,8 @@ begin
   if IsIP(Name) then
     Name := ReverseIP(Name) + '.in-addr.arpa';
   FBuffer := CodeHeader + CodeQuery(Name, QType);
-  FSock.Connect(FDNSHost, cDnsProtocol);
+  FSock.Bind(FIPInterface, cAnyPort);
+  FSock.Connect(FTargetHost, FTargetPort);
   FSock.SendString(FBuffer);
   FBuffer := FSock.RecvPacket(FTimeout);
   if (FSock.LastError = 0) and (Length(FBuffer) > 13) then
@@ -337,7 +353,7 @@ begin
   t := TStringList.Create;
   DNS := TDNSSend.Create;
   try
-    DNS.DNSHost := DNSHost;
+    DNS.TargetHost := DNSHost;
     if DNS.DNSQuery(Domain, QType_MX, t) then
     begin
       { normalize preference number to 5 digits }

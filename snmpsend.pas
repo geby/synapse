@@ -1,17 +1,36 @@
 {==============================================================================|
-| Project : Delphree - Synapse                                   | 002.003.006 |
+| Project : Delphree - Synapse                                   | 002.005.000 |
 |==============================================================================|
 | Content: SNMP client                                                         |
 |==============================================================================|
-| The contents of this file are subject to the Mozilla Public License Ver. 1.1 |
-| (the "License"); you may not use this file except in compliance with the     |
-| License. You may obtain a copy of the License at http://www.mozilla.org/MPL/ |
+| Copyright (c)1999-2002, Lukas Gebauer                                        |
+| All rights reserved.                                                         |
 |                                                                              |
-| Software distributed under the License is distributed on an "AS IS" basis,   |
-| WITHOUT WARRANTY OF ANY KIND, either express or implied. See the License for |
-| the specific language governing rights and limitations under the License.    |
-|==============================================================================|
-| The Original Code is Synapse Delphi Library.                                 |
+| Redistribution and use in source and binary forms, with or without           |
+| modification, are permitted provided that the following conditions are met:  |
+|                                                                              |
+| Redistributions of source code must retain the above copyright notice, this  |
+| list of conditions and the following disclaimer.                             |
+|                                                                              |
+| Redistributions in binary form must reproduce the above copyright notice,    |
+| this list of conditions and the following disclaimer in the documentation    |
+| and/or other materials provided with the distribution.                       |
+|                                                                              |
+| Neither the name of Lukas Gebauer nor the names of its contributors may      |
+| be used to endorse or promote products derived from this software without    |
+| specific prior written permission.                                           |
+|                                                                              |
+| THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"  |
+| AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE    |
+| IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE   |
+| ARE DISCLAIMED. IN NO EVENT SHALL THE REGENTS OR CONTRIBUTORS BE LIABLE FOR  |
+| ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL       |
+| DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR   |
+| SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER   |
+| CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT           |
+| LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY    |
+| OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH  |
+| DAMAGE.                                                                      |
 |==============================================================================|
 | The Initial Developer of the Original Code is Lukas Gebauer (Czech Republic).|
 | Portions created by Lukas Gebauer are Copyright (c)2000,2001.                |
@@ -93,12 +112,10 @@ type
     property SNMPMibList: TList read FSNMPMibList;
   end;
 
-  TSNMPSend = class(TObject)
+  TSNMPSend = class(TSynaClient)
   private
     FSock: TUDPBlockSocket;
     FBuffer: string;
-    FTimeout: Integer;
-    FHost: string;
     FHostIP: string;
     FQuery: TSNMPRec;
     FReply: TSNMPRec;
@@ -107,8 +124,6 @@ type
     destructor Destroy; override;
     function DoIt: Boolean;
   published
-    property Timeout: Integer read FTimeout write FTimeout;
-    property Host: string read FHost write FHost;
     property HostIP: string read FHostIP;
     property Query: TSNMPRec read FQuery;
     property Reply: TSNMPRec read FReply;
@@ -117,6 +132,9 @@ type
 
 function SNMPGet(const OID, Community, SNMPHost: string; var Value: string): Boolean;
 function SNMPSet(const OID, Community, SNMPHost, Value: string; ValueType: Integer): Boolean;
+function SNMPGetNext(var OID: string; const Community, SNMPHost: string; var Value: string): Boolean;
+function SNMPGetTable(const BaseOID, Community, SNMPHost: string; const Value: TStrings): Boolean;
+function SNMPGetTableElement(const BaseOID, RowID, ColID, Community, SNMPHost: string; var Value: String): Boolean;
 
 implementation
 
@@ -278,7 +296,7 @@ begin
   FSock := TUDPBlockSocket.Create;
   FSock.CreateSocket;
   FTimeout := 5000;
-  FHost := cLocalhost;
+  FTargetPort := cSnmpProtocol;
   FHostIP := '';
 end;
 
@@ -294,8 +312,9 @@ function TSNMPSend.DoIt: Boolean;
 begin
   FReply.Clear;
   FBuffer := FQuery.EncodeBuf;
-  FSock.Connect(FHost, cSnmpProtocol);
-  FHostIP := '0.0.0.0';
+  FSock.Bind(FIPInterface, cAnyPort);
+  FSock.Connect(FTargetHost, FTargetPort);
+  FHostIP := cAnyHost;
   FSock.SendString(FBuffer);
   FBuffer := FSock.RecvPacket(FTimeout);
   if FSock.LastError = 0 then
@@ -319,12 +338,11 @@ begin
     SNMPSend.Query.Community := Community;
     SNMPSend.Query.PDUType := PDUGetRequest;
     SNMPSend.Query.MIBAdd(OID, '', ASN1_NULL);
-    SNMPSend.Host := SNMPHost;
+    SNMPSend.TargetHost := SNMPHost;
     Result := SNMPSend.DoIt;
+    Value := '';
     if Result then
-      Value := SNMPSend.Reply.MIBGet(OID)
-    else
-      Value := '';
+      Value := SNMPSend.Reply.MIBGet(OID);
   finally
     SNMPSend.Free;
   end;
@@ -340,11 +358,77 @@ begin
     SNMPSend.Query.Community := Community;
     SNMPSend.Query.PDUType := PDUSetRequest;
     SNMPSend.Query.MIBAdd(OID, Value, ValueType);
-    SNMPSend.Host := SNMPHost;
+    SNMPSend.TargetHost := SNMPHost;
     Result := SNMPSend.DoIt = True;
   finally
     SNMPSend.Free;
   end;
+end;
+
+function SNMPGetNext(var OID: string; const Community, SNMPHost: string; var Value: string): Boolean;
+var
+  SNMPSend: TSNMPSend;
+begin
+  SNMPSend := TSNMPSend.Create;
+  try
+    SNMPSend.Query.Clear;
+    SNMPSend.Query.Community := Community;
+    SNMPSend.Query.PDUType := PDUGetNextRequest;
+    SNMPSend.Query.MIBAdd(OID, '', ASN1_NULL);
+    SNMPSend.TargetHost := SNMPHost;
+    Result := SNMPSend.DoIt;
+    Value := '';
+    if Result then
+      if SNMPSend.Reply.SNMPMibList.Count > 0 then
+      begin
+        OID := TSNMPMib(SNMPSend.Reply.SNMPMibList[0]).OID;
+        Value := TSNMPMib(SNMPSend.Reply.SNMPMibList[0]).Value;
+      end;
+  finally
+    SNMPSend.Free;
+  end;
+end;
+
+function SNMPGetTable(const BaseOID, Community, SNMPHost: string; const Value: TStrings): Boolean;
+var
+  OID: string;
+  s: string;
+  col,row: string;
+  lastcol: string;
+  x, n: integer;
+begin
+  Value.Clear;
+  OID := BaseOID;
+  lastcol := '';
+  x := 0;
+  repeat
+    Result := SNMPGetNext(OID, Community, SNMPHost, s);
+    if Pos(BaseOID, OID) <> 1 then
+        break;
+    row := separateright(oid, baseoid + '.');
+    col := fetch(row, '.');
+    if col = lastcol then
+      inc(x)
+    else
+      x:=0;
+    lastcol := col;
+    if value.count <= x then
+      for n := value.Count - 1 to x do
+        value.add('');
+    if value[x] <> '' then
+      value[x] := value[x] + ',';
+    if IsBinaryString(s) then
+      s := StrToHex(s);
+    value[x] := value[x] + AnsiQuotedStr(s, '"');
+  until not result;
+end;
+
+function SNMPGetTableElement(const BaseOID, RowID, ColID, Community, SNMPHost: string; var Value: String): Boolean;
+var
+  s: string;
+begin
+  s := BaseOID + '.' + ColID + '.' + RowID;
+  Result := SnmpGet(s, Community, SNMPHost, Value);
 end;
 
 end.

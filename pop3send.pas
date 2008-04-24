@@ -1,17 +1,36 @@
 {==============================================================================|
-| Project : Delphree - Synapse                                   | 002.000.000 |
+| Project : Delphree - Synapse                                   | 002.001.000 |
 |==============================================================================|
 | Content: POP3 client                                                         |
 |==============================================================================|
-| The contents of this file are subject to the Mozilla Public License Ver. 1.1 |
-| (the "License"); you may not use this file except in compliance with the     |
-| License. You may obtain a copy of the License at http://www.mozilla.org/MPL/ |
+| Copyright (c)1999-2002, Lukas Gebauer                                        |
+| All rights reserved.                                                         |
 |                                                                              |
-| Software distributed under the License is distributed on an "AS IS" basis,   |
-| WITHOUT WARRANTY OF ANY KIND, either express or implied. See the License for |
-| the specific language governing rights and limitations under the License.    |
-|==============================================================================|
-| The Original Code is Synapse Delphi Library.                                 |
+| Redistribution and use in source and binary forms, with or without           |
+| modification, are permitted provided that the following conditions are met:  |
+|                                                                              |
+| Redistributions of source code must retain the above copyright notice, this  |
+| list of conditions and the following disclaimer.                             |
+|                                                                              |
+| Redistributions in binary form must reproduce the above copyright notice,    |
+| this list of conditions and the following disclaimer in the documentation    |
+| and/or other materials provided with the distribution.                       |
+|                                                                              |
+| Neither the name of Lukas Gebauer nor the names of its contributors may      |
+| be used to endorse or promote products derived from this software without    |
+| specific prior written permission.                                           |
+|                                                                              |
+| THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"  |
+| AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE    |
+| IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE   |
+| ARE DISCLAIMED. IN NO EVENT SHALL THE REGENTS OR CONTRIBUTORS BE LIABLE FOR  |
+| ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL       |
+| DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR   |
+| SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER   |
+| CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT           |
+| LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY    |
+| OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH  |
+| DAMAGE.                                                                      |
 |==============================================================================|
 | The Initial Developer of the Original Code is Lukas Gebauer (Czech Republic).|
 | Portions created by Lukas Gebauer are Copyright (c)2001-2002.                |
@@ -45,12 +64,9 @@ const
 type
   TPOP3AuthType = (POP3AuthAll, POP3AuthLogin, POP3AuthAPOP);
 
-  TPOP3Send = class(TObject)
+  TPOP3Send = class(TSynaClient)
   private
     FSock: TTCPBlockSocket;
-    FTimeout: Integer;
-    FPOP3Host: string;
-    FPOP3Port: string;
     FResultCode: Integer;
     FResultString: string;
     FFullResult: TStringList;
@@ -84,9 +100,6 @@ type
     function StartTLS: Boolean;
     function FindCap(const Value: string): string;
   published
-    property Timeout: Integer read FTimeout Write FTimeout;
-    property POP3Host: string read FPOP3Host Write FPOP3Host;
-    property POP3Port: string read FPOP3Port Write FPOP3Port;
     property ResultCode: Integer read FResultCode;
     property ResultString: string read FResultString;
     property FullResult: TStringList read FFullResult;
@@ -113,9 +126,9 @@ begin
   FPOP3cap := TStringList.Create;
   FSock := TTCPBlockSocket.Create;
   FSock.CreateSocket;
+  FSock.ConvertLineEnd := True;
   FTimeout := 300000;
-  FPOP3host := cLocalhost;
-  FPOP3Port := cPop3Protocol;
+  FTargetPort := cPop3Protocol;
   FUsername := '';
   FPassword := '';
   FStatCount := 0;
@@ -182,7 +195,8 @@ begin
   FSock.CreateSocket;
   if FFullSSL then
     FSock.SSLEnabled := True;
-  FSock.Connect(POP3Host, POP3Port);
+  FSock.Bind(FIPInterface, cAnyPort);
+  FSock.Connect(FTargetHost, FTargetPort);
   Result := FSock.LastError = 0;
 end;
 
