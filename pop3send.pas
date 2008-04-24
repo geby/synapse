@@ -1,5 +1,5 @@
 {==============================================================================|
-| Project : Delphree - Synapse                                   | 001.001.002 |
+| Project : Delphree - Synapse                                   | 001.002.000 |
 |==============================================================================|
 | Content: POP3 client                                                         |
 |==============================================================================|
@@ -185,7 +185,16 @@ begin
   end;
   Result := False;
   if (FTimeStamp <> '') and not (FAuthType = POP3AuthLogin) then
+  begin
     Result := AuthApop;
+    if not Result then
+    begin
+      if not Connect then
+        Exit;
+      if ReadResult(False) <> 1 then
+        Exit;
+    end;
+  end;
   if not Result and not (FAuthType = POP3AuthAPOP) then
     Result := AuthLogin;
 end;

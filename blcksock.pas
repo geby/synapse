@@ -1,5 +1,5 @@
 {==============================================================================|
-| Project : Delphree - Synapse                                   | 004.000.000 |
+| Project : Delphree - Synapse                                   | 004.004.000 |
 |==============================================================================|
 | Content: Library base                                                        |
 |==============================================================================|
@@ -23,6 +23,7 @@
 |          (Found at URL: http://www.ararat.cz/synapse/)                       |
 |==============================================================================}
 
+{$Q-}
 {$WEAKPACKAGEUNIT ON}
 
 unit blcksock;
@@ -76,10 +77,15 @@ type
     FLastError: Integer;
     FBuffer: string;
     FRaiseExcept: Boolean;
+    FNonBlockMode: Boolean;
+    FMaxLineLength: Integer;
+    FMaxBandwidth: Integer;
+    FNextSend: Cardinal;
     function GetSizeRecvBuffer: Integer;
     procedure SetSizeRecvBuffer(Size: Integer);
     function GetSizeSendBuffer: Integer;
     procedure SetSizeSendBuffer(Size: Integer);
+    procedure SetNonBlockMode(Value: Boolean);
   protected
     FSocket: TSocket;
     FProtocol: Integer;
@@ -88,6 +94,7 @@ type
     function GetSinIP(Sin: TSockAddrIn): string;
     function GetSinPort(Sin: TSockAddrIn): Integer;
     procedure DoStatus(Reason: THookSocketReason; const Value: string);
+    procedure LimitBandwidth(Length: Integer);
   public
     constructor Create;
     constructor CreateAlternate(Stub: string);
@@ -103,6 +110,7 @@ type
       Timeout: Integer): Integer; virtual;
     function RecvByte(Timeout: Integer): Byte; virtual;
     function RecvString(Timeout: Integer): string; virtual;
+    function RecvTerminated(Timeout: Integer; const Terminator: string): string; virtual;
     function RecvPacket(Timeout: Integer): string; virtual;
     function PeekBuffer(Buffer: Pointer; Length: Integer): Integer; virtual;
     function PeekByte(Timeout: Integer): Byte; virtual;
@@ -126,6 +134,7 @@ type
     function RecvBufferFrom(Buffer: Pointer; Length: Integer): Integer; virtual;
     function GroupCanRead(const SocketList: TList; Timeout: Integer;
       const CanReadList: TList): Boolean;
+    function EnableReuse(Value: Boolean): Boolean;
 
     //See 'winsock2.txt' file in distribute package!
     function SetTimeout(Timeout: Integer): Boolean;
@@ -145,6 +154,9 @@ type
     property SizeSendBuffer: Integer read GetSizeSendBuffer write SetSizeSendBuffer;
     property WSAData: TWSADATA read FWsaData;
     property OnStatus: THookSocketStatus read FOnStatus write FOnStatus;
+    property NonBlockMode: Boolean read FNonBlockMode Write SetNonBlockMode;
+    property MaxLineLength: Integer read FMaxLineLength Write FMaxLineLength;
+    property MaxBandwidth: Integer read FMaxBandwidth Write FMaxBandwidth;
   end;
 
   TSocksBlockSocket = class(TBlockSocket)
@@ -206,6 +218,8 @@ type
     function RecvBuffer(Buffer: Pointer; Length: Integer): Integer; override;
     function SendBufferTo(Buffer: Pointer; Length: Integer): Integer; override;
     function RecvBufferFrom(Buffer: Pointer; Length: Integer): Integer; override;
+    procedure AddMulticast(MCastIP:string);
+    procedure DropMulticast(MCastIP:string);
   end;
 
   //See 'winsock2.txt' file in distribute package!
@@ -236,6 +250,12 @@ type
 
 implementation
 
+type
+  TMulticast = record
+    MCastAddr : u_long;
+    MCastIfc : u_long;
+  end;
+
 constructor TBlockSocket.Create;
 var
   e: ESynapseError;
@@ -245,6 +265,10 @@ begin
   FSocket := INVALID_SOCKET;
   FProtocol := IPPROTO_IP;
   FBuffer := '';
+  FNonBlockMode := False;
+  FMaxLineLength := 0;
+  FMaxBandwidth := 0;
+  FNextSend := 0;
   if not InitSocketInterface('') then
   begin
     e := ESynapseError.Create('Error loading Winsock DLL!');
@@ -345,6 +369,7 @@ end;
 
 procedure TBlockSocket.CloseSocket;
 begin
+  synsock.Shutdown(FSocket, 2);
   synsock.CloseSocket(FSocket);
   DoStatus(HR_SocketClose, '');
 end;
@@ -385,8 +410,22 @@ begin
   synsock.GetPeerName(FSocket, FremoteSin, Len);
 end;
 
+procedure TBlockSocket.LimitBandwidth(Length: Integer);
+var
+  x: Cardinal;
+begin
+  if FMaxBandwidth > 0 then
+  begin
+    x := FNextSend - GetTick;
+    if x > 0 then
+      Sleep(x);
+    FNextSend := GetTick + Trunc((FMaxBandwidth / 1000) * Length);
+  end;
+end;
+
 function TBlockSocket.SendBuffer(Buffer: Pointer; Length: Integer): Integer;
 begin
+  LimitBandwidth(Length);
   Result := synsock.Send(FSocket, Buffer^, Length, 0);
   SockCheck(Result);
   ExceptCheck;
@@ -454,14 +493,9 @@ begin
         if (system.Length(ss) + l) > fs then
           l := fs - system.Length(ss);
         SetLength(st, l);
-        x := synsock.Recv(FSocket, Pointer(st)^, l, 0);
-        if x = 0 then
-          FLastError := WSAECONNRESET
-        else
-          SockCheck(x);
+        x := RecvBuffer(Pointer(st), l);
         if FLastError <> 0 then
           Break;
-        DoStatus(HR_ReadCount, IntToStr(x));
         lss := system.Length(ss);
         SetLength(ss, lss + x);
         Move(Pointer(st)^, Pointer(@ss[lss + 1])^, x);
@@ -515,47 +549,44 @@ end;
 
 function TBlockSocket.RecvByte(Timeout: Integer): Byte;
 var
-  y: Integer;
-  Data: Byte;
+  s: String;
 begin
-  Data := 0;
   Result := 0;
   if CanRead(Timeout) then
   begin
-    y := synsock.Recv(FSocket, Data, 1, 0);
-    if y = 0 then
-      FLastError := WSAECONNRESET
-    else
-      SockCheck(y);
-    Result := Data;
-    DoStatus(HR_ReadCount, '1');
+    SetLength(s, 1);
+    RecvBuffer(Pointer(s), 1);
+    if s <> '' then
+      Result := Ord(s[1]);
   end
   else
     FLastError := WSAETIMEDOUT;
   ExceptCheck;
 end;
 
-function TBlockSocket.RecvString(Timeout: Integer): string;
+function TBlockSocket.RecvTerminated(Timeout: Integer; const Terminator: string): string;
 const
-  MaxBuf = 1024;
+  MaxSize = 1024;
 var
   x: Integer;
   s: string;
   c: Char;
-  r: Integer;
+  r,l: Integer;
 begin
   s := '';
+  l := Length(Terminator);
+  Result := '';
+  if l = 0 then
+    Exit;
   FLastError := 0;
-  c := #0;
   repeat
+    x := 0;
     if FBuffer = '' then
     begin
       x := WaitingData;
-      if x = 0 then
-        x := 1;
-      if x > MaxBuf then
-        x := MaxBuf;
-      if x = 1 then
+      if x > MaxSize then
+        x := MaxSize;
+      if x <= 1 then
       begin
         c := Char(RecvByte(Timeout));
         if FLastError <> 0 then
@@ -565,40 +596,42 @@ begin
       else
       begin
         SetLength(FBuffer, x);
-        r := synsock.Recv(FSocket, Pointer(FBuffer)^, x, 0);
-        SockCheck(r);
-        if r = 0 then
-          FLastError := WSAECONNRESET;
+        r := RecvBuffer(Pointer(FBuffer), x);
         if FLastError <> 0 then
           Break;
-        DoStatus(HR_ReadCount, IntToStr(r));
         if r < x then
           SetLength(FBuffer, r);
       end;
     end;
-    x := Pos(#10, FBuffer);
-    if x < 1 then x := Length(FBuffer);
-    s := s + Copy(FBuffer, 1, x - 1);
-    c := FBuffer[x];
-    Delete(FBuffer, 1, x);
-    s := s + c;
-  until c = #10;
-
-  if FLastError = 0 then
-  begin
-{$IFDEF LINUX}
-    s := AdjustLineBreaks(s, tlbsCRLF);
-{$ELSE}
-    s := AdjustLineBreaks(s);
-{$ENDIF}
-    x := Pos(#13 + #10, s);
+    s := s + FBuffer;
+    FBuffer := '';
+    x := Pos(Terminator, s);
     if x > 0 then
+    begin
+      FBuffer := Copy(s, x + l, Length(s) - x - l + 1);
       s := Copy(s, 1, x - 1);
-    Result := s;
-  end
+    end;
+    if (FMaxLineLength <> 0) and (Length(s) > FMaxLineLength) then
+    begin
+      FLastError := WSAENOBUFS;
+      Break;
+    end;
+  until x > 0;
+  if FLastError = 0 then
+    Result := s
   else
     Result := '';
   ExceptCheck;
+end;
+
+function TBlockSocket.RecvString(Timeout: Integer): string;
+var
+  s: string;
+begin
+  Result := '';
+  s := RecvTerminated(Timeout, #13 + #10);
+  if FLastError = 0 then
+    Result := s;
 end;
 
 function TBlockSocket.PeekBuffer(Buffer: Pointer; Length: Integer): Integer;
@@ -610,18 +643,15 @@ end;
 
 function TBlockSocket.PeekByte(Timeout: Integer): Byte;
 var
-  y: Integer;
-  Data: Byte;
+  s: string;
 begin
-  Data := 0;
   Result := 0;
   if CanRead(Timeout) then
   begin
-    y := synsock.Recv(FSocket, Data, 1, MSG_PEEK);
-    if y = 0 then
-      FLastError := WSAECONNRESET;
-    SockCheck(y);
-    Result := Data;
+    SetLength(s, 1);
+    PeekBuffer(Pointer(s), 1);
+    if s <> '' then
+      Result := Ord(s[1]);
   end
   else
     FLastError := WSAETIMEDOUT;
@@ -642,7 +672,8 @@ var
   e: ESynapseError;
   s: string;
 begin
-  if FRaiseExcept and (LastError <> 0) then
+  if FRaiseExcept and (LastError <> 0) and (LastError <> WSAEINPROGRESS)
+    and (LastError <> WSAEWOULDBLOCK) then
   begin
     s := GetErrorDesc(LastError);
     e := ESynapseError.CreateFmt('TCP/IP Socket error %d: %s', [LastError, s]);
@@ -833,10 +864,12 @@ function TBlockSocket.SendBufferTo(Buffer: Pointer; Length: Integer): Integer;
 var
   Len: Integer;
 begin
+  LimitBandwidth(Length);
   Len := SizeOf(FRemoteSin);
   Result := synsock.SendTo(FSocket, Buffer^, Length, 0, FRemoteSin, Len);
   SockCheck(Result);
   ExceptCheck;
+  DoStatus(HR_WriteCount, IntToStr(Result));
 end;
 
 function TBlockSocket.RecvBufferFrom(Buffer: Pointer; Length: Integer): Integer;
@@ -847,6 +880,7 @@ begin
   Result := synsock.RecvFrom(FSocket, Buffer^, Length, 0, FRemoteSin, Len);
   SockCheck(Result);
   ExceptCheck;
+  DoStatus(HR_ReadCount, IntToStr(Result));
 end;
 
 function TBlockSocket.GetSizeRecvBuffer: Integer;
@@ -881,6 +915,18 @@ procedure TBlockSocket.SetSizeSendBuffer(Size: Integer);
 begin
   SockCheck(synsock.SetSockOpt(FSocket, SOL_SOCKET, SO_SNDBUF, @Size, SizeOf(Size)));
   ExceptCheck;
+end;
+
+procedure TBlockSocket.SetNonBlockMode(Value: Boolean);
+var
+  x: integer;
+begin
+  FNonBlockMode := Value;
+  if Value then
+    x := 1
+  else
+    x := 0;
+  synsock.IoctlSocket(FSocket, FIONBIO, u_long(x));
 end;
 
 //See 'winsock2.txt' file in distribute package!
@@ -938,6 +984,18 @@ begin
       if TObject(SocketList.Items[n]) is TBlockSocket then
         if FD_ISSET(TBlockSocket(SocketList.Items[n]).Socket, FDSet) then
           CanReadList.Add(TBlockSocket(SocketList.Items[n]));
+end;
+
+function TBlockSocket.EnableReuse(Value: Boolean): Boolean;
+var
+  Opt: Integer;
+  Res: Integer;
+begin
+  opt := Ord(Value);
+  Res := synsock.SetSockOpt(FSocket, SOL_SOCKET, SO_REUSEADDR, @Opt, SizeOf(opt));
+  SockCheck(Res);
+  Result := res = 0;
+  ExceptCheck;
 end;
 
 procedure TBlockSocket.DoStatus(Reason: THookSocketReason; const Value: string);
@@ -1044,7 +1102,7 @@ begin
     WSANOTINITIALISED: {10093}
       Result := 'Winsock not initialized';
     WSAEDISCON: {10101}
-      Result := 'WSAEDISCON-10101';
+      Result := 'Disconnect';
     WSAHOST_NOT_FOUND: {11001}
       Result := 'Host not found';
     WSATRY_AGAIN: {11002}
@@ -1325,6 +1383,28 @@ begin
   end;
 end;
 
+procedure TUDPBlockSocket.AddMulticast(MCastIP: string);
+var
+  Multicast: TMulticast;
+begin
+  Multicast.MCastAddr := synsock.inet_addr(PChar(MCastIP));
+  Multicast.MCastIfc := u_long(INADDR_ANY);
+  SockCheck(synsock.SetSockOpt(FSocket, IPPROTO_IP, IP_ADD_MEMBERSHIP,
+    pchar(@Multicast), SizeOf(Multicast)));
+  ExceptCheck;
+end;
+
+procedure TUDPBlockSocket.DropMulticast(MCastIP: string);
+var
+  Multicast: TMulticast;
+begin
+  Multicast.MCastAddr := synsock.inet_addr(PChar(MCastIP));
+  Multicast.MCastIfc := u_long(INADDR_ANY);
+  SockCheck(synsock.SetSockOpt(FSocket, IPPROTO_IP, IP_DROP_MEMBERSHIP,
+    pchar(@Multicast), SizeOf(Multicast)));
+  ExceptCheck;
+end;
+
 {======================================================================}
 
 procedure TTCPBlockSocket.CreateSocket;
@@ -1356,7 +1436,7 @@ begin
     if Sip = '0.0.0.0' then
       Sip := LocalName;
     SPort := IntToStr(GetLocalSinPort);
-    Connect(FSocksIP, FSocksPort);
+    inherited Connect(FSocksIP, FSocksPort);
     b := SocksOpen;
     if b then
       b := SocksRequest(2, Sip, SPort);

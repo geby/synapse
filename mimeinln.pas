@@ -1,5 +1,5 @@
 {==============================================================================|
-| Project : Delphree - Synapse                                   | 001.000.002 |
+| Project : Delphree - Synapse                                   | 001.000.003 |
 |==============================================================================|
 | Content: Inline MIME support procedures and functions                        |
 |==============================================================================|
@@ -72,7 +72,7 @@ begin
   Result := Value;
   x := Pos('=?', Result);
   y := SearchEndInline(Result, x);
-  while y > x do
+  while (y > x) and (x > 0) do  //fix by Marcus Moennig (minibbjd@gmx.de)
   begin
     s := Copy(Result, x, y - x + 2);
     su := Copy(s, 3, Length(s) - 4);

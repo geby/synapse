@@ -1,5 +1,5 @@
 {==============================================================================|
-| Project : Delphree - Synapse                                   | 001.005.002 |
+| Project : Delphree - Synapse                                   | 001.007.000 |
 |==============================================================================|
 | Content: MIME support procedures and functions                               |
 |==============================================================================|
@@ -44,6 +44,7 @@ type
     FPrimary: string;
     FEncoding: string;
     FCharset: string;
+    FDefaultCharset: string;
     FPrimaryCode: TMimePrimary;
     FEncodingCode: TMimeEncoding;
     FCharsetCode: TMimeChar;
@@ -71,6 +72,7 @@ type
     property Primary: string read FPrimary write SetPrimary;
     property Encoding: string read FEncoding write SetEncoding;
     property Charset: string read FCharset write SetCharset;
+    property DefaultCharset: string read FDefaultCharset write FDefaultCharset;
     property PrimaryCode: TMimePrimary read FPrimaryCode Write FPrimaryCode;
     property EncodingCode: TMimeEncoding read FEncodingCode Write FEncodingCode;
     property CharsetCode: TMimeChar read FCharsetCode Write FCharsetCode;
@@ -157,6 +159,7 @@ begin
   FLines := TStringList.Create;
   FDecodedLines := TMemoryStream.Create;
   FTargetCharset := GetCurCP;
+  FDefaultCharset := 'US-ASCII';
 end;
 
 destructor TMIMEPart.Destroy;
@@ -205,7 +208,7 @@ begin
     Primary := 'text';
     FSecondary := 'plain';
     FDescription := '';
-    Charset := 'US-ASCII';
+    Charset := FDefaultCharset;
     FFileName := '';
     Encoding := '7BIT';
 
@@ -337,10 +340,8 @@ begin
         if Pos('--' + b, s) = 1 then
         begin
           s := TrimRight(s);
-          x := Length(s);
-          if x > 4 then
-            if (s[x] = '-') and (S[x-1] = '-') then
-              Result := Value.Count - 1;
+          if s = ('--' + b + '--') then
+            Result := Value.Count - 1;
           Break;
         end;
       end;
@@ -406,8 +407,10 @@ end;
 procedure TMIMEPart.EncodePart;
 var
   l: TStringList;
-  s, buff: string;
+  s, t: string;
   n, x: Integer;
+const
+  MaxLine = 75;
 begin
   if (FEncodingCode = ME_UU) or (FEncodingCode = ME_XX) then
     Encoding := 'base64';
@@ -423,11 +426,9 @@ begin
         begin
           while FDecodedLines.Position < FDecodedLines.Size do
           begin
-            Setlength(Buff, 54);
-            s := '';
-            x := FDecodedLines.Read(pointer(Buff)^, 54);
-            for n := 1 to x do
-              s := s + Buff[n];
+            Setlength(s, 54);
+            x := FDecodedLines.Read(pointer(s)^, 54);
+            Setlength(s, x);
             if FPrimaryCode = MP_TEXT then
               s := CharsetConversion(s, FTargetCharset, FCharsetCode);
             s := EncodeBase64(s);
@@ -440,13 +441,23 @@ begin
           for n := 0 to l.Count - 1 do
           begin
             s := l[n];
-            if FPrimaryCode = MP_TEXT then
+            if (FPrimaryCode = MP_TEXT) and (FEncodingCode <> ME_7BIT) then
               s := CharsetConversion(s, FTargetCharset, FCharsetCode);
-            s := EncodeQuotedPrintable(s);
-            FLines.Add(s);
+            if FEncodingCode = ME_QUOTED_PRINTABLE then
+            begin
+              s := EncodeQuotedPrintable(s);
+              repeat
+                t := Copy(s, 1, MaxLine);
+                s := Copy(s, MaxLine + 1, Length(s) - MaxLine);
+                if s <> '' then
+                  t := t + '=';
+                FLines.Add(t);
+              until s = '';
+            end
+            else
+              FLines.Add(s);
           end;
         end;
-
     end;
     FLines.Add('');
     FLines.Insert(0, '');

@@ -1,5 +1,5 @@
 {==============================================================================|
-| Project : Delphree - Synapse                                   | 002.003.000 |
+| Project : Delphree - Synapse                                   | 002.007.001 |
 |==============================================================================|
 | Content: support procedures and functions                                    |
 |==============================================================================|
@@ -39,15 +39,22 @@ uses
   Windows;
 {$ENDIF}
 
-function Timezone: string;
+function TimeZoneBias: integer;
+function TimeZone: string;
 function Rfc822DateTime(t: TDateTime): string;
 function CDateTime(t: TDateTime): string;
+function SimpleDateTime(t: TDateTime): string;
+function DecodeRfcDateTime(Value: string): TDateTime;
+function GetUTTime: TDateTime;
+function SetUTTime(Newdt: TDateTime): Boolean;
+function GetTick: Cardinal;
 function CodeInt(Value: Word): string;
 function DecodeInt(const Value: string; Index: Integer): Word;
 function IsIP(const Value: string): Boolean;
 function ReverseIP(Value: string): string;
 function IPToID(Host: string): string;
 procedure Dump(const Buffer, DumpFile: string);
+procedure DumpEx(const Buffer, DumpFile: string);
 function SeparateLeft(const Value, Delimiter: string): string;
 function SeparateRight(const Value, Delimiter: string): string;
 function GetParameter(const Value, Parameter: string): string;
@@ -102,26 +109,19 @@ begin
 end;
 {==============================================================================}
 
-function Timezone: string;
+function TimeZoneBias: integer;
 {$IFDEF LINUX}
 var
   t: TTime_T;
   UT: TUnixTime;
-  bias: Integer;
-  h, m: Integer;
 begin
   __time(@T);
   localtime_r(@T, UT);
-  bias := ut.__tm_gmtoff div 60;
-  if bias >= 0 then
-    Result := '+'
-  else
-    Result := '-';
+  Result := ut.__tm_gmtoff div 60;
 {$ELSE}
 var
   zoneinfo: TTimeZoneInformation;
   bias: Integer;
-  h, m: Integer;
 begin
   case GetTimeZoneInformation(Zoneinfo) of
     2:
@@ -131,11 +131,22 @@ begin
   else
     bias := zoneinfo.Bias;
   end;
-  if bias <= 0 then
+  Result := bias * (-1);
+{$ENDIF}
+end;
+
+{==============================================================================}
+
+function TimeZone: string;
+var
+  bias: Integer;
+  h, m: Integer;
+begin
+  bias := TimeZoneBias;
+  if bias >= 0 then
     Result := '+'
   else
     Result := '-';
-{$ENDIF}
   bias := Abs(bias);
   h := bias div 60;
   m := bias mod 60;
@@ -148,7 +159,7 @@ function Rfc822DateTime(t: TDateTime): string;
 begin
   SaveNames;
   try
-    Result := FormatDateTime('ddd, d mmm yyyy hh:mm:ss', t);
+    Result := FormatDateTime('ddd, d mmm yyyy hh:nn:ss', t);
     Result := Result + ' ' + Timezone;
   finally
     RestoreNames;
@@ -161,13 +172,267 @@ function CDateTime(t: TDateTime): string;
 begin
   SaveNames;
   try
-    Result := FormatDateTime('mmm dd hh:mm:ss', t);
+    Result := FormatDateTime('mmm dd hh:nn:ss', t);
     if Result[5] = '0' then
       Result[5] := ' ';
   finally
     RestoreNames;
   end;
 end;
+
+{==============================================================================}
+
+function SimpleDateTime(t: TDateTime): string;
+begin
+  SaveNames;
+  try
+    Result := FormatDateTime('yymmdd hhnnss', t);
+  finally
+    RestoreNames;
+  end;
+end;
+
+{==============================================================================}
+
+function DecodeTimeZone(Value: string; var Zone: integer): Boolean;
+var
+  x: integer;
+  zh, zm: integer;
+  s: string;
+begin
+  Result := false;
+  s := Value;
+  if (Pos('+', s) = 1) or (Pos('-',s) = 1) then
+  begin
+    if s = '-0000' then
+      Zone := TimeZoneBias
+    else
+      if Length(s) > 4 then
+      begin
+        zh := StrToIntdef(s[2] + s[3], 0);
+        zm := StrToIntdef(s[4] + s[5], 0);
+        zone := zh * 60 + zm;
+        if s[1] = '-' then
+          zone := zone * (-1);
+      end;
+    Result := True;
+  end
+  else
+  begin
+    x := 32767;
+    if s = 'NZDT' then x := 13;
+    if s = 'IDLE' then x := 12;
+    if s = 'NZST' then x := 12;
+    if s = 'NZT' then x := 12;
+    if s = 'EADT' then x := 11;
+    if s = 'GST' then x := 10;
+    if s = 'JST' then x := 9;
+    if s = 'CCT' then x := 8;
+    if s = 'WADT' then x := 8;
+    if s = 'WAST' then x := 7;
+    if s = 'ZP6' then x := 6;
+    if s = 'ZP5' then x := 5;
+    if s = 'ZP4' then x := 4;
+    if s = 'BT' then x := 3;
+    if s = 'EET' then x := 2;
+    if s = 'MEST' then x := 2;
+    if s = 'MESZ' then x := 2;
+    if s = 'SST' then x := 2;
+    if s = 'FST' then x := 2;
+    if s = 'CEST' then x := 2;
+    if s = 'CET' then x := 1;
+    if s = 'FWT' then x := 1;
+    if s = 'MET' then x := 1;
+    if s = 'MEWT' then x := 1;
+    if s = 'SWT' then x := 1;
+    if s = 'UT' then x := 0;
+    if s = 'UTC' then x := 0;
+    if s = 'GMT' then x := 0;
+    if s = 'WET' then x := 0;
+    if s = 'WAT' then x := -1;
+    if s = 'BST' then x := -1;
+    if s = 'AT' then x := -2;
+    if s = 'ADT' then x := -3;
+    if s = 'AST' then x := -4;
+    if s = 'EDT' then x := -4;
+    if s = 'EST' then x := -5;
+    if s = 'CDT' then x := -5;
+    if s = 'CST' then x := -6;
+    if s = 'MDT' then x := -6;
+    if s = 'MST' then x := -7;
+    if s = 'PDT' then x := -7;
+    if s = 'PST' then x := -8;
+    if s = 'YDT' then x := -8;
+    if s = 'YST' then x := -9;
+    if s = 'HDT' then x := -9;
+    if s = 'AHST' then x := -10;
+    if s = 'CAT' then x := -10;
+    if s = 'HST' then x := -10;
+    if s = 'EAST' then x := -10;
+    if s = 'NT' then x := -11;
+    if s = 'IDLW' then x := -12;
+    if x <> 32767 then
+    begin
+      zone := x * 60;
+      Result := True;
+    end;
+  end;
+end;
+
+{==============================================================================}
+
+function DecodeRfcDateTime(Value: string): TDateTime;
+var
+  day, month, year: Word;
+  zone: integer;
+  x: integer;
+  s: string;
+  SaveSeparator: char;
+  n: integer;
+  t: TDateTime;
+begin
+// ddd, d mmm yyyy hh:mm:ss
+// ddd, d mmm yy hh:mm:ss
+// ddd, mmm d yyyy hh:mm:ss
+// ddd mmm dd hh:mm:ss yyyy
+//       Sun, 06 Nov 1994 08:49:37 GMT    ; RFC 822, updated by RFC 1123
+//       Sunday, 06-Nov-94 08:49:37 GMT   ; RFC 850, obsoleted by RFC 1036
+//       Sun Nov  6 08:49:37 1994         ; ANSI C's asctime() Format
+
+  Result := 0;
+  SaveSeparator := TimeSeparator;
+  try
+    TimeSeparator := ':';
+    day := 0;
+    month := 0;
+    year := 0;
+    zone := 0;
+    Value := StringReplace(Value, ' -', ' #');
+    Value := StringReplace(Value, '-', ' ');
+    Value := StringReplace(Value, ' #', ' -');
+    while Value <> '' do
+    begin
+      s := Fetch(Value, ' ');
+      s := uppercase(s);
+      // timezone
+      if DecodetimeZone(s, x) then
+      begin
+        zone := x;
+        continue;
+      end;
+      x := StrToIntDef(s, 0);
+      // day or year
+      if x > 0 then
+        if (x < 32) and (day = 0) then
+        begin
+          day := x;
+          continue;
+        end
+        else
+        begin
+          year := x;
+          if year < 32 then
+            year := year + 2000;
+          if year < 1000 then
+           year := year + 1900;
+          continue;
+        end;
+      // time
+      if rpos(':', s) > Pos(':', s) then
+      begin
+        t := 0;
+        try
+          t := StrToTime(s);
+        except
+          on Exception do ;
+        end;
+        if t <> 0 then
+          Result := t;
+        continue;
+      end;
+      //timezone daylight saving time
+      if s = 'DST' then
+      begin
+        zone := zone + 60;
+        continue;
+      end;
+      // month
+      for n := 1 to 12 do
+        if s = uppercase(MyMonthNames[n]) then
+        begin
+          month := n;
+          break;
+        end;
+    end;
+    Result := Result + Encodedate(year, month, day);
+    zone := zone - TimeZoneBias;
+    t := EncodeTime(Abs(zone) div 60, Abs(zone) mod 60, 0, 0);
+    if zone < 0 then
+      t := 0 - t;
+    Result := Result - t;
+  finally
+    TimeSeparator := SaveSeparator;
+  end;
+end;
+
+{==============================================================================}
+
+function GetUTTime: TDateTime;
+{$IFNDEF LINUX}
+var
+  st: TSystemTime;
+begin
+ GetSystemTime(st);
+ result:=SystemTimeToDateTime(st);
+{$ELSE}
+var
+  TV: TTimeVal;
+begin
+  gettimeofday(TV, nil);
+  Result:=UnixDateDelta + (TV.tv_sec + TV.tv_usec / 1000000) / 86400;
+{$ENDIF}
+end;
+
+{==============================================================================}
+
+function SetUTTime(Newdt: TDateTime): Boolean;
+{$IFNDEF LINUX}
+var
+  st: TSystemTime;
+begin
+ DateTimeToSystemTime(newdt,st);
+ Result:=SetSystemTime(st);
+{$ELSE}
+var
+  TV: TTimeVal;
+  d: double;
+  TZ: Ttimezone;
+begin
+  Result := false;
+  gettimeofday(TV, TZ);
+  d := (newdt - UnixDateDelta) * 86400;
+  TV.tv_sec := trunc(d);
+  TV.tv_usec := trunc(frac(d) * 1000000);
+  Result := settimeofday(TV, TZ) <> -1;
+{$ENDIF}
+end;
+
+{==============================================================================}
+
+{$IFDEF LINUX}
+function GetTick: Cardinal;
+var
+  Stamp: TTimeStamp;
+begin
+  Stamp := DateTimeToTimeStamp(Now);
+  Result := Stamp.Time;
+end;
+{$ELSE}
+function GetTick: Cardinal;
+begin
+  Result := Windows.GetTickCount;
+end;
+{$ENDIF}
 
 {==============================================================================}
 
@@ -278,6 +543,35 @@ end;
 
 {==============================================================================}
 
+procedure DumpEx(const Buffer, DumpFile: string);
+var
+  n: Integer;
+  x: Byte;
+  s: string;
+  f: Text;
+begin
+  s := '';
+  for n := 1 to Length(Buffer) do
+  begin
+    x := Ord(Buffer[n]);
+    if x in [65..90, 97..122] then
+      s := s + ' +''' + char(x) + ''''
+    else
+      s := s + ' +#$' + IntToHex(Ord(Buffer[n]), 2);
+  end;
+  AssignFile(f, DumpFile);
+  if FileExists(DumpFile) then
+    DeleteFile(PChar(DumpFile));
+  Rewrite(f);
+  try
+    Writeln(f, s);
+  finally
+    CloseFile(f);
+  end;
+end;
+
+{==============================================================================}
+
 function SeparateLeft(const Value, Delimiter: string): string;
 var
   x: Integer;
@@ -359,13 +653,13 @@ begin
     s := SeparateLeft(s, '"')
   else
   begin
-    s := SeparateRight(Value, '(');
-    if s <> Value then
-      s := SeparateLeft(s, ')')
-    else
+    s := SeparateLeft(Value, '<');
+    if s = Value then
     begin
-      s := SeparateLeft(Value, '<');
-      if s = Value then
+      s := SeparateRight(Value, '(');
+      if s <> Value then
+        s := SeparateLeft(s, ')')
+      else
         s := '';
     end;
   end;
@@ -449,7 +743,7 @@ begin
   else
     sURL := URL;
   x := Pos('@', sURL);
-  if x > 0 then
+  if (x > 0) and (x < Pos('/', sURL)) then
   begin
     s := SeparateLeft(sURL, '@');
     sURL := SeparateRight(sURL, '@');
@@ -547,9 +841,16 @@ end;
 {==============================================================================}
 
 function Fetch(var Value: string; const Delimiter: string): string;
+var
+  s: string;
 begin
   Result := SeparateLeft(Value, Delimiter);
-  Value := SeparateRight(Value, Delimiter);
+  s := SeparateRight(Value, Delimiter);
+  if s = Value then
+    Value := ''
+  else
+    Value := Trim(s);
+  Result := Trim(Result);
 end;
 
 end.

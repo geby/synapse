@@ -1,7 +1,7 @@
 {==============================================================================|
 | Project : Delphree - Synapse                                   | 001.003.004 |
 |==============================================================================|
-| Content: support for ASN.1 coding and decoding                               |
+| Content: support for ASN.1 BER coding and decoding                           |
 |==============================================================================|
 | The contents of this file are subject to the Mozilla Public License Ver. 1.1 |
 | (the "License"); you may not use this file except in compliance with the     |
