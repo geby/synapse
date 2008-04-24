@@ -1,9 +1,9 @@
 {==============================================================================|
-| Project : Delphree - Synapse                                   | 002.003.001 |
+| Project : Delphree - Synapse                                   | 002.003.002 |
 |==============================================================================|
 | Content: SNMP client                                                         |
 |==============================================================================|
-| The contents of this file are subject to the Mozilla Public License Ver. 1.0 |
+| The contents of this file are subject to the Mozilla Public License Ver. 1.1 |
 | (the "License"); you may not use this file except in compliance with the     |
 | License. You may obtain a copy of the License at http://www.mozilla.org/MPL/ |
 |                                                                              |
@@ -25,201 +25,213 @@
 |==============================================================================}
 
 {$Q-}
+{$WEAKPACKAGEUNIT ON}
 
 unit SNMPSend;
 
 interface
 
 uses
-  BlckSock, synautil, classes, sysutils, ASN1Util;
+  Classes, SysUtils,
+  blckSock, SynaUtil, ASN1Util;
 
 const
+  cSnmpProtocol = '161';
 
 //PDU type
-PDUGetRequest=$a0;
-PDUGetNextRequest=$a1;
-PDUGetResponse=$a2;
-PDUSetRequest=$a3;
-PDUTrap=$a4;
+  PDUGetRequest = $A0;
+  PDUGetNextRequest = $A1;
+  PDUGetResponse = $A2;
+  PDUSetRequest = $A3;
+  PDUTrap = $A4;
 
 //errors
-ENoError=0;
-ETooBig=1;
-ENoSuchName=2;
-EBadValue=3;
-EReadOnly=4;
-EGenErr=5;
+  ENoError = 0;
+  ETooBig = 1;
+  ENoSuchName = 2;
+  EBadValue = 3;
+  EReadOnly = 4;
+  EGenErr = 5;
 
 type
-
-TSNMPMib = class
-  OID: string;
-  Value: string;
-  ValueType: integer;
-end;
-
-TSNMPRec=class(TObject)
-  public
-    version:integer;
-    community:string;
-    PDUType:integer;
-    ID:integer;
-    ErrorStatus:integer;
-    ErrorIndex:integer;
-    SNMPMibList: TList;
-    constructor Create;
-    destructor Destroy; override;
-    function DecodeBuf(Buffer:string):boolean;
-    function EncodeBuf:string;
-    procedure Clear;
-    procedure MIBAdd(MIB,Value:string; ValueType:integer);
-    procedure MIBdelete(Index:integer);
-    function MIBGet(MIB:string):string;
-end;
-
-TSNMPSend=class(TObject)
+  TSNMPMib = class(TObject)
   private
-    Sock:TUDPBlockSocket;
-    Buffer:string;
+    FOID: string;
+    FValue: string;
+    FValueType: Integer;
+  published
+    property OID: string read FOID Write FOID;
+    property Value: string read FValue Write FValue;
+    property ValueType: Integer read FValueType Write FValueType;
+  end;
+
+  TSNMPRec = class(TObject)
+  private
+    FVersion: Integer;
+    FCommunity: string;
+    FPDUType: Integer;
+    FID: Integer;
+    FErrorStatus: Integer;
+    FErrorIndex: Integer;
+    FSNMPMibList: TList;
   public
-    Timeout:integer;
-    Host:string;
-    HostIP:string;
-    Query:TSNMPrec;
-    Reply:TSNMPrec;
     constructor Create;
     destructor Destroy; override;
-    function DoIt:boolean;
-end;
+    function DecodeBuf(const Buffer: string): Boolean;
+    function EncodeBuf: string;
+    procedure Clear;
+    procedure MIBAdd(const MIB, Value: string; ValueType: Integer);
+    procedure MIBDelete(Index: Integer);
+    function MIBGet(const MIB: string): string;
+  published
+    property Version: Integer read FVersion Write FVersion;
+    property Community: string read FCommunity Write FCommunity;
+    property PDUType: Integer read FPDUType Write FPDUType;
+    property ID: Integer read FID Write FID;
+    property ErrorStatus: Integer read FErrorStatus Write FErrorStatus;
+    property ErrorIndex: Integer read FErrorIndex Write FErrorIndex;
+    property SNMPMibList: TList read FSNMPMibList;
+  end;
 
-function SNMPget (Oid, Community, SNMPHost:string; var Value:string):Boolean;
-function SNMPSet (Oid, Community, SNMPHost, Value: string; ValueType: integer): boolean;
+  TSNMPSend = class(TObject)
+  private
+    FSock: TUDPBlockSocket;
+    FBuffer: string;
+    FTimeout: Integer;
+    FHost: string;
+    FHostIP: string;
+    FQuery: TSNMPRec;
+    FReply: TSNMPRec;
+  public
+    constructor Create;
+    destructor Destroy; override;
+    function DoIt: Boolean;
+  published
+    property Timeout: Integer read FTimeout Write FTimeout;
+    property Host: string read FHost Write FHost;
+    property HostIP: string read FHostIP;
+    property Query: TSNMPRec read FQuery;
+    property Reply: TSNMPRec read FReply;
+  end;
+
+function SNMPGet(const Oid, Community, SNMPHost: string;
+  var Value: string): Boolean;
+function SNMPSet(const Oid, Community, SNMPHost, Value: string;
+  ValueType: Integer): Boolean;
 
 implementation
 
 {==============================================================================}
 
-{TSNMPRec.Create}
 constructor TSNMPRec.Create;
 begin
-  inherited create;
-  SNMPMibList := TList.create;
-  id:=1;
+  inherited Create;
+  FSNMPMibList := TList.Create;
+  id := 1;
 end;
 
-{TSNMPRec.Destroy}
 destructor TSNMPRec.Destroy;
 var
-  i:integer;
+  i: Integer;
 begin
-  for i := 0 to SNMPMibList.count - 1 do
-    TSNMPMib(SNMPMibList[i]).Free;
-  SNMPMibList.free;
-  inherited destroy;
+  for i := 0 to FSNMPMibList.Count - 1 do
+    TSNMPMib(FSNMPMibList[i]).Free;
+  FSNMPMibList.Free;
+  inherited Destroy;
 end;
 
-{TSNMPRec.DecodeBuf}
-function TSNMPRec.DecodeBuf(Buffer:string):boolean;
+function TSNMPRec.DecodeBuf(const Buffer: string): Boolean;
 var
-  Pos:integer;
-  endpos:integer;
-  sm,sv:string;
-  svt: integer;
+  Pos: Integer;
+  EndPos: Integer;
+  sm, sv: string;
+  Svt: Integer;
 begin
-  result:=false;
-  if length(buffer)<2
-    then exit;
-  if (ord(buffer[1]) and $20)=0
-    then exit;
-  Pos:=2;
-  Endpos:=ASNDecLen(Pos,buffer);
-  if length(buffer)<(Endpos+2)
-    then exit;
-  Self.version:=StrToIntDef(ASNItem(Pos,buffer,svt),0);
-  Self.community:=ASNItem(Pos,buffer,svt);
-  Self.PDUType:=StrToIntDef(ASNItem(Pos,buffer,svt),0);
-  Self.ID:=StrToIntDef(ASNItem(Pos,buffer,svt),0);
-  Self.ErrorStatus:=StrToIntDef(ASNItem(Pos,buffer,svt),0);
-  Self.ErrorIndex:=StrToIntDef(ASNItem(Pos,buffer,svt),0);
-  ASNItem(Pos,buffer,svt);
-  while Pos<Endpos do
-    begin
-      ASNItem(Pos,buffer,svt);
-      Sm:=ASNItem(Pos,buffer,svt);
-      Sv:=ASNItem(Pos,buffer,svt);
-      Self.MIBadd(sm,sv, svt);
-    end;
-  result:=true;
+  Result := False;
+  if Length(Buffer) < 2 then
+    Exit;
+  if (Ord(Buffer[1]) and $20) = 0 then
+    Exit;
+  Pos := 2;
+  EndPos := ASNDecLen(Pos, Buffer);
+  if Length(Buffer) < (EndPos + 2) then
+    Exit;
+  Self.FVersion := StrToIntDef(ASNItem(Pos, Buffer, Svt), 0);
+  Self.FCommunity := ASNItem(Pos, Buffer, Svt);
+  Self.FPDUType := StrToIntDef(ASNItem(Pos, Buffer, Svt), 0);
+  Self.FID := StrToIntDef(ASNItem(Pos, Buffer, Svt), 0);
+  Self.FErrorStatus := StrToIntDef(ASNItem(Pos, Buffer, Svt), 0);
+  Self.FErrorIndex := StrToIntDef(ASNItem(Pos, Buffer, Svt), 0);
+  ASNItem(Pos, Buffer, Svt);
+  while Pos < EndPos do
+  begin
+    ASNItem(Pos, Buffer, Svt);
+    Sm := ASNItem(Pos, Buffer, Svt);
+    Sv := ASNItem(Pos, Buffer, Svt);
+    Self.MIBAdd(sm, sv, Svt);
+  end;
+  Result := True;
 end;
 
-{TSNMPRec.EncodeBuf}
-function TSNMPRec.EncodeBuf:string;
+function TSNMPRec.EncodeBuf: string;
 var
-  data,s:string;
+  data, s: string;
   SNMPMib: TSNMPMib;
-  n:integer;
+  n: Integer;
 begin
-  data:='';
-  for n:=0 to SNMPMibList.Count-1 do
-    begin
-      SNMPMib := SNMPMibList[n];
-      case (SNMPMib.ValueType) of
-        ASN1_INT:
-          begin
-            s := ASNObject(MibToID(SNMPMib.OID),ASN1_OBJID)
-              +ASNObject(ASNEncInt(strToIntDef(SNMPMib.Value,0)),SNMPMib.ValueType);
-          end;
-        ASN1_COUNTER, ASN1_GAUGE, ASN1_TIMETICKS:
-          begin
-            s := ASNObject(MibToID(SNMPMib.OID),ASN1_OBJID)
-              +ASNObject(ASNEncUInt(strToIntDef(SNMPMib.Value,0)),SNMPMib.ValueType);
-          end;
-        ASN1_OBJID:
-          begin
-            s := ASNObject(MibToID(SNMPMib.OID),ASN1_OBJID) + ASNObject(MibToID(SNMPMib.Value),SNMPMib.ValueType);
-          end;
-        ASN1_IPADDR:
-          begin
-            s := ASNObject(MibToID(SNMPMib.OID),ASN1_OBJID) + ASNObject(IPToID(SNMPMib.Value),SNMPMib.ValueType);
-          end;
-        ASN1_NULL:
-          begin
-            s := ASNObject(MibToID(SNMPMib.OID),ASN1_OBJID) + ASNObject('',ASN1_NULL);
-          end;
-        else
-          s := ASNObject(MibToID(SNMPMib.OID),ASN1_OBJID) + ASNObject(SNMPMib.Value,SNMPMib.ValueType);
-      end;
-      data := data + ASNObject(s, ASN1_SEQ);
+  data := '';
+  for n := 0 to FSNMPMibList.Count - 1 do
+  begin
+    SNMPMib := FSNMPMibList[n];
+    case SNMPMib.ValueType of
+      ASN1_INT:
+        s := ASNObject(MibToID(SNMPMib.OID), ASN1_OBJID) +
+          ASNObject(ASNEncInt(StrToIntDef(SNMPMib.Value, 0)), SNMPMib.ValueType);
+      ASN1_COUNTER, ASN1_GAUGE, ASN1_TIMETICKS:
+        s := ASNObject(MibToID(SNMPMib.OID), ASN1_OBJID) +
+          ASNObject(ASNEncUInt(StrToIntDef(SNMPMib.Value, 0)), SNMPMib.ValueType);
+      ASN1_OBJID:
+        s := ASNObject(MibToID(SNMPMib.OID), ASN1_OBJID) +
+          ASNObject(MibToID(SNMPMib.Value), SNMPMib.ValueType);
+      ASN1_IPADDR:
+        s := ASNObject(MibToID(SNMPMib.OID), ASN1_OBJID) +
+          ASNObject(IPToID(SNMPMib.Value), SNMPMib.ValueType);
+      ASN1_NULL:
+        s := ASNObject(MibToID(SNMPMib.OID), ASN1_OBJID) +
+          ASNObject('', ASN1_NULL);
+    else
+      s := ASNObject(MibToID(SNMPMib.OID), ASN1_OBJID) +
+        ASNObject(SNMPMib.Value, SNMPMib.ValueType);
     end;
-  data:=ASNObject(data,ASN1_SEQ);
-  data:=ASNObject(ASNEncInt(Self.ID),ASN1_INT)
-    +ASNObject(ASNEncInt(Self.ErrorStatus),ASN1_INT)
-    +ASNObject(ASNEncInt(Self.ErrorIndex),ASN1_INT)
-    +data;
-  data:=ASNObject(ASNEncInt(Self.Version),ASN1_INT)
-    +ASNObject(Self.community,ASN1_OCTSTR)
-    +ASNObject(data,Self.PDUType);
-  data:=ASNObject(data,ASN1_SEQ);
-  Result:=data;
+    data := data + ASNObject(s, ASN1_SEQ);
+  end;
+  data := ASNObject(data, ASN1_SEQ);
+  data := ASNObject(ASNEncInt(Self.FID), ASN1_INT) +
+    ASNObject(ASNEncInt(Self.FErrorStatus), ASN1_INT) +
+    ASNObject(ASNEncInt(Self.FErrorIndex), ASN1_INT) +
+    data;
+  data := ASNObject(ASNEncInt(Self.FVersion), ASN1_INT) +
+    ASNObject(Self.FCommunity, ASN1_OCTSTR) +
+    ASNObject(data, Self.FPDUType);
+  data := ASNObject(data, ASN1_SEQ);
+  Result := data;
 end;
 
-{TSNMPRec.Clear}
 procedure TSNMPRec.Clear;
 var
-  i:integer;
+  i: Integer;
 begin
-  version:=0;
-  community:='';
-  PDUType:=0;
-  ErrorStatus:=0;
-  ErrorIndex:=0;
-  for i := 0 to SNMPMibList.count - 1 do
-    TSNMPMib(SNMPMibList[i]).Free;
-  SNMPMibList.Clear;
+  FVersion := 0;
+  FCommunity := '';
+  FPDUType := 0;
+  FErrorStatus := 0;
+  FErrorIndex := 0;
+  for i := 0 to FSNMPMibList.Count - 1 do
+    TSNMPMib(FSNMPMibList[i]).Free;
+  FSNMPMibList.Clear;
 end;
 
-{TSNMPRec.MIBAdd}
-procedure TSNMPRec.MIBAdd(MIB,Value:string; ValueType:integer);
+procedure TSNMPRec.MIBAdd(const MIB, Value: string; ValueType: Integer);
 var
   SNMPMib: TSNMPMib;
 begin
@@ -227,122 +239,117 @@ begin
   SNMPMib.OID := MIB;
   SNMPMib.Value := Value;
   SNMPMib.ValueType := ValueType;
-  SNMPMibList.Add(SNMPMib);
+  FSNMPMibList.Add(SNMPMib);
 end;
 
-{TSNMPRec.MIBdelete}
-procedure TSNMPRec.MIBdelete(Index:integer);
+procedure TSNMPRec.MIBDelete(Index: Integer);
 begin
-  if (Index >= 0) and (Index < SNMPMibList.count) then
-    begin
-      TSNMPMib(SNMPMibList[Index]).Free;
-      SNMPMibList.Delete(Index);
-    end;
+  if (Index >= 0) and (Index < FSNMPMibList.Count) then
+  begin
+    TSNMPMib(FSNMPMibList[Index]).Free;
+    FSNMPMibList.Delete(Index);
+  end;
 end;
 
-{TSNMPRec.MIBGet}
-function TSNMPRec.MIBGet(MIB:string):string;
+function TSNMPRec.MIBGet(const MIB: string): string;
 var
-  i: integer;
+  i: Integer;
 begin
   Result := '';
-  for i := 0 to SNMPMibList.count - 1 do
+  for i := 0 to FSNMPMibList.Count - 1 do
+  begin
+    if ((TSNMPMib(FSNMPMibList[i])).OID = MIB) then
     begin
-      if ((TSNMPMib(SNMPMibList[i])).OID = MIB) then
-      begin
-        Result := (TSNMPMib(SNMPMibList[i])).Value;
-        break;
-      end;
+      Result := (TSNMPMib(FSNMPMibList[i])).Value;
+      Break;
     end;
+  end;
 end;
-
 
 {==============================================================================}
 
-{TSNMPSend.Create}
 constructor TSNMPSend.Create;
 begin
-  inherited create;
-  Query:=TSNMPRec.Create;
-  Reply:=TSNMPRec.Create;
-  Query.Clear;
-  Reply.Clear;
-  sock:=TUDPBlockSocket.create;
-  sock.createsocket;
-  timeout:=5000;
-  host:='localhost';
-  HostIP:='';
+  inherited Create;
+  FQuery := TSNMPRec.Create;
+  FReply := TSNMPRec.Create;
+  FQuery.Clear;
+  FReply.Clear;
+  FSock := TUDPBlockSocket.Create;
+  FSock.CreateSocket;
+  FTimeout := 5000;
+  FHost := cLocalhost;
+  FHostIP := '';
 end;
 
-{TSNMPSend.Destroy}
 destructor TSNMPSend.Destroy;
 begin
-  Sock.Free;
-  Reply.Free;
-  Query.Free;
-  inherited destroy;
+  FSock.Free;
+  FReply.Free;
+  FQuery.Free;
+  inherited Destroy;
 end;
 
-{TSNMPSend.DoIt}
-function TSNMPSend.DoIt:boolean;
+function TSNMPSend.DoIt: Boolean;
 var
-  x:integer;
+  x: Integer;
 begin
-  Result:=false;
-  reply.clear;
-  Buffer:=Query.Encodebuf;
-  sock.connect(host,'161');
-  HostIP:=sock.GetRemoteSinIP;
-  sock.SendBuffer(PChar(Buffer),Length(Buffer));
-  if sock.canread(timeout)
-    then begin
-      x:=sock.WaitingData;
-      if x>0 then
-        begin
-          setlength(Buffer,x);
-          sock.RecvBuffer(PChar(Buffer),x);
-          result:=true;
-        end;
+  Result := False;
+  FReply.Clear;
+  FBuffer := Query.EncodeBuf;
+  FSock.Connect(FHost, cSnmpProtocol);
+  FHostIP := FSock.GetRemoteSinIP;
+  FSock.SendBuffer(PChar(FBuffer), Length(FBuffer));
+  if FSock.CanRead(FTimeout) then
+  begin
+    x := FSock.WaitingData;
+    if x > 0 then
+    begin
+      SetLength(FBuffer, x);
+      FSock.RecvBuffer(PChar(FBuffer), x);
+      Result := True;
     end;
-  if Result
-    then result:=reply.DecodeBuf(Buffer);
+  end;
+  if Result then
+    Result := FReply.DecodeBuf(FBuffer);
 end;
 
 {==============================================================================}
 
-function SNMPget (Oid, Community, SNMPHost:string; var Value:string):Boolean;
+function SNMPGet(const Oid, Community, SNMPHost: string;
+  var Value: string): Boolean;
 var
-  SNMP:TSNMPSend;
+  SNMP: TSNMPSend;
 begin
-  SNMP:=TSNMPSend.Create;
+  SNMP := TSNMPSend.Create;
   try
-    Snmp.Query.community:=Community;
-    Snmp.Query.PDUType:=PDUGetRequest;
-    Snmp.Query.MIBAdd(Oid,'',ASN1_NULL);
-    Snmp.host:=SNMPHost;
-    Result:=Snmp.DoIt;
+    SNMP.Query.Community := Community;
+    SNMP.Query.PDUType := PDUGetRequest;
+    SNMP.Query.MIBAdd(Oid, '', ASN1_NULL);
+    SNMP.Host := SNMPHost;
+    Result := SNMP.DoIt;
     if Result then
-      Value:=Snmp.Reply.MIBGet(Oid);
+      Value := SNMP.Reply.MIBGet(Oid);
   finally
     SNMP.Free;
   end;
 end;
 
-function SNMPSet(Oid, Community, SNMPHost, Value: string; ValueType: integer): boolean;
+function SNMPSet(const Oid, Community, SNMPHost, Value: string;
+  ValueType: Integer): Boolean;
 var
   SNMPSend: TSNMPSend;
 begin
   SNMPSend := TSNMPSend.Create;
   try
-    SNMPSend.Query.community := Community;
+    SNMPSend.Query.Community := Community;
     SNMPSend.Query.PDUType := PDUSetRequest;
     SNMPSend.Query.MIBAdd(Oid, Value, ValueType);
     SNMPSend.Host := SNMPHost;
-    result:= SNMPSend.DoIt=true;
+    Result := SNMPSend.DoIt = True;
   finally
     SNMPSend.Free;
   end;
 end;
-
 
 end.

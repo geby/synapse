@@ -1,11 +1,11 @@
 {==============================================================================|
-| Project : Delphree - Synapse                                   | 001.000.001 |
+| Project : Delphree - Synapse                                   | 001.000.002 |
 |==============================================================================|
 | Content: Inline MIME support procedures and functions                        |
 |==============================================================================|
-| The contents of this file are subject to the Mozilla Public License Ver. 1.0 |
+| The contents of this file are subject to the Mozilla Public License Ver. 1.1 |
 | (the "License"); you may not use this file except in compliance with the     |
-| License. You may obtain a copy of the License at http://www.mozilla.org/MPL/ |
+| License. You may obtain a Copy of the License at http://www.mozilla.org/MPL/ |
 |                                                                              |
 | Software distributed under the License is distributed on an "AS IS" basis,   |
 | WITHOUT WARRANTY OF ANY KIND, either express or implied. See the License for |
@@ -14,7 +14,7 @@
 | The Original Code is Synapse Delphi Library.                                 |
 |==============================================================================|
 | The Initial Developer of the Original Code is Lukas Gebauer (Czech Republic).|
-| Portions created by Lukas Gebauer are Copyright (c)2000.                     |
+| Portions created by Lukas Gebauer are Copyright (c)2000,2001.                |
 | All Rights Reserved.                                                         |
 |==============================================================================|
 | Contributor(s):                                                              |
@@ -23,151 +23,151 @@
 |          (Found at URL: http://www.ararat.cz/synapse/)                       |
 |==============================================================================}
 
+{$WEAKPACKAGEUNIT ON}
+
 unit MIMEinLn;
 
 interface
 
 uses
-  sysutils, classes, MIMEchar, SynaCode, SynaUtil;
+  SysUtils, Classes,
+  SynaChar, SynaCode, SynaUtil;
 
-function InlineDecode(value:string;CP:TMimeChar):string;
-function InlineEncode(value:string;CP,MimeP:TMimeChar):string;
-Function NeedInline(value:string):boolean;
-function InlineCode(value:string):string;
-function InlineEmail(value:string):string;
+function InlineDecode(const Value: string; CP: TMimeChar): string;
+function InlineEncode(const Value: string; CP, MimeP: TMimeChar): string;
+function NeedInline(const Value: string): boolean;
+function InlineCode(const Value: string): string;
+function InlineEmail(const Value: string): string;
 
 implementation
 
 {==============================================================================}
-{InlineDecode}
-function InlineDecode(value:string;CP:TMimeChar):string;
-var
-  s,su:string;
-  x,y,z,n:integer;
-  ichar:TMimeChar;
-  c:char;
 
-  function SearchEndInline(value:string;be:integer):integer;
+function InlineDecode(const Value: string; CP: TMimeChar): string;
+var
+  s, su: string;
+  x, y, z, n: Integer;
+  ichar: TMimeChar;
+  c: Char;
+
+  function SearchEndInline(const Value: string; be: Integer): Integer;
   var
-    n,q:integer;
+    n, q: Integer;
   begin
-    q:=0;
-    result:=0;
-    for n:=be+2 to length(value)-1 do
-      if value[n]='?' then
+    q := 0;
+    Result := 0;
+    for n := be + 2 to Length(Value) - 1 do
+      if Value[n] = '?' then
+      begin
+        Inc(q);
+        if (q > 2) and (Value[n + 1] = '=') then
         begin
-          inc(q);
-          if (q>2) and (value[n+1]='=') then
-            begin
-              result:=n;
-              break;
-            end;
+          Result := n;
+          Break;
         end;
+      end;
   end;
 
 begin
-  result:=value;
-  x:=pos('=?',result);
-  y:=SearchEndInline(result,x);
-  while y>x do
+  Result := Value;
+  x := Pos('=?', Result);
+  y := SearchEndInline(Result, x);
+  while y > x do
+  begin
+    s := Copy(Result, x, y - x + 2);
+    su := Copy(s, 3, Length(s) - 4);
+    ichar := GetCPFromID(su);
+    z := Pos('?', su);
+    if (Length(su) >= (z + 2)) and (su[z + 2] = '?') then
     begin
-      s:=copy(result,x,y-x+2);
-      su:=copy(s,3,length(s)-4);
-      ichar:=GetCPfromID(su);
-      z:=pos('?',su);
-      if (length(su)>=(z+2)) and (su[z+2]='?') then
-        begin
-          c:=uppercase(su)[z+1];
-          su:=copy(su,z+3,length(su)-z-2);
-          if c='B' then
-            begin
-              s:=DecodeBase64(su);
-              s:=DecodeChar(s,ichar,CP);
-            end;
-          if c='Q' then
-            begin
-              s:='';
-              for n:=1 to length(su) do
-                if su[n]='_'
-                  then s:=s+' '
-                  else s:=s+su[n];
-              s:=DecodeQuotedprintable(s);
-              s:=DecodeChar(s,ichar,CP);
-            end;
-        end;
-      result:=copy(result,1,x-1)+s+copy(result,y+2,length(result)-y-1);
-      x:=pos('=?',result);
-      y:=SearchEndInline(result,x);
+      c := UpperCase(su)[z + 1];
+      su := Copy(su, z + 3, Length(su) - z - 2);
+      if c = 'B' then
+      begin
+        s := DecodeBase64(su);
+        s := CharsetConversion(s, ichar, CP);
+      end;
+      if c = 'Q' then
+      begin
+        s := '';
+        for n := 1 to Length(su) do
+          if su[n] = '_' then
+            s := s + ' '
+          else
+            s := s + su[n];
+        s := DecodeQuotedPrintable(s);
+        s := CharsetConversion(s, ichar, CP);
+      end;
+    end;
+    Result := Copy(Result, 1, x - 1) + s +
+      Copy(Result, y + 2, Length(Result) - y - 1);
+    x := Pos('=?', Result);
+    y := SearchEndInline(Result, x);
+  end;
+end;
+
+{==============================================================================}
+
+function InlineEncode(const Value: string; CP, MimeP: TMimeChar): string;
+var
+  s, s1: string;
+  n: Integer;
+begin
+  s := CharsetConversion(Value, CP, MimeP);
+  s := EncodeQuotedPrintable(s);
+  s1 := '';
+  for n := 1 to Length(s) do
+    if s[n] = ' ' then
+      s1 := s1 + '=20'
+    else
+      s1 := s1 + s[n];
+  Result := '=?' + GetIdFromCP(MimeP) + '?Q?' + s1 + '?=';
+end;
+
+{==============================================================================}
+
+function NeedInline(const Value: string): boolean;
+var
+  n: Integer;
+begin
+  Result := False;
+  for n := 1 to Length(Value) do
+    if Value[n] in (SpecialChar + [Char(1)..Char(31), Char(128)..Char(255)]) then
+    begin
+      Result := True;
+      Break;
     end;
 end;
 
 {==============================================================================}
-{InlineEncode}
-function InlineEncode(value:string;CP,MimeP:TMimeChar):string;
-var
-  s,s1:string;
-  n:integer;
-begin
-  s:=DecodeChar(value,CP,MimeP);
-  s:=EncodeQuotedPrintable(s);
-  s1:='';
-  for n:=1 to length(s) do
-    if s[n]=' '
-      then s1:=s1+'=20'
-      else s1:=s1+s[n];
-  result:='=?'+GetIdFromCP(MimeP)+'?Q?'+s1+'?=';
-end;
 
-{==============================================================================}
-{NeedInline}
-Function NeedInline(value:string):boolean;
+function InlineCode(const Value: string): string;
 var
-  n:integer;
+  c: TMimeChar;
 begin
-  result:=false;
-  for n:=1 to length(value) do
-    if value[n] in (SpecialChar+[char(1)..char(31),char(128)..char(255)]) then
-      begin
-        result:=true;
-        break;
-      end;
-end;
-
-{==============================================================================}
-{InlineCode}
-function InlineCode(value:string):string;
-var
-  c:TMimeChar;
-begin
-  if NeedInline(value)
-    then
-      begin
-        c:=IdealCoding(value,GetCurCP,
-          [ISO_8859_1, ISO_8859_2, ISO_8859_3, ISO_8859_4, ISO_8859_5,
-          ISO_8859_6, ISO_8859_7, ISO_8859_8, ISO_8859_9, ISO_8859_10]);
-        result:=InlineEncode(value,GetCurCP,c);
-      end
-    else result:=value;
-end;
-
-{==============================================================================}
-{InlineEmail}
-function InlineEmail(value:string):string;
-var
-  sd,se:string;
-begin
-  sd:=getEmaildesc(value);
-  se:=getEmailAddr(value);
-  if sd=''
-    then result:=se
-    else result:='"'+InlineCode(sd)+'"<'+se+'>';
+  if NeedInline(Value) then
+  begin
+    c := IdealCharsetCoding(Value, GetCurCP,
+      [ISO_8859_1, ISO_8859_2, ISO_8859_3, ISO_8859_4, ISO_8859_5,
+      ISO_8859_6, ISO_8859_7, ISO_8859_8, ISO_8859_9, ISO_8859_10]);
+    Result := InlineEncode(Value, GetCurCP, c);
+  end
+  else
+    Result := Value;
 end;
 
 {==============================================================================}
 
+function InlineEmail(const Value: string): string;
+var
+  sd, se: string;
 begin
-  exit;
-  asm
-    db 'Synapse Inline MIME encoding and decoding library by Lukas Gebauer',0
-  end;
+  sd := GetEmailDesc(Value);
+  se := GetEmailAddr(Value);
+  if sd = '' then
+    Result := se
+  else
+    Result := '"' + InlineCode(sd) + '"<' + se + '>';
+end;
+
 end.

@@ -1,9 +1,9 @@
 {==============================================================================|
-| Project : Delphree - Synapse                                   | 001.001.000 |
+| Project : Delphree - Synapse                                   | 001.001.001 |
 |==============================================================================|
 | Content: POP3 client                                                         |
 |==============================================================================|
-| The contents of this file are subject to the Mozilla Public License Ver. 1.0 |
+| The contents of this file are subject to the Mozilla Public License Ver. 1.1 |
 | (the "License"); you may not use this file except in compliance with the     |
 | License. You may obtain a copy of the License at http://www.mozilla.org/MPL/ |
 |                                                                              |
@@ -23,252 +23,239 @@
 |          (Found at URL: http://www.ararat.cz/synapse/)                       |
 |==============================================================================}
 
+{$WEAKPACKAGEUNIT ON}
+
 unit POP3send;
 
 interface
+
 uses
-  Blcksock, sysutils, classes, SynaUtil, SynaCode;
+  SysUtils, Classes,
+  blcksock, SynaUtil, SynaCode;
 
 const
-  CRLF=#13+#10;
+  cPop3Protocol = 'pop3';
 
 type
-  TPOP3AuthType = (POP3AuthAll,POP3AuthLogin,POP3AuthAPOP);
+  TPOP3AuthType = (POP3AuthAll, POP3AuthLogin, POP3AuthAPOP);
 
-  TPOP3Send = class
+  TPOP3Send = class(TObject)
   private
-    Sock:TTCPBlockSocket;
-    function ReadResult(full:boolean):integer;
-    function Connect:Boolean;
+    FSock: TTCPBlockSocket;
+    FTimeout: Integer;
+    FPOP3Host: string;
+    FPOP3Port: string;
+    FResultCode: Integer;
+    FResultString: string;
+    FFullResult: TStringList;
+    FUsername: string;
+    FPassword: string;
+    FStatCount: Integer;
+    FStatSize: Integer;
+    FTimeStamp: string;
+    FAuthType: TPOP3AuthType;
+    function ReadResult(Full: Boolean): Integer;
+    function Connect: Boolean;
+    function AuthLogin: Boolean;
+    function AuthApop: Boolean;
   public
-    timeout:integer;
-    POP3Host:string;
-    POP3Port:string;
-    ResultCode:integer;
-    ResultString:string;
-    FullResult:TStringList;
-    Username:string;
-    Password:string;
-    StatCount:integer;
-    StatSize:integer;
-    TimeStamp:string;
-    AuthType:TPOP3AuthType;
-    Constructor Create;
-    Destructor Destroy; override;
-    function AuthLogin:Boolean;
-    function AuthApop:Boolean;
-    function login:Boolean;
-    procedure logout;
-    function reset:Boolean;
-    function noop:Boolean;
-    function stat:Boolean;
-    function list(value:integer):Boolean;
-    function retr(value:integer):Boolean;
-    function dele(value:integer):Boolean;
-    function top(value,maxlines:integer):Boolean;
-    function uidl(value:integer):Boolean;
+    constructor Create;
+    destructor Destroy; override;
+    function Login: Boolean;
+    procedure Logout;
+    function Reset: Boolean;
+    function NoOp: Boolean;
+    function Stat: Boolean;
+    function List(Value: Integer): Boolean;
+    function Retr(Value: Integer): Boolean;
+    function Dele(Value: Integer): Boolean;
+    function Top(Value, Maxlines: Integer): Boolean;
+    function Uidl(Value: Integer): Boolean;
+  published
+    property Timeout: Integer read FTimeout Write FTimeout;
+    property POP3Host: string read FPOP3Host Write FPOP3Host;
+    property POP3Port: string read FPOP3Port Write FPOP3Port;
+    property ResultCode: Integer read FResultCode;
+    property ResultString: string read FResultString;
+    property FullResult: TStringList read FFullResult;
+    property Username: string read FUsername Write FUsername;
+    property Password: string read FPassword Write FPassword;
+    property StatCount: Integer read FStatCount;
+    property StatSize: Integer read  FStatSize;
+    property TimeStamp: string read FTimeStamp;
+    property AuthType: TPOP3AuthType read FAuthType Write FAuthType;
   end;
 
 implementation
 
-{TPOP3Send.Create}
-Constructor TPOP3Send.Create;
+const
+  CRLF = #13#10;
+
+constructor TPOP3Send.Create;
 begin
   inherited Create;
-  FullResult:=TStringList.create;
-  sock:=TTCPBlockSocket.create;
-  sock.CreateSocket;
-  timeout:=300000;
-  POP3host:='localhost';
-  POP3Port:='pop3';
-  Username:='';
-  Password:='';
-  StatCount:=0;
-  StatSize:=0;
-  AuthType:=POP3AuthAll;
+  FFullResult := TStringList.Create;
+  FSock := TTCPBlockSocket.Create;
+  FSock.CreateSocket;
+  FTimeout := 300000;
+  FPOP3host := cLocalhost;
+  FPOP3Port := cPop3Protocol;
+  FUsername := '';
+  FPassword := '';
+  FStatCount := 0;
+  FStatSize := 0;
+  FAuthType := POP3AuthAll;
 end;
 
-{TPOP3Send.Destroy}
-Destructor TPOP3Send.Destroy;
+destructor TPOP3Send.Destroy;
 begin
-  Sock.free;
-  FullResult.free;
-  inherited destroy;
+  FSock.Free;
+  FullResult.Free;
+  inherited Destroy;
 end;
 
-{TPOP3Send.ReadResult}
-function TPOP3Send.ReadResult(full:boolean):integer;
+function TPOP3Send.ReadResult(Full: Boolean): Integer;
 var
-  s:string;
+  s: string;
 begin
-  Result:=0;
-  FullResult.Clear;
-  s:=sock.recvstring(timeout);
-  if pos('+OK',s)=1
-    then result:=1;
-  ResultString:=s;
-  if full and (result=1)then
+  Result := 0;
+  FFullResult.Clear;
+  s := FSock.RecvString(FTimeout);
+  if Pos('+OK', s) = 1 then
+    Result := 1;
+  FResultString := s;
+  if Full and (Result = 1) then
     repeat
-      s:=sock.recvstring(timeout);
-      if s='.'
-        then break;
-      FullResult.add(s);
-    until sock.LastError<>0;
-  ResultCode:=Result;
+      s := FSock.RecvString(FTimeout);
+      if s = '.' then
+        Break;
+      FFullResult.Add(s);
+    until FSock.LastError <> 0;
+  FResultCode := Result;
 end;
 
-{TPOP3Send.AuthLogin}
-function TPOP3Send.AuthLogin:Boolean;
+function TPOP3Send.AuthLogin: Boolean;
 begin
-  Result:=false;
-  Sock.SendString('USER '+username+CRLF);
-  if readresult(false)<>1 then Exit;
-  Sock.SendString('PASS '+password+CRLF);
-  if readresult(false)<>1 then Exit;
-  Result:=True;
+  Result := False;
+  FSock.SendString('USER ' + FUserName + CRLF);
+  if ReadResult(False) <> 1 then
+    Exit;
+  FSock.SendString('PASS ' + FPassword + CRLF);
+  Result := ReadResult(False) = 1;
 end;
 
-{TPOP3Send.AuthAPop}
-function TPOP3Send.AuthAPOP:Boolean;
+function TPOP3Send.AuthAPOP: Boolean;
 var
-  s:string;
+  s: string;
 begin
-  Result:=false;
-  s:=StrToHex(MD5(TimeStamp+PassWord));
-  Sock.SendString('APOP '+username+' '+s+CRLF);
-  if readresult(false)<>1 then Exit;
-  Result:=True;
+  s := StrToHex(MD5(FTimeStamp + FPassWord));
+  FSock.SendString('APOP ' + FUserName + ' ' + s + CRLF);
+  Result := ReadResult(False) = 1;
 end;
 
-
-{TPOP3Send.Connect}
-function TPOP3Send.Connect:Boolean;
+function TPOP3Send.Connect: Boolean;
 begin
-//Do not call this function! It is calling by LOGIN method!
-  Result:=false;
-  StatCount:=0;
-  StatSize:=0;
-  sock.CloseSocket;
-  sock.LineBuffer:='';
-  sock.CreateSocket;
-  sock.Connect(POP3Host,POP3Port);
-  if sock.lasterror<>0 then Exit;
-  Result:=True;
+  // Do not call this function! It is calling by LOGIN method!
+  FStatCount := 0;
+  FStatSize := 0;
+  FSock.CloseSocket;
+  FSock.LineBuffer := '';
+  FSock.CreateSocket;
+  FSock.Connect(POP3Host, POP3Port);
+  Result := FSock.LastError = 0;
 end;
 
-{TPOP3Send.login}
-function TPOP3Send.login:Boolean;
+function TPOP3Send.Login: Boolean;
 var
-  s,s1:string;
+  s, s1: string;
 begin
-  Result:=False;
-  TimeStamp:='';
-  if not Connect then Exit;
-  if readresult(false)<>1 then Exit;
-  s:=separateright(Resultstring,'<');
-  if s<>Resultstring then
-    begin
-      s1:=separateleft(s,'>');
-      if s1<>s
-        then TimeStamp:='<'+s1+'>';
-    end;
-  result:=false;
-  if (TimeStamp<>'') and not(AuthType=POP3AuthLogin)
-    then result:=AuthApop;
-  if not(Result) and not(AuthType=POP3AuthAPOP)
-    then result:=AuthLogin;
+  Result := False;
+  FTimeStamp := '';
+  if not Connect then
+    Exit;
+  if ReadResult(False) <> 1 then
+    Exit;
+  s := SeparateRight(FResultString, '<');
+  if s <> FResultString then
+  begin
+    s1 := SeparateLeft(s, '>');
+    if s1 <> s then
+      FTimeStamp := '<' + s1 + '>';
+  end;
+  Result := False;
+  if (FTimeStamp <> '') and not (FAuthType = POP3AuthLogin) then
+    Result := AuthApop;
+  if not Result and not (FAuthType = POP3AuthAPOP) then
+    Result := AuthLogin;
 end;
 
-{TPOP3Send.logout}
-procedure TPOP3Send.logout;
+procedure TPOP3Send.Logout;
 begin
-  Sock.SendString('QUIT'+CRLF);
-  readresult(false);
-  Sock.CloseSocket;
+  FSock.SendString('QUIT' + CRLF);
+  ReadResult(False);
+  FSock.CloseSocket;
 end;
 
-{TPOP3Send.reset}
-function TPOP3Send.reset:Boolean;
+function TPOP3Send.Reset: Boolean;
 begin
-  Result:=false;
-  Sock.SendString('RSET'+CRLF);
-  if readresult(false)<>1 then Exit;
-  Result:=True;
+  FSock.SendString('RSET' + CRLF);
+  Result := ReadResult(False) = 1;
 end;
 
-{TPOP3Send.noop}
-function TPOP3Send.noop:Boolean;
+function TPOP3Send.NoOp: Boolean;
 begin
-  Result:=false;
-  Sock.SendString('NOOP'+CRLF);
-  if readresult(false)<>1 then Exit;
-  Result:=True;
+  FSock.SendString('NOOP' + CRLF);
+  Result := ReadResult(False) = 1;
 end;
 
-{TPOP3Send.stat}
-function TPOP3Send.stat:Boolean;
+function TPOP3Send.Stat: Boolean;
 var
-  s:string;
+  s: string;
 begin
-  Result:=false;
-  Sock.SendString('STAT'+CRLF);
-  if readresult(false)<>1 then Exit;
-  s:=separateright(ResultString,'+OK ');
-  StatCount:=StrToIntDef(separateleft(s,' '),0);
-  StatSize:=StrToIntDef(separateright(s,' '),0);
-  Result:=True;
+  Result := False;
+  FSock.SendString('STAT' + CRLF);
+  if ReadResult(False) <> 1 then
+    Exit;
+  s := SeparateRight(ResultString, '+OK ');
+  FStatCount := StrToIntDef(SeparateLeft(s, ' '), 0);
+  FStatSize := StrToIntDef(SeparateRight(s, ' '), 0);
+  Result := True;
 end;
 
-{TPOP3Send.list}
-function TPOP3Send.list(value:integer):Boolean;
+function TPOP3Send.List(Value: Integer): Boolean;
 begin
-  Result:=false;
-  if value=0
-    then Sock.SendString('LIST'+CRLF)
-    else Sock.SendString('LIST '+IntToStr(value)+CRLF);
-  if readresult(value=0)<>1 then Exit;
-  Result:=True;
+  if Value = 0 then
+    FSock.SendString('LIST' + CRLF)
+  else
+    FSock.SendString('LIST ' + IntToStr(Value) + CRLF);
+  Result := ReadResult(Value = 0) = 1;
 end;
 
-{TPOP3Send.retr}
-function TPOP3Send.retr(value:integer):Boolean;
+function TPOP3Send.Retr(Value: Integer): Boolean;
 begin
-  Result:=false;
-  Sock.SendString('RETR '+IntToStr(value)+CRLF);
-  if readresult(true)<>1 then Exit;
-  Result:=True;
+  FSock.SendString('RETR ' + IntToStr(Value) + CRLF);
+  Result := ReadResult(True) = 1;
 end;
 
-{TPOP3Send.dele}
-function TPOP3Send.dele(value:integer):Boolean;
+function TPOP3Send.Dele(Value: Integer): Boolean;
 begin
-  Result:=false;
-  Sock.SendString('DELE '+IntToStr(value)+CRLF);
-  if readresult(false)<>1 then Exit;
-  Result:=True;
+  FSock.SendString('DELE ' + IntToStr(Value) + CRLF);
+  Result := ReadResult(False) = 1;
 end;
 
-{TPOP3Send.top}
-function TPOP3Send.top(value,maxlines:integer):Boolean;
+function TPOP3Send.Top(Value, Maxlines: Integer): Boolean;
 begin
-  Result:=false;
-  Sock.SendString('TOP '+IntToStr(value)+' '+IntToStr(maxlines)+CRLF);
-  if readresult(true)<>1 then Exit;
-  Result:=True;
+  FSock.SendString('TOP ' + IntToStr(Value) + ' ' + IntToStr(Maxlines) + CRLF);
+  Result := ReadResult(True) = 1;
 end;
 
-{TPOP3Send.uidl}
-function TPOP3Send.uidl(value:integer):Boolean;
+function TPOP3Send.Uidl(Value: Integer): Boolean;
 begin
-  Result:=false;
-  if value=0
-    then Sock.SendString('UIDL'+CRLF)
-    else Sock.SendString('UIDL '+IntToStr(value)+CRLF);
-  if readresult(value=0)<>1 then Exit;
-  Result:=True;
+  if Value = 0 then
+    FSock.SendString('UIDL' + CRLF)
+  else
+    FSock.SendString('UIDL ' + IntToStr(Value) + CRLF);
+  Result := ReadResult(Value = 0) = 1;
 end;
-
-
-{==============================================================================}
 
 end.
