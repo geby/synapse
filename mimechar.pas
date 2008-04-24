@@ -1,5 +1,5 @@
 {==============================================================================|
-| Project : Delphree - Synapse                                   | 001.001.000 |
+| Project : Delphree - Synapse                                   | 002.000.000 |
 |==============================================================================|
 | Content: MIME support character conversion tables                            |
 |==============================================================================|
@@ -49,15 +49,24 @@ TMimeChar=(
            CP1256,
            CP1257,
            CP1258,
-           KOI8_R
+           KOI8_R,
+           UCS_2,
+           UCS_4,
+           UTF_8,
+           UTF_7
           );
 
 TSetChar=set of TMimeChar;
+
+var
+  SetTwo:set of TMimeChar=[UCS_2, UTF_7];
+  SetFour:set of TMimeChar=[UCS_4, UTF_8];
 
 const
 
 NotFoundChar='_';
 
+//character transcoding tables X to UCS-2
 {
 //dummy table
 $0080, $0081, $0082, $0083, $0084, $0085, $0086, $0087,
@@ -533,6 +542,10 @@ Lappish, Latvian, Lithuanian, Norwegian and Swedish.
     );
 
 {==============================================================================}
+Function UTF8toUCS4 (value:string):string;
+Function UCS4toUTF8 (value:string):string;
+Function UTF7toUCS2 (value:string):string;
+Function UCS2toUTF7 (value:string):string;
 Function DecodeChar(value:string;CharFrom:TMimeChar;CharTo:TMimeChar):string;
 Function GetCurCP:TMimeChar;
 Function GetCPfromID(value:string):TMimeChar;
@@ -544,7 +557,7 @@ Function IdealCoding(value:string;CharFrom:TMimeChar;CharTo:TSetChar):TMimeChar;
 implementation
 
 uses
-  windows, sysutils;
+  windows, sysutils, synautil, synacode;
 
 {==============================================================================}
 procedure CopyArray(var SourceTable, TargetTable:array of word);
@@ -583,35 +596,287 @@ begin
 end;
 
 {==============================================================================}
+procedure ReadMulti(value:string; var index:integer; mb:byte;
+                      var b1,b2,b3,b4:byte);
+var
+  b:array[0..3] of byte;
+  n:integer;
+  s:string;
+begin
+  b[0]:=0;
+  b[1]:=0;
+  b[2]:=0;
+  b[3]:=0;
+  if (length(value)+1)<index+mb
+    then exit;
+  s:='';
+  for n:=1 to mb do
+    begin
+      s:=value[index]+s;
+      inc(index);
+    end;
+  for n:=1 to mb do
+    b[n-1]:=ord(s[n]);
+  b1:=b[0];
+  b2:=b[1];
+  b3:=b[2];
+  b4:=b[3];
+end;
+
+{==============================================================================}
+function WriteMulti(b1,b2,b3,b4:byte; mb:byte):string;
+var
+  b:array[0..3] of byte;
+  n:integer;
+begin
+  result:='';
+  b[0]:=b1;
+  b[1]:=b2;
+  b[2]:=b3;
+  b[3]:=b4;
+  for n:=1 to mb do
+    result:=char(b[n-1])+Result;
+end;
+
+{==============================================================================}
+function UTF8toUCS4 (value:string):string;
+var
+  n,x,ul,m:integer;
+  s:string;
+  w1,w2:word;
+begin
+  result:='';
+  n:=1;
+  while length(value)>=n do
+    begin
+      x:=ord(value[n]);
+      inc(n);
+      if x<128
+        then result:=result+writemulti(x,0,0,0,4)
+        else
+          begin
+            m:=0;
+            if (x and $E0)=$C0 then m:=$1F;
+            if (x and $F0)=$E0 then m:=$0F;
+            if (x and $F8)=$F0 then m:=$07;
+            if (x and $FC)=$F8 then m:=$03;
+            if (x and $FE)=$FC then m:=$01;
+            ul:=x and m;
+            s:=inttobin(ul,0);
+            while length(value)>=n do
+              begin
+                x:=ord(value[n]);
+                inc(n);
+                if (x and $C0)=$80
+                  then s:=s+inttobin(x and $3F, 6)
+                  else
+                    begin
+                      dec(n);
+                      break;
+                    end;
+              end;
+            ul:=bintoint(s);
+            w1:=ul div 65536;
+            w2:=ul mod 65536;
+            result:=result+writemulti(lo(w2),hi(w2),lo(w1),hi(w1),4);
+          end;
+    end;
+end;
+
+{==============================================================================}
+function UCS4toUTF8 (value:string):string;
+var
+  s,l,k:string;
+  b1,b2,b3,b4:byte;
+  n,m,x,y:integer;
+  b:byte;
+begin
+  result:='';
+  n:=1;
+  while length(value)>=n do
+    begin
+      readmulti(value,n,4,b1,b2,b3,b4);
+      if (b2=0) and (b3=0) and (b4=0)
+        then result:=result+char(b1)
+        else
+          begin
+            x:=(b1+256*b2)+(b3+256*b4)*65536;
+            l:=inttobin(x,0);
+            y:=length(l) div 6;
+            s:='';
+            for m:=1 to y do
+              begin
+                k:=copy(l,length(l)-5,6);
+                l:=copy(l,1,length(l)-6);
+                b:=bintoint(k) or $80;
+                s:=char(b)+s;
+              end;
+            b:=bintoint(l);
+            case y of
+              5: b:=b or $FC;
+              4: b:=b or $F8;
+              3: b:=b or $F0;
+              2: b:=b or $E0;
+              1: b:=b or $C0;
+            end;
+            s:=char(b)+s;
+            result:=result+s;
+          end;
+    end;
+end;
+
+{==============================================================================}
+function UTF7toUCS2(value:string):string;
+var
+  n:integer;
+  c:char;
+  s:string;
+begin
+  result:='';
+  n:=1;
+  while length(value)>=n do
+    begin
+      c:=value[n];
+      inc(n);
+      if c<>'+'
+        then result:=result+writemulti(ord(c),0,0,0,2)
+        else
+          begin
+            s:='';
+            while length(value)>=n do
+              begin
+                c:=value[n];
+                inc(n);
+                if c='-'
+                  then break;
+                if (c='=') or (pos(c,TableBase64)<1) then
+                  begin
+                    dec(n);
+                    break;
+                  end;
+                s:=s+c;
+              end;
+            if s=''
+              then s:='+'
+              else s:=DecodeBase64(s);
+            result:=result+s;
+          end;
+    end;
+end;
+
+{==============================================================================}
+Function UCS2toUTF7 (value:string):string;
+var
+  s:string;
+  b1,b2,b3,b4:byte;
+  n,m:integer;
+begin
+  result:='';
+  n:=1;
+  while length(value)>=n do
+    begin
+      readmulti(value,n,2,b1,b2,b3,b4);
+      if (b2=0)
+        then if char(b1)='+'
+          then result:=result+'+-'
+          else result:=result+char(b1)
+        else
+          begin
+            s:=char(b2)+char(b1);
+            while length(value)>=n do
+              begin
+                readmulti(value,n,2,b1,b2,b3,b4);
+                if b2=0 then
+                  begin
+                    dec(n,2);
+                    break;
+                  end;
+                s:=s+char(b2)+char(b1);
+              end;
+            s:=EncodeBase64(s);
+            m:=pos('=',s);
+            if m>0 then
+              s:=copy(s,1,m-1);
+            result:=result+'+'+s+'-';
+          end;
+    end;
+end;
+
+{==============================================================================}
 {DecodeChar}
 Function DecodeChar(value:string;CharFrom:TMimeChar;CharTo:TMimeChar):string;
 var
   uni:word;
   n,m:integer;
   b:byte;
+  b1,b2,b3,b4:byte;
   SourceTable,TargetTable:array [128..255] of word;
+  mbf,mbt:byte;
 begin
   GetArray(CharFrom,SourceTable);
   GetArray(CharTo,TargetTable);
+  mbf:=1;
+  if CharFrom in SetTwo
+    then mbf:=2;
+  if CharFrom in SetFour
+    then mbf:=4;
+  mbt:=1;
+  if CharTo in SetTwo
+    then mbt:=2;
+  if CharTo in SetFour
+    then mbt:=4;
+
+  if Charfrom=UTF_8
+    then value:=UTF8toUCS4(value);
+  if Charfrom=UTF_7
+    then value:=UTF7toUCS2(value);
   result:='';
-  for n:=1 to length(value) do
+
+  n:=1;
+  while length(value)>=n do
     begin
-      b:=ord(value[n]);
-      if b>128
+      Readmulti(value,n,mbf,b1,b2,b3,b4);
+      if mbf=1 then
+        if b1>127 then
+          begin
+            uni:=SourceTable[b1];
+            b1:=lo(uni);
+            b2:=hi(uni);
+          end;
+      //b1..b4 - unicode char
+      uni:=b2*256+b1;
+      if (b3<>0) or (b4<>0)
         then
           begin
-            uni:=SourceTable[b];
-            b:=ord(NotFoundChar);
-            for m:=128 to 255 do
-              if TargetTable[m]=uni
-                then
-                  begin
-                    b:=m;
-                    break;
-                  end;
-          end;
-      result:=result+char(b);
+            b1:=ord(NotFoundChar);
+            b2:=0;
+            b3:=0;
+            b4:=0;
+          end
+        else
+          if mbt=1 then
+            if uni>127 then
+              begin
+                b:=ord(NotFoundChar);
+                for m:=128 to 255 do
+                  if TargetTable[m]=uni
+                    then
+                      begin
+                        b:=m;
+                        break;
+                      end;
+                b1:=b;
+                b2:=0;
+              end
+              else b1:=lo(uni);
+      result:=result+writemulti(b1,b2,b3,b4,mbt)
     end;
+
+  if CharTo=UTF_7
+    then result:=UCS2toUTF7(result);
+  if CharTo=UTF_8
+    then result:=UCS4toUTF8(result);
+
 end;
 
 {==============================================================================}
@@ -742,6 +1007,31 @@ begin
       Result:=KOI8_R;
       exit;
     end;
+  if Pos('UTF-7',value)=1 then
+    begin
+      Result:=UTF_7;
+      exit;
+    end;
+  if Pos('UTF-8',value)>0 then
+    begin
+      Result:=UTF_8;
+      exit;
+    end;
+  if Pos('UCS-4',value)>0 then
+    begin
+      Result:=UCS_4;
+      exit;
+    end;
+  if Pos('UCS-2',value)>0 then
+    begin
+      Result:=UCS_2;
+      exit;
+    end;
+  if Pos('UNICODE',value)=1 then
+    begin
+      Result:=UCS_2;
+      exit;
+    end;
 end;
 
 {==============================================================================}
@@ -767,6 +1057,10 @@ begin
       CP1257     :  result:='WINDOWS-1257';
       CP1258     :  result:='WINDOWS-1258';
       KOI8_R     :  result:='KOI8-R';
+      UCS_2      :  result:='Unicode-1-1-UCS-2';
+      UCS_4      :  result:='Unicode-1-1-UCS-4';
+      UTF_8      :  result:='UTF-8';
+      UTF_7      :  result:='UTF-7';
     else result:='ISO-8859-1';
   end;
 end;

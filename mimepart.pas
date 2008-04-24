@@ -1,7 +1,7 @@
 {==============================================================================|
-| Project : Delphree - Synapse                                   | 001.001.000 |
+| Project : Delphree - Synapse                                   | 001.002.000 |
 |==============================================================================|
-| Content: MIME support procedures and functions                                    |
+| Content: MIME support procedures and functions                               |
 |==============================================================================|
 | The contents of this file are subject to the Mozilla Public License Ver. 1.0 |
 | (the "License"); you may not use this file except in compliance with the     |
@@ -28,7 +28,7 @@ unit MIMEpart;
 interface
 
 uses
-  sysutils, classes, windows, MIMEchar, SynaCode, SynaUtil;
+  sysutils, classes, windows, MIMEchar, SynaCode, SynaUtil, MIMEinLn;
 
 type
 
@@ -40,7 +40,9 @@ TMimePrimary=(MP_TEXT,
 TMimeEncoding=(ME_7BIT,
                ME_8BIT,
                ME_QUOTED_PRINTABLE,
-               ME_BASE64);
+               ME_BASE64,
+               ME_UU,
+               ME_XX);
 
 TMimePart=class
   private
@@ -109,40 +111,37 @@ const
       ('ZIP','application','ZIP')
     );
 
-procedure NormalizePart(value:Tstringlist);
+function NormalizeHeader(value:TStringList;var index:integer):string;
 function GenerateBoundary:string;
 
 implementation
 
-procedure NormalizePart(value:Tstringlist);
+function NormalizeHeader(value:TStringList;var index:integer):string;
 var
-  t:tstringlist;
-  s:string;
+  s,t:string;
+  n:integer;
 begin
-  t:=tstringlist.create;
-  try
-    while (value.Count-1) > 0 do
-      begin
-        s:=value[0];
-        if s=''
-          then break;
-        if (s[1]=' ') or (s[1]=#9)
-          then
-            begin
-              s:=' '+trim(s);
-              if t.count=0
-                then t.add(s)
-                else t[t.count-1]:=t[t.count-1]+s;
-            end
-          else
-            t.add(s);
-        value.Delete(0);
-      end;
-    t.AddStrings(value);
-    value.assign(t);
-  finally
-    t.free;
-  end;
+  s:=value[index];
+  inc(index);
+  if s<>''
+    then
+      while (value.Count-1) > index do
+        begin
+          t:=value[index];
+          if t=''
+            then break;
+          for n:=1 to length(t) do
+            if t[n]=#9
+              then t[n]:=' ';
+          if t[1]<>' '
+            then break
+            else
+              begin
+                s:=s+' '+trim(t);
+                inc(index);
+              end;
+        end;
+  result:=s;
 end;
 
 {==============================================================================}
@@ -219,8 +218,7 @@ begin
     {parse header}
     while value.count>x do
       begin
-        s:=value[x];
-        inc(x);
+        s:=normalizeheader(value,x);
         if s=''
           then break;
         su:=uppercase(s);
@@ -266,6 +264,8 @@ begin
 
     if (primarycode=MP_BINARY) and (filename='')
       then filename:=fn;
+    filename:=InlineDecode(filename,getCurCP);
+    filename:=extractfilename(filename);
 
     x1:=x;
     x2:=value.count-1;
@@ -364,6 +364,16 @@ begin
             if PrimaryCode=MP_TEXT
               then s:=decodeChar(s,CharsetCode,TargetCharset);
           end;
+        ME_UU:
+          begin
+            if s<>''
+              then s:=DecodeUU(s);
+          end;
+        ME_XX:
+          begin
+            if s<>''
+              then s:=DecodeXX(s);
+          end;
       end;
       Decodedlines.Write(pointer(s)^,length(s));
     end;
@@ -378,6 +388,10 @@ var
   s,buff:string;
   n,x:integer;
 begin
+  if EncodingCode=ME_UU
+    then encoding:='base64';
+  if EncodingCode=ME_XX
+    then encoding:='base64';
   l:=tstringlist.create;
   Lines.clear;
   decodedlines.Seek(0,soFromBeginning);
@@ -511,6 +525,10 @@ begin
     then EncodingCode:=ME_QUOTED_PRINTABLE;
   if Pos('BASE64',s)=1
     then EncodingCode:=ME_BASE64;
+  if Pos('X-UU',s)=1
+    then EncodingCode:=ME_UU;
+  if Pos('X-XX',s)=1
+    then EncodingCode:=ME_XX;
 end;
 
 {TMIMEPart.SetCharset}

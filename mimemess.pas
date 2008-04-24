@@ -1,5 +1,5 @@
 {==============================================================================|
-| Project : Delphree - Synapse                                   | 001.000.001 |
+| Project : Delphree - Synapse                                   | 001.001.000 |
 |==============================================================================|
 | Content: MIME message object                                                 |
 |==============================================================================|
@@ -206,14 +206,15 @@ end;
 procedure TMimeMess.ParseHeaders;
 var
   s:string;
-  n:integer;
+  x:integer;
   cp:TMimeChar;
 begin
   cp:=getCurCP;
   header.ToList.clear;
-  for n:=0 to lines.count-1 do
+  x:=0;
+  while lines.count>x do
     begin
-      s:=lines[n];
+      s:=normalizeheader(lines,x);
       if s=''
         then break;
       If pos('FROM:',uppercase(s))=1
@@ -240,7 +241,6 @@ begin
   m:=tmimepart.create;
   try
     l.assign(lines);
-    normalizepart(l);
     with header do
       begin
         from:='';

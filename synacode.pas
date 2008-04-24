@@ -1,5 +1,5 @@
 {==============================================================================|
-| Project : Delphree - Synapse                                   | 001.001.001 |
+| Project : Delphree - Synapse                                   | 001.002.000 |
 |==============================================================================|
 | Content: Coding and decoding support                                         |
 |==============================================================================|
@@ -36,11 +36,11 @@ const
 
   TableBase64=
     'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/=';
-{  TableUU=
+  TableUU=
     '`!"#$%&''()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\]^_';
   TableXX=
-    '+-0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz';
-}
+    '+-0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz_';
+
 
   Crc32Tab: array[0..255] of integer = (
     $00000000, $77073096, $ee0e612c, $990951ba, $076dc419, $706af48f, $e963a535, $9e6495a3,
@@ -126,6 +126,8 @@ function EncodeQuotedPrintable(value:string):string;
 function Decode4to3(value,table:string):string;
 function DecodeBase64(value:string):string;
 function EncodeBase64(value:string):string;
+function DecodeUU(value:string):string;
+function DecodeXX(value:string):string;
 function UpdateCrc32(value:byte;crc32:integer):integer;
 function Crc32(value:string):integer;
 function UpdateCrc16(value:byte;crc16:word):word;
@@ -263,6 +265,51 @@ begin
       for n:=0 to 3 do
         result:=result+TableBase64[DOut[n]+1];
     end;
+end;
+
+{==============================================================================}
+{DecodeUU}
+function DecodeUU(value:string):string;
+var
+  s:string;
+  uut:string;
+  x:integer;
+begin
+  result:='';
+  uut:=TableUU;
+  s:=trim(uppercase(value));
+  if s='' then exit;
+  if pos('BEGIN',s)=1 then exit;
+  if pos('END',s)=1 then exit;
+  if pos('TABLE',s)=1 then exit;  //ignore table yet (set custom UUT)
+  //begin decoding
+  x:=pos(value[1],uut)-1;
+  x:=round((x/3)*4);
+  //x - lenght UU line
+  s:=copy(value,2,x);
+  if s='' then exit;
+  result:=Decode4to3(s,uut);
+end;
+
+{==============================================================================}
+{DecodeXX}
+function DecodeXX(value:string):string;
+var
+  s:string;
+  x:integer;
+begin
+  result:='';
+  s:=trim(uppercase(value));
+  if s='' then exit;
+  if pos('BEGIN',s)=1 then exit;
+  if pos('END',s)=1 then exit;
+  //begin decoding
+  x:=pos(value[1],TableXX)-1;
+  x:=round((x/3)*4);
+  //x - lenght XX line
+  s:=copy(value,2,x);
+  if s='' then exit;
+  result:=Decode4to3(s,TableXX);
 end;
 
 {==============================================================================}
