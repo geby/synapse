@@ -1,9 +1,9 @@
 {==============================================================================|
-| Project : Ararat Synapse                                       | 003.004.008 |
+| Project : Ararat Synapse                                       | 003.005.000 |
 |==============================================================================|
 | Content: FTP client                                                          |
 |==============================================================================|
-| Copyright (c)1999-2005, Lukas Gebauer                                        |
+| Copyright (c)1999-2007, Lukas Gebauer                                        |
 | All rights reserved.                                                         |
 |                                                                              |
 | Redistribution and use in source and binary forms, with or without           |
@@ -33,7 +33,7 @@
 | DAMAGE.                                                                      |
 |==============================================================================|
 | The Initial Developer of the Original Code is Lukas Gebauer (Czech Republic).|
-| Portions created by Lukas Gebauer are Copyright (c) 1999-2005.               |
+| Portions created by Lukas Gebauer are Copyright (c) 1999-2007.               |
 | All Rights Reserved.                                                         |
 |==============================================================================|
 | Contributor(s):                                                              |
@@ -62,8 +62,8 @@ uses
   blcksock, synautil, synaip, synsock;
 
 const
-  cFtpProtocol = 'ftp';
-  cFtpDataProtocol = 'ftp-data';
+  cFtpProtocol = '21';
+  cFtpDataProtocol = '20';
 
   {:Terminating value for TLogonActions}
   FTP_OK = 255;
@@ -314,6 +314,9 @@ type
     function ChangeWorkingDir(const Directory: string): Boolean; virtual;
 
     {:walk to upper directory on FTP server.}
+    function ChangeToParentDir: Boolean; virtual;
+
+    {:walk to root directory on FTP server. (May not work with all servers properly!)}
     function ChangeToRootDir: Boolean; virtual;
 
     {:Delete Directory on FTP server.}
@@ -872,7 +875,7 @@ begin
     FDSock.Bind(FSock.GetLocalSinIP, s);
     if FDSock.LastError <> 0 then
       Exit;
-    FDSock.SetLinger(True, 10);
+    FDSock.SetLinger(True, 10000);
     FDSock.Listen;
     FDSock.GetSins;
     FDataIP := FDSock.GetLocalSinIP;
@@ -1143,9 +1146,14 @@ begin
   Result := (FTPCommand('CWD ' + Directory) div 100) = 2;
 end;
 
-function TFTPSend.ChangeToRootDir: Boolean;
+function TFTPSend.ChangeToParentDir: Boolean;
 begin
   Result := (FTPCommand('CDUP') div 100) = 2;
+end;
+
+function TFTPSend.ChangeToRootDir: Boolean;
+begin
+  Result := ChangeWorkingDir('/');
 end;
 
 function TFTPSend.DeleteDir(const Directory: string): Boolean;

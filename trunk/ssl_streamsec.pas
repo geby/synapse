@@ -1,5 +1,5 @@
 {==============================================================================|
-| Project : Ararat Synapse                                       | 001.000.005 |
+| Project : Ararat Synapse                                       | 001.000.006 |
 |==============================================================================|
 | Content: SSL support by StreamSecII                                          |
 |==============================================================================|
@@ -98,6 +98,7 @@ type
     FSlave: TMyTLSSynSockSlave;
     FIsServer: Boolean;
     FTLSServer: TCustomTLSInternalServer;
+    FServerCreated: Boolean;
     function SSLCheck: Boolean;
     function Init(server:Boolean): Boolean;
     function DeInit: Boolean;
@@ -204,7 +205,7 @@ end;
 function TSSLStreamSec.Init(server:Boolean): Boolean;
 var
   st: TMemoryStream;
-  pass: TSecretKey;
+  pass: ISecretKey;
   ws: WideString;
 begin
   Result := False;
@@ -218,8 +219,10 @@ begin
     else
       if Assigned(TLSInternalServer.GlobalServer) then
         FSlave.MyTLSServer := TLSInternalServer.GlobalServer
-      else
+      else begin
         FSlave.MyTLSServer := TSimpleTLSInternalServer.Create(nil);
+        FServerCreated := True;
+      end;
     if server then
       FSlave.MyTLSServer.ClientOrServer := cosServerSide
     else
@@ -293,7 +296,7 @@ begin
     end;
     if FPFXfile <> '' then
       FSlave.MyTLSServer.ImportFromPFX(FPFXfile, pass);
-    if server then
+    if server and FServerCreated then
     begin
       FSlave.MyTLSServer.Options.BulkCipherAES128 := prPrefer;
       FSlave.MyTLSServer.Options.BulkCipherAES256 := prAllowed;
@@ -306,17 +309,24 @@ begin
     end;
     Result := true;
   finally
-    pass.Free;
+    pass := nil;
   end;
 end;
 
 function TSSLStreamSec.DeInit: Boolean;
+var
+  obj: TObject;
 begin
   Result := True;
   if assigned(FSlave) then
   begin
     FSlave.Close;
+    if FServerCreated then
+      obj := FSlave.TLSServer
+    else
+      obj := nil;
     FSlave.Free;
+    obj.Free;
     FSlave := nil;
   end;
   FSSLEnabled := false;
@@ -355,7 +365,7 @@ begin
     Exit;
   if Prepare(true) then
   begin
-    FSlave.Open;
+    FSlave.DoConnect;
     SSLCheck;
     if FLastError <> 0 then
       Exit;
@@ -525,4 +535,5 @@ initialization
 finalization
 
 end.
+
 

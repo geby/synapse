@@ -1,9 +1,9 @@
 {==============================================================================|
-| Project : Ararat Synapse                                       | 003.000.008 |
+| Project : Ararat Synapse                                       | 003.000.009 |
 |==============================================================================|
 | Content: SNMP client                                                         |
 |==============================================================================|
-| Copyright (c)1999-2004, Lukas Gebauer                                        |
+| Copyright (c)1999-2007, Lukas Gebauer                                        |
 | All rights reserved.                                                         |
 |                                                                              |
 | Redistribution and use in source and binary forms, with or without           |
@@ -33,7 +33,7 @@
 | DAMAGE.                                                                      |
 |==============================================================================|
 | The Initial Developer of the Original Code is Lukas Gebauer (Czech Republic).|
-| Portions created by Lukas Gebauer are Copyright (c)2000-2004.                |
+| Portions created by Lukas Gebauer are Copyright (c)2000-2007.                |
 | All Rights Reserved.                                                         |
 |==============================================================================|
 | Contributor(s):                                                              |
@@ -679,6 +679,7 @@ begin
       ASNObject(Self.FCommunity, ASN1_OCTSTR);
     Result := ASNObject(head + pdu, ASN1_SEQ);
   end;
+  inc(self.FID);
 end;
 
 procedure TSNMPRec.Clear;

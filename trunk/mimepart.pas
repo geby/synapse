@@ -1,9 +1,9 @@
 {==============================================================================|
-| Project : Ararat Synapse                                       | 002.007.005 |
+| Project : Ararat Synapse                                       | 002.007.007 |
 |==============================================================================|
 | Content: MIME support procedures and functions                               |
 |==============================================================================|
-| Copyright (c)1999-2005, Lukas Gebauer                                        |
+| Copyright (c)1999-2007, Lukas Gebauer                                        |
 | All rights reserved.                                                         |
 |                                                                              |
 | Redistribution and use in source and binary forms, with or without           |
@@ -33,7 +33,7 @@
 | DAMAGE.                                                                      |
 |==============================================================================|
 | The Initial Developer of the Original Code is Lukas Gebauer (Czech Republic).|
-| Portions created by Lukas Gebauer are Copyright (c)2000-2005.                |
+| Portions created by Lukas Gebauer are Copyright (c)2000-2007.                |
 | All Rights Reserved.                                                         |
 |==============================================================================|
 | Contributor(s):                                                              |
@@ -733,7 +733,7 @@ end;
 procedure TMIMEPart.DecodePart;
 var
   n: Integer;
-  s, t: string;
+  s, t, t2: string;
   b: Boolean;
 begin
   FDecodedLines.Clear;
@@ -758,11 +758,20 @@ begin
     if (not FForcedHTMLConvert) and (uppercase(FSecondary) = 'HTML') then
     begin
       b := false;
-      t := uppercase(s);
-      t := SeparateLeft(t, '</HEAD>');
+      t2 := uppercase(s);
+      t := SeparateLeft(t2, '</HEAD>');
       if length(t) <> length(s) then
       begin
         t := SeparateRight(t, '<HEAD>');
+        t := ReplaceString(t, '"', '');
+        t := ReplaceString(t, ' ', '');
+        b := Pos('HTTP-EQUIV=CONTENT-TYPE', t) > 0;
+      end;
+      //workaround for shitty M$ Outlook 11 which is placing this information
+      //outside <head> section
+      if not b then
+      begin
+        t := Copy(t2, 1, 2048);
         t := ReplaceString(t, '"', '');
         t := ReplaceString(t, ' ', '');
         b := Pos('HTTP-EQUIV=CONTENT-TYPE', t) > 0;
@@ -1067,8 +1076,11 @@ end;
 
 procedure TMIMEPart.SetCharset(Value: string);
 begin
-  FCharset := Value;
-  FCharsetCode := GetCPFromID(Value);
+  if value <> '' then
+  begin
+    FCharset := Value;
+    FCharsetCode := GetCPFromID(Value);
+  end;
 end;
 
 function TMIMEPart.CanSubPart: boolean;

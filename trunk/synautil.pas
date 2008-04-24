@@ -1,5 +1,5 @@
 {==============================================================================|
-| Project : Ararat Synapse                                       | 004.010.001 |
+| Project : Ararat Synapse                                       | 004.011.003 |
 |==============================================================================|
 | Content: support procedures and functions                                    |
 |==============================================================================|
@@ -301,6 +301,10 @@ procedure WriteStrToStream(const Stream: TStream; Value: AnsiString);
 {:Return filename of new temporary file in Dir (if empty, then default temporary
  directory is used) and with optional filename prefix.}
 function GetTempFile(const Dir, prefix: AnsiString): AnsiString;
+
+{:Return padded string. If length is greater, string is truncated. If length is
+ smaller, string is padded by Pad character.}
+function PadString(const Value: AnsiString; len: integer; Pad: AnsiChar): AnsiString;
 
 var
   {:can be used for your own months strings for @link(getmonthnumber)}
@@ -664,10 +668,15 @@ begin
   end;
   if year = 0 then
     year := 1980;
-  if (month < 1) or (month > 12) then
+  if month < 1 then
     month := 1;
-  if (day < 1) or (day > 31) then
+  if month > 12 then
+    month := 12;
+  if day < 1 then
     day := 1;
+  x := MonthDays[IsLeapYear(year), month];
+  if day > x then
+    day := x;
   Result := Result + Encodedate(year, month, day);
   zone := zone - TimeZoneBias;
   x := zone div 1440;
@@ -1394,10 +1403,12 @@ begin
   Result := False;
   for n := 1 to Length(Value) do
     if Value[n] in [#0..#8, #10..#31] then
-    begin
-      Result := True;
-      Break;
-    end;
+      //ignore null-terminated strings
+      if not ((n = Length(value)) and (Value[n] = #0)) then
+      begin
+        Result := True;
+        Break;
+      end;
 end;
 
 {==============================================================================}
@@ -1734,6 +1745,16 @@ begin
     {$ENDIF}
   {$ENDIF}
 {$ENDIF}
+end;
+
+{==============================================================================}
+
+function PadString(const Value: AnsiString; len: integer; Pad: AnsiChar): AnsiString;
+begin
+  if length(value) >= len then
+    Result := Copy(value, 1, len)
+  else
+    Result := Value + StringOfChar(Pad, len - length(value));
 end;
 
 {==============================================================================}

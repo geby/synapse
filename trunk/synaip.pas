@@ -1,5 +1,5 @@
 {==============================================================================|
-| Project : Ararat Synapse                                       | 001.000.000 |
+| Project : Ararat Synapse                                       | 001.000.002 |
 |==============================================================================|
 | Content: IP address support procedures and functions                         |
 |==============================================================================|
@@ -218,8 +218,8 @@ var
   y1, y2: byte;
 begin
   Result := '';
-  x1 := value div $10000;
-  x2 := value mod $10000;
+  x1 := value shr 16;
+  x2 := value and $FFFF;
   y1 := x1 div $100;
   y2 := x1 mod $100;
   Result := inttostr(y1) + '.' + inttostr(y2) + '.';
@@ -379,11 +379,18 @@ function ReverseIP6(Value: AnsiString): AnsiString;
 var
   ip6: TIp6bytes;
   n: integer;
+  x, y: integer;
 begin
   ip6 := StrToIP6(Value);
-  Result := char(ip6[15]);
+  x := ip6[15] div 16;
+  y := ip6[15] mod 16;
+  Result := IntToHex(y, 1) + '.' + IntToHex(x, 1);
   for n := 14 downto 0 do
-    Result := Result + '.' + char(ip6[n]);
+  begin
+    x := ip6[n] div 16;
+    y := ip6[n] mod 16;
+    Result := Result + '.' + IntToHex(y, 1) + '.' + IntToHex(x, 1);
+  end;
 end;
 
 {==============================================================================}

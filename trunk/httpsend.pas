@@ -1,9 +1,9 @@
 {==============================================================================|
-| Project : Ararat Synapse                                       | 003.010.005 |
+| Project : Ararat Synapse                                       | 003.011.003 |
 |==============================================================================|
 | Content: HTTP client                                                         |
 |==============================================================================|
-| Copyright (c)1999-2006, Lukas Gebauer                                        |
+| Copyright (c)1999-2007, Lukas Gebauer                                        |
 | All rights reserved.                                                         |
 |                                                                              |
 | Redistribution and use in source and binary forms, with or without           |
@@ -33,7 +33,7 @@
 | DAMAGE.                                                                      |
 |==============================================================================|
 | The Initial Developer of the Original Code is Lukas Gebauer (Czech Republic).|
-| Portions created by Lukas Gebauer are Copyright (c) 1999-2006.               |
+| Portions created by Lukas Gebauer are Copyright (c) 1999-2007.               |
 | All Rights Reserved.                                                         |
 |==============================================================================|
 | Contributor(s):                                                              |
@@ -93,6 +93,7 @@ type
     FUploadSize: integer;
     FRangeStart: integer;
     FRangeEnd: integer;
+    FAddPortNumberToHost: Boolean;
     function ReadUnknown: Boolean;
     function ReadIdentity(Size: Integer): Boolean;
     function ReadChunked: Boolean;
@@ -203,6 +204,10 @@ type
     property UploadSize: integer read FUploadSize;
     {:Socket object used for TCP/IP operation. Good for seting OnStatus hook, etc.}
     property Sock: TTCPBlockSocket read FSock;
+
+    {:To have possibility to switch off port number in 'Host:' HTTP header, by
+    default @TRUE. Some buggy servers not like port informations in this header.}
+    property AddPortNumberToHost: Boolean read FAddPortNumberToHost write FAddPortNumberToHost;
   end;
 
 {:A very usefull function, and example of use can be found in the THTTPSend
@@ -272,6 +277,7 @@ begin
   FUserAgent := 'Mozilla/4.0 (compatible; Synapse)';
   FDownloadSize := 0;
   FUploadSize := 0;
+  FAddPortNumberToHost := true;
   Clear;
 end;
 
@@ -407,7 +413,7 @@ begin
   if FUserAgent <> '' then
     FHeaders.Insert(0, 'User-Agent: ' + FUserAgent);
   { setting Ranges }
-  if FRangeStart > 0 then
+  if (FRangeStart > 0) or (FRangeEnd > 0) then
   begin
     if FRangeEnd >= FRangeStart then
       FHeaders.Insert(0, 'Range: bytes=' + IntToStr(FRangeStart) + '-' + IntToStr(FRangeEnd))
@@ -437,7 +443,7 @@ begin
     s := '[' + Host + ']'
   else
     s := Host;
-  if Port<>'80' then
+  if FAddPortNumberToHost and (Port <> '80') then
      FHeaders.Insert(0, 'Host: ' + s + ':' + Port)
   else
      FHeaders.Insert(0, 'Host: ' + s);
@@ -465,7 +471,6 @@ begin
   { connect }
   if not InternalConnect(UpperCase(Prot) = 'HTTPS') then
   begin
-    FSock.CloseSocket;
     FAliveHost := '';
     FAlivePort := '';
     Exit;
@@ -538,18 +543,20 @@ begin
       if s <> '' then
         Break;
     until FSock.LastError <> 0;
-    if Pos('HTTP/', UpperCase(s)) = 1 then
-    begin
-      FHeaders.Add(s);
-      DecodeStatus(s);
-    end
-    else
-    begin
-      { old HTTP 0.9 and some buggy servers not send result }
-      s := s + CRLF;
-      WriteStrToStream(FDocument, s);
-      FResultCode := 0;
-    end;
+    repeat
+      if Pos('HTTP/', UpperCase(s)) = 1 then
+      begin
+        FHeaders.Add(s);
+        DecodeStatus(s);
+      end
+      else
+      begin
+        { old HTTP 0.9 and some buggy servers not send result }
+        s := s + CRLF;
+        WriteStrToStream(FDocument, s);
+        FResultCode := 0;
+      end;
+    until (FSock.LastError <> 0) or (FResultCode <> 100);
   end
   else
     FHeaders.Add(Status100Error);
@@ -566,7 +573,7 @@ begin
       if Pos('CONTENT-LENGTH:', su) = 1 then
       begin
         Size := StrToIntDef(Trim(SeparateRight(s, ' ')), -1);
-        if Size <> -1 then
+        if (Size <> -1) and (FTransferEncoding = TE_UNKNOWN) then
           FTransferEncoding := TE_IDENTITY;
       end;
       if Pos('CONTENT-TYPE:', su) = 1 then
@@ -612,12 +619,17 @@ function THTTPSend.ReadUnknown: Boolean;
 var
   s: string;
 begin
+  Result := false;
   repeat
     s := FSock.RecvPacket(FTimeout);
     if FSock.LastError = 0 then
       WriteStrToStream(FDocument, s);
   until FSock.LastError <> 0;
-  Result := FSock.LastError = WSAECONNRESET;
+  if FSock.LastError = WSAECONNRESET then
+  begin
+    Result := true;
+    FSock.ResetLastError;
+  end;
 end;
 
 function THTTPSend.ReadIdentity(Size: Integer): Boolean;
@@ -719,6 +731,7 @@ begin
     HTTP.Document.CopyFrom(Data, 0);
     HTTP.MimeType := 'Application/octet-stream';
     Result := HTTP.HTTPMethod('POST', URL);
+    Data.Size := 0;
     if Result then
     begin
       Data.Seek(0, soFromBeginning);

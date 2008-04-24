@@ -1,9 +1,9 @@
 {==============================================================================|
-| Project : Ararat Synapse                                       | 003.001.008 |
+| Project : Ararat Synapse                                       | 004.000.000 |
 |==============================================================================|
 | Content: PING sender                                                         |
 |==============================================================================|
-| Copyright (c)1999-2003, Lukas Gebauer                                        |
+| Copyright (c)1999-2007, Lukas Gebauer                                        |
 | All rights reserved.                                                         |
 |                                                                              |
 | Redistribution and use in source and binary forms, with or without           |
@@ -33,7 +33,7 @@
 | DAMAGE.                                                                      |
 |==============================================================================|
 | The Initial Developer of the Original Code is Lukas Gebauer (Czech Republic).|
-| Portions created by Lukas Gebauer are Copyright (c)2000-2003.                |
+| Portions created by Lukas Gebauer are Copyright (c)2000-2007.                |
 | All Rights Reserved.                                                         |
 |==============================================================================|
 | Contributor(s):                                                              |
@@ -45,11 +45,15 @@
 {:@abstract(ICMP PING implementation.)
 Allows create PING and TRACEROUTE. Or you can diagnose your network.
 
-Warning: this unit using RAW sockets. On some systems you must have special
- rights for using this sort of sockets. So, it working allways when you have
- administator/root rights. Otherwise you can have problems!
+This unit using IpHlpApi (on WinXP or higher) if available. Otherwise it trying
+ to use RAW sockets.
 
-Note: IPv6 not working under .NET. It is lack of Microsoft's .NET framework.
+Warning: For use of RAW sockets you must have some special rights on some
+ systems. So, it working allways when you have administator/root rights.
+ Otherwise you can have problems!
+
+Note: This unit is NOT portable to .NET!
+  Use native .NET classes for Ping instead.
 }
 
 {$IFDEF FPC}
@@ -69,7 +73,11 @@ interface
 
 uses
   SysUtils,
-  synsock, blcksock, synautil;
+  synsock, blcksock, synautil, synafpc, synaip
+{$IFDEF WIN32}
+  , windows
+{$ENDIF}
+  ;
 
 const
   ICMP_ECHO = 8;
@@ -83,28 +91,6 @@ const
   ICMP6_TIME_EXCEEDED = 3;
 
 type
-  {:Record for ICMP ECHO packet header.}
-  TIcmpEchoHeader = record
-    i_type: Byte;
-    i_code: Byte;
-    i_checkSum: Word;
-    i_Id: Word;
-    i_seq: Word;
-    TimeStamp: integer;
-  end;
-
-  {:record used internally by TPingSend for compute checksum of ICMPv6 packet
-   pseudoheader.}
-  TICMP6Packet = record
-    in_source: TInAddr6;
-    in_dest: TInAddr6;
-    Length: integer;
-    free0: Byte;
-    free1: Byte;
-    free2: Byte;
-    proto: Byte;
-  end;
-
   {:List of possible ICMP reply packet types.}
   TICMPError = (
     IE_NoError,
@@ -117,10 +103,7 @@ type
     IE_UnreachPort
     );
 
-  {:@abstract(Implementation of ICMP PING and ICMPv6 PING.)
-
-   Note: Are you missing properties for specify server address and port? Look to
-   parent @link(TSynaClient) too!}
+  {:@abstract(Implementation of ICMP PING and ICMPv6 PING.)}
   TPINGSend = class(TSynaClient)
   private
     FSock: TICMPBlockSocket;
@@ -137,10 +120,17 @@ type
     FReplyCode: byte;
     FReplyError: TICMPError;
     FReplyErrorDesc: string;
+    FTTL: Byte;
+    Fsin: TVarSin;
     function Checksum(Value: string): Word;
     function Checksum6(Value: string): Word;
     function ReadPacket: Boolean;
     procedure TranslateError;
+    procedure TranslateErrorIpHlp(value: integer);
+    function InternalPing(const Host: string): Boolean;
+    function InternalPingIpHlp(const Host: string): Boolean;
+    function IsHostIP6(const Host: string): Boolean;
+    procedure GenErrorDesc;
   public
     {:Send ICMP ping to host and count @link(pingtime). If ping OK, result is
      @true.}
@@ -176,6 +166,9 @@ type
 
     {:Socket object used for TCP/IP operation. Good for seting OnStatus hook, etc.}
     property Sock: TICMPBlockSocket read FSock;
+
+    {:TTL value for ICMP query}
+    property TTL: byte read FTTL write FTTL;
   end;
 
 {:A very useful function and example of its use would be found in the TPINGSend
@@ -189,6 +182,82 @@ function TraceRouteHost(const Host: string): string;
 
 implementation
 
+type
+  {:Record for ICMP ECHO packet header.}
+  TIcmpEchoHeader = record
+    i_type: Byte;
+    i_code: Byte;
+    i_checkSum: Word;
+    i_Id: Word;
+    i_seq: Word;
+    TimeStamp: integer;
+  end;
+
+  {:record used internally by TPingSend for compute checksum of ICMPv6 packet
+   pseudoheader.}
+  TICMP6Packet = record
+    in_source: TInAddr6;
+    in_dest: TInAddr6;
+    Length: integer;
+    free0: Byte;
+    free1: Byte;
+    free2: Byte;
+    proto: Byte;
+  end;
+
+{$IFDEF WIN32}
+const
+  DLLIcmpName = 'iphlpapi.dll';
+type
+  TIP_OPTION_INFORMATION = packed record
+    TTL: Byte;
+    TOS: Byte;
+    Flags: Byte;
+    OptionsSize: Byte;
+    OptionsData: PChar;
+  end;
+  PIP_OPTION_INFORMATION = ^TIP_OPTION_INFORMATION;
+
+  TICMP_ECHO_REPLY = packed record
+    Address: TInAddr;
+    Status: integer;
+    RoundTripTime: integer;
+    DataSize: Word;
+    Reserved: Word;
+    Data: pointer;
+    Options: TIP_OPTION_INFORMATION;
+  end;
+  PICMP_ECHO_REPLY = ^TICMP_ECHO_REPLY;
+
+  TICMPV6_ECHO_REPLY = packed record
+    Address: TSockAddrIn6;
+    Status: integer;
+    RoundTripTime: integer;
+  end;
+  PICMPV6_ECHO_REPLY = ^TICMPV6_ECHO_REPLY;
+
+  TIcmpCreateFile = function: integer; stdcall;
+  TIcmpCloseHandle = function(handle: integer): boolean; stdcall;
+  TIcmpSendEcho2 = function(handle: integer; Event: pointer; ApcRoutine: pointer;
+    ApcContext: pointer; DestinationAddress: TInAddr; RequestData: pointer;
+    RequestSize: integer; RequestOptions: PIP_OPTION_INFORMATION;
+    ReplyBuffer: pointer; ReplySize: integer; Timeout: Integer): integer; stdcall;
+  TIcmp6CreateFile = function: integer; stdcall;
+  TIcmp6SendEcho2 = function(handle: integer; Event: pointer; ApcRoutine: pointer;
+    ApcContext: pointer; SourceAddress: PSockAddrIn6; DestinationAddress: PSockAddrIn6;
+    RequestData: pointer; RequestSize: integer; RequestOptions: PIP_OPTION_INFORMATION;
+    ReplyBuffer: pointer; ReplySize: integer; Timeout: Integer): integer; stdcall;
+
+var
+  IcmpDllHandle: TLibHandle = 0;
+  IcmpHelper4: boolean = false;
+  IcmpHelper6: boolean = false;
+  IcmpCreateFile: TIcmpCreateFile = nil;
+  IcmpCloseHandle: TIcmpCloseHandle = nil;
+  IcmpSendEcho2: TIcmpSendEcho2 = nil;
+  Icmp6CreateFile: TIcmp6CreateFile = nil;
+  Icmp6SendEcho2: TIcmp6SendEcho2 = nil;
+{$ENDIF}
 {==============================================================================}
 
 constructor TPINGSend.Create;
@@ -199,6 +268,7 @@ begin
   FPacketSize := 32;
   FSeq := 0;
   Randomize;
+  FTTL := 128;
 end;
 
 destructor TPINGSend.Destroy;
@@ -213,7 +283,69 @@ begin
   Result := FSock.LastError = 0;
 end;
 
+procedure TPINGSend.GenErrorDesc;
+begin
+  case FReplyError of
+    IE_NoError:
+      FReplyErrorDesc := '';
+    IE_Other:
+      FReplyErrorDesc := 'Unknown error';
+    IE_TTLExceed:
+      FReplyErrorDesc := 'TTL Exceeded';
+    IE_UnreachOther:
+      FReplyErrorDesc := 'Unknown unreachable';
+    IE_UnreachRoute:
+      FReplyErrorDesc := 'No route to destination';
+    IE_UnreachAdmin:
+      FReplyErrorDesc := 'Administratively prohibited';
+    IE_UnreachAddr:
+      FReplyErrorDesc := 'Address unreachable';
+    IE_UnreachPort:
+      FReplyErrorDesc := 'Port unreachable';
+  end;
+end;
+
+function TPINGSend.IsHostIP6(const Host: string): Boolean;
+var
+  f: integer;
+begin
+  f := AF_UNSPEC;
+  if IsIp(Host) then
+    f := AF_INET
+  else
+    if IsIp6(Host) then
+      f := AF_INET6;
+  synsock.SetVarSin(Fsin, host, '0', f,
+    IPPROTO_UDP, SOCK_DGRAM, Fsock.PreferIP4);
+  result := Fsin.sin_family = AF_INET6;
+end;
+
 function TPINGSend.Ping(const Host: string): Boolean;
+var
+  b: boolean;
+begin
+  FPingTime := -1;
+  FReplyFrom := '';
+  FReplyType := 0;
+  FReplyCode := 0;
+  FReplyError := IE_Other;
+  GenErrorDesc;
+  FBuffer := StringOfChar(#55, SizeOf(TICMPEchoHeader) + FPacketSize);
+{$IFDEF WIN32}
+  b := IsHostIP6(host);
+  if not(b) and IcmpHelper4 then
+    result := InternalPingIpHlp(host)
+  else
+    if b and IcmpHelper6 then
+      result := InternalPingIpHlp(host)
+    else
+      result := InternalPing(host);
+{$ELSE}
+   result := InternalPing(host);
+{$ENDIF}
+end;
+
+function TPINGSend.InternalPing(const Host: string): Boolean;
 var
   IPHeadPtr: ^TIPHeader;
   IpHdrLen: Integer;
@@ -223,12 +355,7 @@ var
   IcmpReqHead: string;
 begin
   Result := False;
-  FPingTime := -1;
-  FReplyFrom := '';
-  FReplyType := 0;
-  FReplyCode := 0;
-  FReplyError := IE_NoError;
-  FReplyErrorDesc := '';
+  FSock.TTL := FTTL;
   FSock.Bind(FIPInterface, cAnyPort);
   FSock.Connect(Host, '0');
   if FSock.LastError <> 0 then
@@ -246,7 +373,6 @@ begin
     FIcmpEchoReply := ICMP_ECHOREPLY;
     FIcmpUnreach := ICMP_UNREACH;
   end;
-  FBuffer := StringOfChar(#55, SizeOf(TICMPEchoHeader) + FPacketSize);
   IcmpEchoHeaderPtr := Pointer(FBuffer);
   with IcmpEchoHeaderPtr^ do
   begin
@@ -414,25 +540,96 @@ begin
       FReplyError := IE_Other;
     end;
   end;
-  case FReplyError of
-    IE_NoError:
-      FReplyErrorDesc := '';
-    IE_Other:
-      FReplyErrorDesc := 'Unknown error';
-    IE_TTLExceed:
-      FReplyErrorDesc := 'TTL Exceeded';
-    IE_UnreachOther:
-      FReplyErrorDesc := 'Unknown unreachable';
-    IE_UnreachRoute:
-      FReplyErrorDesc := 'No route to destination';
-    IE_UnreachAdmin:
-      FReplyErrorDesc := 'Administratively prohibited';
-    IE_UnreachAddr:
-      FReplyErrorDesc := 'Address unreachable';
-    IE_UnreachPort:
-      FReplyErrorDesc := 'Port unreachable';
+  GenErrorDesc;
+end;
+
+procedure TPINGSend.TranslateErrorIpHlp(value: integer);
+begin
+  case value of
+    11000, 0:
+      FReplyError := IE_NoError;
+    11013:
+      FReplyError := IE_TTLExceed;
+    11002:
+      FReplyError := IE_UnreachRoute;
+    11003:
+      FReplyError := IE_UnreachAddr;
+    11005:
+      FReplyError := IE_UnreachPort;
+    11004:
+      FReplyError := IE_UnreachAdmin;
+  else
+    FReplyError := IE_Other;
+  end;
+  GenErrorDesc;
+end;
+
+function TPINGSend.InternalPingIpHlp(const Host: string): Boolean;
+{$IFDEF WIN32}
+var
+  PingIp6: boolean;
+  PingHandle: integer;
+  r: integer;
+  ipo: TIP_OPTION_INFORMATION;
+  RBuff: string;
+  ip4reply: PICMP_ECHO_REPLY;
+  ip6reply: PICMPV6_ECHO_REPLY;
+  ip6: TSockAddrIn6;
+begin
+  Result := False;
+  PingIp6 := Fsin.sin_family = AF_INET6;
+  if pingIp6 then
+    PingHandle := Icmp6CreateFile
+  else
+    PingHandle := IcmpCreateFile;
+  if PingHandle <> -1 then
+  begin
+    try
+      ipo.TTL := FTTL;
+      ipo.TOS := 0;
+      ipo.Flags := 0;
+      ipo.OptionsSize := 0;
+      ipo.OptionsData := nil;
+      setlength(RBuff, 4096);
+      if pingIp6 then
+      begin
+        FillChar(ip6, sizeof(ip6), 0);
+        r := Icmp6SendEcho2(PingHandle, nil, nil, nil, @ip6, @Fsin,
+          Pchar(FBuffer), length(FBuffer), @ipo, pchar(RBuff), length(RBuff), FTimeout);
+        if r > 0 then
+        begin
+          RBuff := #0 + #0 + RBuff;
+          ip6reply := PICMPV6_ECHO_REPLY(pointer(RBuff));
+          FPingTime := ip6reply^.RoundTripTime;
+          ip6reply^.Address.sin6_family := AF_INET6;
+          FReplyFrom := GetSinIp(TVarSin(ip6reply^.Address));
+          TranslateErrorIpHlp(ip6reply^.Status);
+          Result := True;
+        end;
+      end
+      else
+      begin
+        r := IcmpSendEcho2(PingHandle, nil, nil, nil, Fsin.sin_addr,
+          Pchar(FBuffer), length(FBuffer), @ipo, pchar(RBuff), length(RBuff), FTimeout);
+        if r > 0 then
+        begin
+          ip4reply := PICMP_ECHO_REPLY(pointer(RBuff));
+          FPingTime := ip4reply^.RoundTripTime;
+          FReplyFrom := IpToStr(swapbytes(ip4reply^.Address.S_addr));
+          TranslateErrorIpHlp(ip4reply^.Status);
+          Result := True;
+        end;
+      end
+    finally
+      IcmpCloseHandle(PingHandle);
+    end;
   end;
 end;
+{$ELSE}
+begin
+  result := false;
+end;
+{$ENDIF}
 
 {==============================================================================}
 
@@ -459,7 +656,7 @@ begin
   try
     ttl := 1;
     repeat
-      ping.Sock.TTL := ttl;
+      ping.TTL := ttl;
       inc(ttl);
       if ttl > 30 then
         Break;
@@ -480,5 +677,32 @@ begin
     Ping.Free;
   end;
 end;
+
+{$IFDEF WIN32}
+initialization
+begin
+  IcmpHelper4 := false;
+  IcmpHelper6 := false;
+  IcmpDllHandle := LoadLibrary(DLLIcmpName);
+  if IcmpDllHandle <> 0 then
+  begin
+    IcmpCreateFile := GetProcAddress(IcmpDLLHandle, 'IcmpCreateFile');
+    IcmpCloseHandle := GetProcAddress(IcmpDLLHandle, 'IcmpCloseHandle');
+    IcmpSendEcho2 := GetProcAddress(IcmpDLLHandle, 'IcmpSendEcho2');
+    Icmp6CreateFile := GetProcAddress(IcmpDLLHandle, 'Icmp6CreateFile');
+    Icmp6SendEcho2 := GetProcAddress(IcmpDLLHandle, 'Icmp6SendEcho2');
+    IcmpHelper4 := assigned(IcmpCreateFile)
+      and assigned(IcmpCloseHandle)
+      and assigned(IcmpSendEcho2);
+    IcmpHelper6 := assigned(Icmp6CreateFile)
+      and assigned(Icmp6SendEcho2);
+  end;
+end;
+
+finalization
+begin
+  FreeLibrary(IcmpDllHandle);
+end;
+{$ENDIF}
 
 end.

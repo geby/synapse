@@ -1,9 +1,9 @@
 {==============================================================================|
-| Project : Ararat Synapse                                       | 002.005.000 |
+| Project : Ararat Synapse                                       | 002.006.000 |
 |==============================================================================|
 | Content: POP3 client                                                         |
 |==============================================================================|
-| Copyright (c)1999-2005, Lukas Gebauer                                        |
+| Copyright (c)1999-2007, Lukas Gebauer                                        |
 | All rights reserved.                                                         |
 |                                                                              |
 | Redistribution and use in source and binary forms, with or without           |
@@ -33,7 +33,7 @@
 | DAMAGE.                                                                      |
 |==============================================================================|
 | The Initial Developer of the Original Code is Lukas Gebauer (Czech Republic).|
-| Portions created by Lukas Gebauer are Copyright (c)2001-2005.                |
+| Portions created by Lukas Gebauer are Copyright (c)2001-2007.                |
 | All Rights Reserved.                                                         |
 |==============================================================================|
 | Contributor(s):                                                              |
@@ -61,7 +61,7 @@ uses
   blcksock, synautil, synacode;
 
 const
-  cPop3Protocol = 'pop3';
+  cPop3Protocol = '110';
 
 type
 
@@ -97,6 +97,11 @@ type
   public
     constructor Create;
     destructor Destroy; override;
+
+    {:You can call any custom by this method. Call Command without trailing CRLF.
+      If MultiLine parameter is @true, multilined response are expected.
+      Result is @true on sucess.}
+    function CustomCommand(const Command: string; MultiLine: Boolean): boolean;
 
     {:Call CAPA command for get POP3 server capabilites.
      note: not all servers support this command!}
@@ -237,17 +242,25 @@ begin
           Delete(s, 1, 1);
       FFullResult.Add(s);
     until FSock.LastError <> 0;
+  if not Full and (Result = 1) then
+    FFullResult.Add(SeparateRight(FResultString, ' '));
+  if FSock.LastError <> 0 then
+    Result := 0;
   FResultCode := Result;
+end;
+
+function TPOP3Send.CustomCommand(const Command: string; MultiLine: Boolean): boolean;
+begin
+  FSock.SendString(Command + CRLF);
+  Result := ReadResult(MultiLine) <> 0;
 end;
 
 function TPOP3Send.AuthLogin: Boolean;
 begin
   Result := False;
-  FSock.SendString('USER ' + FUserName + CRLF);
-  if ReadResult(False) <> 1 then
-    Exit;
-  FSock.SendString('PASS ' + FPassword + CRLF);
-  Result := ReadResult(False) = 1;
+  if not CustomCommand('USER ' + FUserName, False) then
+    exit;
+  Result := CustomCommand('PASS ' + FPassword, False)
 end;
 
 function TPOP3Send.AuthAPOP: Boolean;
@@ -255,8 +268,7 @@ var
   s: string;
 begin
   s := StrToHex(MD5(FTimeStamp + FPassWord));
-  FSock.SendString('APOP ' + FUserName + ' ' + s + CRLF);
-  Result := ReadResult(False) = 1;
+  Result := CustomCommand('APOP ' + FUserName + ' ' + s, False);
 end;
 
 function TPOP3Send.Connect: Boolean;
@@ -278,8 +290,7 @@ end;
 function TPOP3Send.Capability: Boolean;
 begin
   FPOP3cap.Clear;
-  FSock.SendString('CAPA' + CRLF);
-  Result := ReadResult(True) = 1;
+  Result := CustomCommand('CAPA', True);
   if Result then
     FPOP3cap.AddStrings(FFullResult);
 end;
@@ -328,35 +339,31 @@ end;
 
 function TPOP3Send.Logout: Boolean;
 begin
-  FSock.SendString('QUIT' + CRLF);
-  Result := ReadResult(False) = 1;
+  Result := CustomCommand('QUIT', False);
   FSock.CloseSocket;
 end;
 
 function TPOP3Send.Reset: Boolean;
 begin
-  FSock.SendString('RSET' + CRLF);
-  Result := ReadResult(False) = 1;
+  Result := CustomCommand('RSET', False);
 end;
 
 function TPOP3Send.NoOp: Boolean;
 begin
-  FSock.SendString('NOOP' + CRLF);
-  Result := ReadResult(False) = 1;
+  Result := CustomCommand('NOOP', False);
 end;
 
 function TPOP3Send.Stat: Boolean;
 var
   s: string;
 begin
-  Result := False;
-  FSock.SendString('STAT' + CRLF);
-  if ReadResult(False) <> 1 then
-    Exit;
-  s := SeparateRight(ResultString, '+OK ');
-  FStatCount := StrToIntDef(Trim(SeparateLeft(s, ' ')), 0);
-  FStatSize := StrToIntDef(Trim(SeparateRight(s, ' ')), 0);
-  Result := True;
+  Result := CustomCommand('STAT', False);
+  if Result then
+  begin
+    s := SeparateRight(ResultString, '+OK ');
+    FStatCount := StrToIntDef(Trim(SeparateLeft(s, ' ')), 0);
+    FStatSize := StrToIntDef(Trim(SeparateRight(s, ' ')), 0);
+  end;
 end;
 
 function TPOP3Send.List(Value: Integer): Boolean;
@@ -365,10 +372,10 @@ var
   n: integer;
 begin
   if Value = 0 then
-    FSock.SendString('LIST' + CRLF)
+    s := 'LIST'
   else
-    FSock.SendString('LIST ' + IntToStr(Value) + CRLF);
-  Result := ReadResult(Value = 0) = 1;
+    s := 'LIST ' + IntToStr(Value);
+  Result := CustomCommand(s, Value = 0);
   FListSize := 0;
   if Result then
     if Value <> 0 then
@@ -383,8 +390,7 @@ end;
 
 function TPOP3Send.Retr(Value: Integer): Boolean;
 begin
-  FSock.SendString('RETR ' + IntToStr(Value) + CRLF);
-  Result := ReadResult(True) = 1;
+  Result := CustomCommand('RETR ' + IntToStr(Value), True);
 end;
 
 //based on code by Miha Vrhovnik
@@ -423,30 +429,29 @@ end;
 
 function TPOP3Send.Dele(Value: Integer): Boolean;
 begin
-  FSock.SendString('DELE ' + IntToStr(Value) + CRLF);
-  Result := ReadResult(False) = 1;
+  Result := CustomCommand('DELE ' + IntToStr(Value), False);
 end;
 
 function TPOP3Send.Top(Value, Maxlines: Integer): Boolean;
 begin
-  FSock.SendString('TOP ' + IntToStr(Value) + ' ' + IntToStr(Maxlines) + CRLF);
-  Result := ReadResult(True) = 1;
+  Result := CustomCommand('TOP ' + IntToStr(Value) + ' ' + IntToStr(Maxlines), True);
 end;
 
 function TPOP3Send.Uidl(Value: Integer): Boolean;
+var
+  s: string;
 begin
   if Value = 0 then
-    FSock.SendString('UIDL' + CRLF)
+    s := 'UIDL'
   else
-    FSock.SendString('UIDL ' + IntToStr(Value) + CRLF);
-  Result := ReadResult(Value = 0) = 1;
+    s := 'UIDL ' + IntToStr(Value);
+  Result := CustomCommand(s, Value = 0);
 end;
 
 function TPOP3Send.StartTLS: Boolean;
 begin
   Result := False;
-  FSock.SendString('STLS' + CRLF);
-  if ReadResult(False) = 1 then
+  if CustomCommand('STLS', False) then
   begin
     Fsock.SSLDoConnect;
     Result := FSock.LastError = 0;
