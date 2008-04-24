@@ -1,5 +1,5 @@
 {==============================================================================|
-| Project : Ararat Synapse                                       | 002.005.000 |
+| Project : Ararat Synapse                                       | 002.005.001 |
 |==============================================================================|
 | Content: IMAP4rev1 client                                                    |
 |==============================================================================|
@@ -58,9 +58,6 @@ interface
 
 uses
   SysUtils, Classes,
-  {$IFDEF STREAMSEC}
-  TlsInternalServer, TlsSynaSock,
-  {$ENDIF}
   blcksock, synautil;
 
 const
@@ -75,12 +72,7 @@ type
    parent @link(TSynaClient) too!}
   TIMAPSend = class(TSynaClient)
   protected
-    {$IFDEF STREAMSEC}
-    FSock: TSsTCPBlockSocket;
-    FTLSServer: TCustomTLSInternalServer;
-    {$ELSE}
     FSock: TTCPBlockSocket;
-    {$ENDIF}
     FTagCommand: integer;
     FResultString: string;
     FFullResult: TStringList;
@@ -264,13 +256,9 @@ type
     {:SSL/TLS mode is used from first contact to server. Servers with full
      SSL/TLS mode usualy using non-standard TCP port!}
     property FullSSL: Boolean read FFullSSL Write FFullSSL;
-{$IFDEF STREAMSEC}                            
-    property Sock: TSsTCPBlockSocket read FSock;
-    property TLSServer: TCustomTLSInternalServer read FTLSServer write FTLSServer;
-{$ELSE}
+
     {:Socket object used for TCP/IP operation. Good for seting OnStatus hook, etc.}
     property Sock: TTCPBlockSocket read FSock;
-{$ENDIF}
   end;
 
 implementation
@@ -280,13 +268,7 @@ begin
   inherited Create;
   FFullResult := TStringList.Create;
   FIMAPcap := TStringList.Create;
-{$IFDEF STREAMSEC}           
-  FTLSServer := GlobalTLSInternalServer;
-  FSock := TSsTCPBlockSocket.Create;
-  FSock.BlockingRead := True;
-{$ELSE}
   FSock := TTCPBlockSocket.Create;
-{$ENDIF}
   FSock.ConvertLineEnd := True;
   FSock.SizeRecvBuffer := 32768;
   FSock.SizeSendBuffer := 32768;
@@ -519,25 +501,11 @@ function TIMAPSend.Connect: Boolean;
 begin
   FSock.CloseSocket;
   FSock.Bind(FIPInterface, cAnyPort);
-{$IFDEF STREAMSEC}
-  if FFullSSL then
-  begin
-    if assigned(FTLSServer) then
-      FSock.TLSServer := FTLSServer
-    else
-    begin
-      Result := false;
-      exit;
-    end;
-  end
-  else
-    FSock.TLSServer := nil;
-{$ELSE}
-  if FFullSSL then
-    FSock.SSLEnabled := True;
-{$ENDIF}
   if FSock.LastError = 0 then
     FSock.Connect(FTargetHost, FTargetPort);
+  if FSock.LastError = 0 then
+    if FFullSSL then
+      FSock.SSLDoConnect;
   Result := FSock.LastError = 0;
 end;
 
@@ -773,6 +741,7 @@ begin
       begin
         t := SeparateRight(s, 'RFC822.SIZE ');
         t := Trim(SeparateLeft(t, ')'));
+        t := Trim(SeparateLeft(t, ' '));
         Result := StrToIntDef(t, -1);
         Break;
       end;
@@ -861,14 +830,7 @@ begin
   begin
     if IMAPcommand('STARTTLS') = 'OK' then
     begin
-{$IFDEF STREAMSEC}
-      if not assigned(FTLSServer) then
-        Exit;
-      Fsock.TLSServer := FTLSServer;
-      FSock.Connect('','');
-{$ELSE}
       Fsock.SSLDoConnect;
-{$ENDIF}
       Result := FSock.LastError = 0;
     end;
   end;

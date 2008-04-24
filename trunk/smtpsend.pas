@@ -1,9 +1,9 @@
 {==============================================================================|
-| Project : Ararat Synapse                                       | 003.003.001 |
+| Project : Ararat Synapse                                       | 003.004.002 |
 |==============================================================================|
 | Content: SMTP client                                                         |
 |==============================================================================|
-| Copyright (c)1999-2004, Lukas Gebauer                                        |
+| Copyright (c)1999-2005, Lukas Gebauer                                        |
 | All rights reserved.                                                         |
 |                                                                              |
 | Redistribution and use in source and binary forms, with or without           |
@@ -33,7 +33,7 @@
 | DAMAGE.                                                                      |
 |==============================================================================|
 | The Initial Developer of the Original Code is Lukas Gebauer (Czech Republic).|
-| Portions created by Lukas Gebauer are Copyright (c) 1999-2004.          |
+| Portions created by Lukas Gebauer are Copyright (c) 1999-2005.               |
 | All Rights Reserved.                                                         |
 |==============================================================================|
 | Contributor(s):                                                              |
@@ -59,9 +59,6 @@ interface
 
 uses
   SysUtils, Classes,
-  {$IFDEF STREAMSEC}
-  TlsInternalServer, TlsSynaSock,
-  {$ENDIF}
   blcksock, synautil, synacode;
 
 const
@@ -78,12 +75,7 @@ type
    parent @link(TSynaClient) too!}
   TSMTPSend = class(TSynaClient)
   private
-    {$IFDEF STREAMSEC}
-    FSock: TSsTCPBlockSocket;
-    FTLSServer: TCustomTLSInternalServer;
-    {$ELSE}
     FSock: TTCPBlockSocket;
-    {$ENDIF}
     FResultCode: Integer;
     FResultString: string;
     FFullResult: TStringList;
@@ -210,13 +202,9 @@ type
     {:SSL/TLS mode is used from first contact to server. Servers with full
      SSL/TLS mode usualy using non-standard TCP port!}
     property FullSSL: Boolean read FFullSSL Write FFullSSL;
-{$IFDEF STREAMSEC}
-    property Sock: TSsTCPBlockSocket read FSock;
-    property TLSServer: TCustomTLSInternalServer read FTLSServer write FTLSServer;
-{$ELSE}
+
     {:Socket object used for TCP/IP operation. Good for seting OnStatus hook, etc.}
     property Sock: TTCPBlockSocket read FSock;
-{$ENDIF}
   end;
 
 {:A very useful function and example of its use would be found in the TSMTPsend
@@ -271,13 +259,7 @@ begin
   inherited Create;
   FFullResult := TStringList.Create;
   FESMTPcap := TStringList.Create;
-{$IFDEF STREAMSEC}
-  FTLSServer := GlobalTLSInternalServer;
-  FSock := TSsTCPBlockSocket.Create;
-  FSock.BlockingRead := True;
-{$ELSE}
   FSock := TTCPBlockSocket.Create;
-{$ENDIF}
   FSock.ConvertLineEnd := true;
   FTimeout := 60000;
   FTargetPort := cSmtpProtocol;
@@ -383,25 +365,11 @@ function TSMTPSend.Connect: Boolean;
 begin
   FSock.CloseSocket;
   FSock.Bind(FIPInterface, cAnyPort);
-{$IFDEF STREAMSEC}
-  if FFullSSL then
-  begin
-    if assigned(FTLSServer) then
-      FSock.TLSServer := FTLSServer;
-    else
-    begin
-      result := False;
-      Exit;
-    end;
-  end
-  else
-    FSock.TLSServer := nil;
-{$ELSE}
-  if FFullSSL then
-    FSock.SSLEnabled := True;
-{$ENDIF}
   if FSock.LastError = 0 then
     FSock.Connect(FTargetHost, FTargetPort);
+  if FSock.LastError = 0 then
+    if FFullSSL then
+      FSock.SSLDoConnect;
   Result := FSock.LastError = 0;
 end;
 
@@ -526,19 +494,30 @@ function TSMTPSend.MailData(const Value: TStrings): Boolean;
 var
   n: Integer;
   s: string;
+  t: string;
+  x: integer;
 begin
   Result := False;
   FSock.SendString('DATA' + CRLF);
   if ReadResult <> 354 then
     Exit;
+  t := '';
+  x := 1500;
   for n := 0 to Value.Count - 1 do
   begin
     s := Value[n];
     if Length(s) >= 1 then
       if s[1] = '.' then
         s := '.' + s;
-    FSock.SendString(s + CRLF);
+    if Length(t) + Length(s) >= x then
+    begin
+      FSock.SendString(t);
+      t := '';
+    end;
+    t := t + s + CRLF;
   end;
+  if t <> '' then
+    FSock.SendString(t);
   FSock.SendString('.' + CRLF);
   Result := ReadResult = 250;
 end;
@@ -569,19 +548,8 @@ begin
     FSock.SendString('STARTTLS' + CRLF);
     if (ReadResult = 220) and (FSock.LastError = 0) then
     begin
-{$IFDEF STREAMSEC}
-      if (Assigned(FTLSServer) then
-      begin
-        Fsock.TLSServer := FTLSServer;
-        Fsock.Connect('','');
-        Result := FSock.LastError = 0;
-      end
-      else
-        Result := False;
-{$ELSE}
       Fsock.SSLDoConnect;
       Result := FSock.LastError = 0;
-{$ENDIF}
     end;
   end;
 end;

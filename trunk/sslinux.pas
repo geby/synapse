@@ -1,5 +1,5 @@
 {==============================================================================|
-| Project : Ararat Synapse                                       | 002.000.003 |
+| Project : Ararat Synapse                                       | 002.000.005 |
 |==============================================================================|
 | Content: Socket Independent Platform Layer - Linux definition include        |
 |==============================================================================|
@@ -204,7 +204,8 @@ type
     padding: u_long;
   end;
 
-  hostent = record
+  PHostEnt = ^THostEnt;
+  THostent = record
     h_name: PChar;
     h_aliases: PPChar;
     h_addrtype: Integer;
@@ -738,7 +739,7 @@ end;
 
 function __FDMASK(Socket: TSocket): __fd_mask;
 begin
-  Result := 1 shl (Socket mod __NFDBITS);
+  Result := LongWord(1) shl (Socket mod __NFDBITS);
 end;
 
 function FD_ISSET(Socket: TSocket; var fdset: TFDSet): Boolean;

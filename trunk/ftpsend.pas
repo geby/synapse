@@ -1,9 +1,9 @@
 {==============================================================================|
-| Project : Ararat Synapse                                       | 003.001.002 |
+| Project : Ararat Synapse                                       | 003.004.005 |
 |==============================================================================|
 | Content: FTP client                                                          |
 |==============================================================================|
-| Copyright (c)1999-2004, Lukas Gebauer                                        |
+| Copyright (c)1999-2005, Lukas Gebauer                                        |
 | All rights reserved.                                                         |
 |                                                                              |
 | Redistribution and use in source and binary forms, with or without           |
@@ -33,7 +33,7 @@
 | DAMAGE.                                                                      |
 |==============================================================================|
 | The Initial Developer of the Original Code is Lukas Gebauer (Czech Republic).|
-| Portions created by Lukas Gebauer are Copyright (c) 1999-2004.               |
+| Portions created by Lukas Gebauer are Copyright (c) 1999-2005.               |
 | All Rights Reserved.                                                         |
 |==============================================================================|
 | Contributor(s):                                                              |
@@ -59,9 +59,6 @@ interface
 
 uses
   SysUtils, Classes,
-  {$IFDEF STREAMSEC}
-  TlsInternalServer, TlsSynaSock,
-  {$ENDIF}
   blcksock, synautil, synsock;
 
 const
@@ -198,14 +195,8 @@ type
   TFTPSend = class(TSynaClient)
   protected
     FOnStatus: TFTPStatus;
-    {$IFDEF STREAMSEC}
-    FSock: TSsTCPBlockSocket;
-    FDSock: TSsTCPBlockSocket;
-    FTLSServer: TCustomTLSInternalServer;
-    {$ELSE}
     FSock: TTCPBlockSocket;
     FDSock: TTCPBlockSocket;
-    {$ENDIF}
     FResultCode: Integer;
     FResultString: string;
     FFullResult: TStringList;
@@ -273,6 +264,11 @@ type
     {:Break current transmission of data. (You can call this method from
      Sock.OnStatus event, or from another thread.)}
     procedure Abort; virtual;
+
+    {:Break current transmission of data. It is same as Abort, but it send abort
+     telnet commands prior ABOR FTP command. Some servers need it. (You can call
+     this method from Sock.OnStatus event, or from another thread.)}
+    procedure TelnetAbort; virtual;
 
     {:Download directory listing of Directory on FTP server. If Directory is
      empty string, download listing of current working directory.
@@ -367,11 +363,7 @@ type
      predefined firewall login sequences are described by comments in source
      file where you can see pseudocode decribing each sequence.}
     property FWMode: integer read FFWMode Write FFWMode;
-{$IFDEF STREAMSEC}
-    property Sock: TSsTCPBlockSocket read FSock;
-    property DSock: TSsTCPBlockSocket read FDSock;
-    property TLSServer: TCustomTLSInternalServer read FTLSServer write FTLSServer;
-{$ELSE}
+
     {:Socket object used for TCP/IP operation on control channel. Good for
      seting OnStatus hook, etc.}
     property Sock: TTCPBlockSocket read FSock;
@@ -379,7 +371,6 @@ type
     {:Socket object used for TCP/IP operation on data channel. Good for seting
      OnStatus hook, etc.}
     property DSock: TTCPBlockSocket read FDSock;
-{$ENDIF}
 
     {:If you not use @link(DirectFile) mode, all data transfers is made to or
      from this stream.}
@@ -470,18 +461,9 @@ begin
   inherited Create;
   FFullResult := TStringList.Create;
   FDataStream := TMemoryStream.Create;
-{$IFDEF STREAMSEC}
-  FTLSServer := GlobalTLSInternalServer;
-  FSock := TSsTCPBlockSocket.Create;
-  FSock.BlockingRead := True;
-  FSock.ConvertLineEnd := True;
-  FDSock := TSsTCPBlockSocket.Create;
-  FDSock.BlockingRead := True;
-{$ELSE}
   FSock := TTCPBlockSocket.Create;
   FSock.ConvertLineEnd := True;
   FDSock := TTCPBlockSocket.Create;
-{$ENDIF}
   FFtpList := TFTPList.Create;
   FTimeout := 300000;
   FTargetPort := cFtpProtocol;
@@ -545,6 +527,7 @@ end;
 
 function TFTPSend.FTPCommand(const Value: string): integer;
 begin
+  FSock.Purge;
   FSock.SendString(Value + CRLF);
   DoStatus(False, Value);
   Result := ReadResult;
@@ -735,28 +718,14 @@ function TFTPSend.Connect: Boolean;
 begin
   FSock.CloseSocket;
   FSock.Bind(FIPInterface, cAnyPort);
-{$IFDEF STREAMSEC}
-  if FFullSSL then
-  begin
-    if assigned(FTLSServer) then
-      FSock.TLSServer := FTLSServer
-    else
-    begin
-      result := False;
-      Exit;
-    end;
-  end
-  else
-    FSock.TLSServer := nil;
-{$ELSE}
-  if FFullSSL then
-    FSock.SSLEnabled := True;
-{$ENDIF}
   if FSock.LastError = 0 then
     if FFWHost = '' then
       FSock.Connect(FTargetHost, FTargetPort)
     else
       FSock.Connect(FFWHost, FFWPort);
+  if FSock.LastError = 0 then
+    if FFullSSL then
+      FSock.SSLDoConnect;
   Result := FSock.LastError = 0;
 end;
 
@@ -778,20 +747,8 @@ begin
   if FAutoTLS and not(FIsTLS) then
     if (FTPCommand('AUTH TLS') div 100) = 2 then
     begin
-{$IFDEF STREAMSEC}
-      if Assigned(FTLSServer) then
-      begin
-        Fsock.TLSServer := FTLSServer;
-        Fsock.Connect('','');
-        FIsTLS := FSock.LastError = 0;
-      end;
-{$ELSE}
       FSock.SSLDoConnect;
       FIsTLS := FSock.LastError = 0;
-      FDSock.SSLCertificateFile := FSock.SSLCertificateFile;
-      FDSock.SSLPrivateKeyFile := FSock.SSLPrivateKeyFile;
-      FDSock.SSLCertCAFile := FSock.SSLCertCAFile;
-{$ENDIF}
       if not FIsTLS then
       begin
         Result := False;
@@ -878,6 +835,8 @@ var
   s: string;
 begin
   Result := False;
+  if FIsDataTLS then
+    FPassiveMode := True;
   if FPassiveMode then
   begin
     if FSock.IP6used then
@@ -958,19 +917,9 @@ begin
   end;
   if Result and FIsDataTLS then
   begin
-{$IFDEF STREAMSEC}
-    if Assigned(FTLSServer) then
-    begin
-      FDSock.TLSServer := FTLSServer;
-      FDSock.Connect('','');
-      Result := FDSock.LastError = 0;
-    end
-    else
-      Result := False;
-{$ELSE}
+    FDSock.SSL.Assign(FSock.SSL);
     FDSock.SSLDoConnect;
     Result := FDSock.LastError = 0;
-{$ENDIF}
   end;
 end;
 
@@ -994,17 +943,17 @@ end;
 function TFTPSend.DataWrite(const SourceStream: TStream): Boolean;
 var
   x: integer;
+  b: Boolean;
 begin
   Result := False;
   try
     if not AcceptDataSocket then
       Exit;
     FDSock.SendStreamRaw(SourceStream);
-    if FDSock.LastError <> 0 then
-      Exit;
+    b := FDSock.LastError = 0;
     FDSock.CloseSocket;
     x := ReadResult;
-    Result := (x div 100) = 2;
+    Result := b and ((x div 100) = 2);
   finally
     FDSock.CloseSocket;
   end;
@@ -1221,7 +1170,14 @@ end;
 
 procedure TFTPSend.Abort;
 begin
+  FSock.SendString('ABOR' + CRLF);
   FDSock.StopFlag := True;
+end;
+
+procedure TFTPSend.TelnetAbort;
+begin
+  FSock.SendString(#$FF + #$F4 + #$FF + #$F2);
+  Abort;
 end;
 
 {==============================================================================}
@@ -1570,7 +1526,7 @@ begin
       Exit;
     for n := 1 to 10 do
       if not(Permissions[n] in
-        ['a', 'b', 'c', 'd', 'h', 'l', 'p', 'r', 's', 'w', 'x', 'y', '-']) then
+        ['a', 'b', 'c', 'd', 'h', 'l', 'p', 'r', 's', 't', 'w', 'x', 'y', '-']) then
         Exit;
   end;
   if Day <> '' then

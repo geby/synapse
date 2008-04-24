@@ -47,7 +47,12 @@
 {$ENDIF}
 {$H+}
 
-{:@exclude}
+{:@abstract(LibIconv support)
+
+This unit is Pascal interface to LibIconv library for charset translations.
+LibIconv is loaded dynamicly on-demand. If this library is not found in system,
+requested LibIconv function just return errorcode.
+}
 unit synaicnv;
 
 interface
@@ -216,8 +221,8 @@ begin
     ix := Length(inbuf);
     ox := Length(Outbuf);
     _iconv(cd, ib, ix, ob, ox);
-    setlength(Outbuf, Length(Outbuf) - ox);
-    Result := Length(inbuf) - ix;
+    setlength(Outbuf, cardinal(Length(Outbuf)) - ox);
+    Result := Cardinal(Length(inbuf)) - ix;
   end
   else
   begin
@@ -335,7 +340,7 @@ begin
   Result := IconvLoaded;
 end;
 
-initialization
+ initialization
 begin
   IconvCS:= TCriticalSection.Create;
 end;

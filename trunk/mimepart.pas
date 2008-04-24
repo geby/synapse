@@ -1,9 +1,9 @@
 {==============================================================================|
-| Project : Ararat Synapse                                       | 002.006.003 |
+| Project : Ararat Synapse                                       | 002.007.002 |
 |==============================================================================|
 | Content: MIME support procedures and functions                               |
 |==============================================================================|
-| Copyright (c)1999-2004, Lukas Gebauer                                        |
+| Copyright (c)1999-2005, Lukas Gebauer                                        |
 | All rights reserved.                                                         |
 |                                                                              |
 | Redistribution and use in source and binary forms, with or without           |
@@ -33,7 +33,7 @@
 | DAMAGE.                                                                      |
 |==============================================================================|
 | The Initial Developer of the Original Code is Lukas Gebauer (Czech Republic).|
-| Portions created by Lukas Gebauer are Copyright (c)2000-2004.                |
+| Portions created by Lukas Gebauer are Copyright (c)2000-2005.                |
 | All Rights Reserved.                                                         |
 |==============================================================================|
 | Contributor(s):                                                              |
@@ -136,6 +136,8 @@ type
     FSubLevel: integer;
     FMaxSubLevel: integer;
     FAttachInside: boolean;
+    FConvertCharset: Boolean;
+    FForcedHTMLConvert: Boolean;
     procedure SetPrimary(Value: string);
     procedure SetEncoding(Value: string);
     procedure SetCharset(Value: string);
@@ -251,6 +253,14 @@ type
     {:System charset type. Default value is charset used by default in your
      operating system.}
     property TargetCharset: TMimeChar read FTargetCharset Write FTargetCharset;
+
+    {:If @true, then do internal charset translation of part content between @link(CharsetCode)
+     and @link(TargetCharset)}
+    property ConvertCharset: Boolean read FConvertCharset Write FConvertCharset;
+
+    {:If @true, then allways do internal charset translation of HTML parts
+     by MIME even it have their own charset in META tag. Default is @false.}
+    property ForcedHTMLConvert: Boolean read FForcedHTMLConvert Write FForcedHTMLConvert;
 
     {:Secondary Mime type of part. (i.e. 'mixed')}
     property Secondary: string read FSecondary Write FSecondary;
@@ -398,6 +408,8 @@ begin
   FSubLevel := 0;
   FMaxSubLevel := -1;
   FAttachInside := false;
+  FConvertCharset := true;
+  FForcedHTMLConvert := false;
 end;
 
 destructor TMIMEPart.Destroy;
@@ -436,6 +448,8 @@ begin
   FPrePart.Clear;
   FPostPart.Clear;
   FDecodedLines.Clear;
+  FConvertCharset := true;
+  FForcedHTMLConvert := false;
   ClearSubParts;
 end;
 
@@ -464,6 +478,7 @@ begin
   PostPart.Assign(Value.PostPart);
   MaxLineLength := Value.MaxLineLength;
   FAttachInside := Value.AttachInside;
+  FConvertCharset := Value.ConvertCharset;
 end;
 
 {==============================================================================}
@@ -744,22 +759,15 @@ begin
   else
     s := FPartBody.Text;
   end;
-  if FPrimaryCode = MP_TEXT then
-    if uppercase(FSecondary) = 'HTML' then
+  if FConvertCharset and (FPrimaryCode = MP_TEXT) then
+    if (not FForcedHTMLConvert) and (uppercase(FSecondary) = 'HTML') then
     begin
-      b := False;
-      for n := 0 to FPartBody.Count - 1 do
-      begin
-        t := uppercase(FPartBody[n]);
-        if Pos('HTTP-EQUIV', t) > 0 then
-          if Pos('CONTENT-TYPE', t) > 0 then
-          begin
-            b := True;
-            Break;
-          end;
-        if Pos('</HEAD>', t) > 0 then
-          Break;
-      end;
+      t := uppercase(s);
+      t := SeparateLeft(t, '</HEAD>');
+      t := SeparateRight(t, '<HEAD>');
+      t := ReplaceString(t, '"', '');
+      t := ReplaceString(t, ' ', '');
+      b := Pos('HTTP-EQUIV=CONTENT-TYPE', t) > 0;
       if not b then
         s := CharsetConversion(s, FCharsetCode, FTargetCharset);
     end
@@ -841,7 +849,6 @@ var
   s, t: string;
   n, x: Integer;
   d1, d2: integer;
-  NeedBOM: Boolean;
 begin
   if (FEncodingCode = ME_UU) or (FEncodingCode = ME_XX) then
     Encoding := 'base64';
@@ -849,92 +856,71 @@ begin
   FPartBody.Clear;
   FDecodedLines.Seek(0, soFromBeginning);
   try
-    NeedBOM := True;
     case FPrimaryCode of
       MP_MULTIPART, MP_MESSAGE:
         FPartBody.LoadFromStream(FDecodedLines);
       MP_TEXT, MP_BINARY:
-        if FEncodingCode = ME_BASE64 then
         begin
-          while FDecodedLines.Position < FDecodedLines.Size do
+          s := ReadStrFromStream(FDecodedLines, FDecodedLines.Size);
+          if FConvertCharset and (FPrimaryCode = MP_TEXT) and (FEncodingCode <> ME_7BIT) then
+            s := GetBOM(FCharSetCode) + CharsetConversion(s, FTargetCharset, FCharsetCode);
+          if FEncodingCode = ME_BASE64 then
           begin
-            s := ReadStrFromStream(FDecodedLines, 54);
-//            Setlength(s, 54);
-//            x := FDecodedLines.Read(pointer(s)^, 54);
-//            Setlength(s, x);
-            if FPrimaryCode = MP_TEXT then
+            x := 1;
+            while x <= length(s) do
             begin
-              s := CharsetConversion(s, FTargetCharset, FCharsetCode);
-              if NeedBOM then
-              begin
-                s := GetBOM(FCharSetCode) + s;
-                NeedBOM := False;
-              end;
+              t := copy(s, x, 54);
+              x := x + length(t);
+              t := EncodeBase64(t);
+              FPartBody.Add(t);
             end;
-            s := EncodeBase64(s);
-            FPartBody.Add(s);
-          end;
-        end
-        else
-        begin
-          if FPrimaryCode = MP_BINARY then
-          begin
-            s := ReadStrFromStream(FDecodedLines, FDecodedLines.Size);
-//            SetLength(s, FDecodedLines.Size);
-//            x := FDecodedLines.Read(pointer(s)^, FDecodedLines.Size);
-//            Setlength(s, x);
-            l.Add(s);
           end
           else
-            l.LoadFromStream(FDecodedLines);
-          for n := 0 to l.Count - 1 do
           begin
-            s := l[n];
-            if (FPrimaryCode = MP_TEXT) and (FEncodingCode <> ME_7BIT) then
-            begin
-              s := CharsetConversion(s, FTargetCharset, FCharsetCode);
-              if NeedBOM then
-              begin
-                s := GetBOM(FCharSetCode) + s;
-                NeedBOM := False;
-              end;
-            end;
-            if FEncodingCode = ME_QUOTED_PRINTABLE then
-            begin
-              s := EncodeQuotedPrintable(s);
-              repeat
-                if Length(s) < FMaxLineLength then
-                begin
-                  t := s;
-                  s := '';
-                end
-                else
-                begin
-                  d1 := RPosEx('=', s, FMaxLineLength);
-                  d2 := RPosEx(' ', s, FMaxLineLength);
-                  if (d1 = 0) and (d2 = 0) then
-                    x := FMaxLineLength
-                  else
-                    if d1 > d2 then
-                      x := d1 - 1
-                    else
-                      x := d2 - 1;
-                  if x = 0 then
-                    x := FMaxLineLength;
-                  t := Copy(s, 1, x);
-                  Delete(s, 1, x);
-                  if s <> '' then
-                    t := t + '=';
-                end;
-                FPartBody.Add(t);
-              until s = '';
-            end
+            if FPrimaryCode = MP_BINARY then
+              l.Add(s)
             else
-              FPartBody.Add(s);
+              l.Text := s;
+            for n := 0 to l.Count - 1 do
+            begin
+              s := l[n];
+              if FEncodingCode = ME_QUOTED_PRINTABLE then
+              begin
+                s := EncodeQuotedPrintable(s);
+                repeat
+                  if Length(s) < FMaxLineLength then
+                  begin
+                    t := s;
+                    s := '';
+                  end
+                  else
+                  begin
+                    d1 := RPosEx('=', s, FMaxLineLength);
+                    d2 := RPosEx(' ', s, FMaxLineLength);
+                    if (d1 = 0) and (d2 = 0) then
+                      x := FMaxLineLength
+                    else
+                      if d1 > d2 then
+                        x := d1 - 1
+                      else
+                        x := d2 - 1;
+                    if x = 0 then
+                      x := FMaxLineLength;
+                    t := Copy(s, 1, x);
+                    Delete(s, 1, x);
+                    if s <> '' then
+                      t := t + '=';
+                  end;
+                  FPartBody.Add(t);
+                until s = '';
+              end
+              else
+                FPartBody.Add(s);
+            end;
+            if (FPrimaryCode = MP_BINARY)
+              and (FEncodingCode = ME_QUOTED_PRINTABLE) then
+              FPartBody[FPartBody.Count - 1] := FPartBody[FPartBody.Count - 1] + '=';
           end;
-          if (FPrimaryCode = MP_BINARY)
-            and (FEncodingCode = ME_QUOTED_PRINTABLE) then
-            FPartBody[FPartBody.Count - 1] := FPartBody[FPartBody.Count - 1] + '=';
         end;
     end;
   finally
@@ -966,7 +952,7 @@ begin
   begin
     s := '';
     if FFileName <> '' then
-      s := '; FileName="' + InlineCodeEx(FileName, FTargetCharset) + '"';
+      s := '; FileName=' + QuoteStr(InlineCodeEx(FileName, FTargetCharset), '"');
     FHeaders.Insert(0, 'Content-Disposition: ' + LowerCase(FDisposition) + s);
   end;
   if FContentID <> '' then
@@ -995,7 +981,7 @@ begin
       s := FPrimary + '/' + FSecondary;
   end;
   if FFileName <> '' then
-    s := s + '; name="' + InlineCodeEx(FileName, FTargetCharset) + '"';
+    s := s + '; name=' + QuoteStr(InlineCodeEx(FileName, FTargetCharset), '"');
   FHeaders.Insert(0, 'Content-type: ' + s);
 end;
 

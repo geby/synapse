@@ -1,5 +1,5 @@
 {==============================================================================|
-| Project : Ararat Synapse                                       | 001.002.000 |
+| Project : Ararat Synapse                                       | 001.002.002 |
 |==============================================================================|
 | Content: SysLog client                                                       |
 |==============================================================================|
@@ -232,7 +232,7 @@ begin
   Inc(Pos);
   // Tag
   StrBuf := '';
-  while (Value[Pos] <> ' ')do
+  while (Value[Pos] <> ':')do
     begin
       StrBuf := StrBuf + Value[Pos];
       Inc(Pos);
@@ -246,7 +246,7 @@ begin
       StrBuf := StrBuf + Value[Pos];
       Inc(Pos);
     end;
-  FMessage := StrBuf;
+  FMessage := TrimSP(StrBuf);
 end;
 
 procedure TSysLogMessage.Clear;
@@ -293,10 +293,6 @@ begin
   FSysLogMessage.DateTime := Now;
   if Length(FSysLogMessage.PacketBuf) <= 1024 then
   begin
-    FSock.EnableReuse(True);
-    Fsock.Bind(FIPInterface, FTargetPort);
-    if FSock.LastError <> 0 then
-      FSock.Bind(FIPInterface, cAnyPort);
     FSock.Connect(FTargetHost, FTargetPort);
     FSock.SendString(FSysLogMessage.PacketBuf);
     Result := FSock.LastError = 0;

@@ -1,9 +1,9 @@
 {==============================================================================|
-| Project : Ararat Synapse                                       | 001.001.003 |
+| Project : Ararat Synapse                                       | 001.002.000 |
 |==============================================================================|
-| Content: TELNET client                                                       |
+| Content: TELNET and SSH2 client                                              |
 |==============================================================================|
-| Copyright (c)1999-2003, Lukas Gebauer                                        |
+| Copyright (c)1999-2004, Lukas Gebauer                                        |
 | All rights reserved.                                                         |
 |                                                                              |
 | Redistribution and use in source and binary forms, with or without           |
@@ -33,7 +33,7 @@
 | DAMAGE.                                                                      |
 |==============================================================================|
 | The Initial Developer of the Original Code is Lukas Gebauer (Czech Republic).|
-| Portions created by Lukas Gebauer are Copyright (c)2002-2003.                |
+| Portions created by Lukas Gebauer are Copyright (c)2002-2005.                |
 | All Rights Reserved.                                                         |
 |==============================================================================|
 | Contributor(s):                                                              |
@@ -62,6 +62,7 @@ uses
 
 const
   cTelnetProtocol = 'telnet';
+  cSSHProtocol = '22';
 
   TLNT_EOR                = #239;
   TLNT_SE                 = #240;
@@ -86,7 +87,7 @@ type
   TTelnetState =(tsDATA, tsIAC, tsIAC_SB, tsIAC_WILL, tsIAC_DO, tsIAC_WONT,
      tsIAC_DONT, tsIAC_SBIAC, tsIAC_SBDATA, tsSBDATA_IAC);
 
-  {:@abstract(Class with implementation of Telnet script client.)
+  {:@abstract(Class with implementation of Telnet/SSH script client.)
 
    Note: Are you missing properties for specify server address and port? Look to
    parent @link(TSynaClient) too!}
@@ -108,6 +109,11 @@ type
 
     {:Connects to Telnet server.}
     function Login: Boolean;
+
+    {:Connects to SSH2 server and login by Username and Password properties.
+
+     You must use some of SSL plugins with SSH support. For exammple CryptLib.}
+    function SSHLogin: Boolean;
 
     {:Logout from telnet server.}
     procedure Logout;
@@ -328,6 +334,19 @@ begin
   if not Connect then
     Exit;
   Result := True;
+end;
+
+function TTelnetSend.SSHLogin: Boolean;
+begin
+  Result := False;
+  if Connect then
+  begin
+    FSock.SSL.SSLType := LT_SSHv2;
+    FSock.SSL.Username := FUsername;
+    FSock.SSL.Password := FPassword;
+    FSock.SSLDoConnect;
+    Result := FSock.LastError = 0;
+  end;
 end;
 
 procedure TTelnetSend.Logout;

@@ -1,5 +1,5 @@
 {==============================================================================|
-| Project : Ararat Synapse                                       | 002.006.000 |
+| Project : Ararat Synapse                                       | 002.007.000 |
 |==============================================================================|
 | Content: DNS client                                                          |
 |==============================================================================|
@@ -100,6 +100,7 @@ const
   QTYPE_SRV = 33;
   QTYPE_NAPTR = 35; // RFC-2168
   QTYPE_KX = 36;
+  QTYPE_SPF = 99;
 
   QTYPE_AXFR = 252;
   QTYPE_MAILB = 253; //
@@ -453,7 +454,7 @@ begin
           R := IntToStr(x);
           R := R + ',' + DecodeLabels(j);
         end;
-      QTYPE_TXT:
+      QTYPE_TXT, QTYPE_SPF:
         begin
           R := '';
           while j < i do

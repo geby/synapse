@@ -1,9 +1,9 @@
 {==============================================================================|
-| Project : Ararat Synapse                                       | 008.003.007 |
+| Project : Ararat Synapse                                       | 009.000.007 |
 |==============================================================================|
 | Content: Library base                                                        |
 |==============================================================================|
-| Copyright (c)1999-2004, Lukas Gebauer                                        |
+| Copyright (c)1999-2005, Lukas Gebauer                                        |
 | All rights reserved.                                                         |
 |                                                                              |
 | Redistribution and use in source and binary forms, with or without           |
@@ -33,7 +33,7 @@
 | DAMAGE.                                                                      |
 |==============================================================================|
 | The Initial Developer of the Original Code is Lukas Gebauer (Czech Republic).|
-| Portions created by Lukas Gebauer are Copyright (c)1999-2004.                |
+| Portions created by Lukas Gebauer are Copyright (c)1999-2005.                |
 | All Rights Reserved.                                                         |
 |==============================================================================|
 | Contributor(s):                                                              |
@@ -103,11 +103,11 @@ uses
   ,System.Net.Sockets
   ,System.Text
 {$ENDIF}
-  , synassl;
+  ;
 
 const
 
-  SynapseRelease = '35';
+  SynapseRelease = '36';
 
   cLocalhost = '127.0.0.1';
   cAnyHost = '0.0.0.0';
@@ -185,13 +185,17 @@ type
   THookSocketStatus = procedure(Sender: TObject; Reason: THookSocketReason;
     const Value: string) of object;
 
-  {:this procedural type is used for dataFilter hooks.}
+  {:This procedural type is used for DataFilter hooks.}
   THookDataFilter = procedure(Sender: TObject; var Value: string) of object;
 
   {:This procedural type is used for hook OnCreateSocket. By this hook you can
    insert your code after initialisation of socket. (you can set special socket
    options, etc.)}
   THookCreateSocket = procedure(Sender: TObject) of object;
+
+  {:This procedural type is used for monitoring of communication.}
+  THookMonitor = procedure(Sender: TObject; Writing: Boolean;
+    const Buffer: TMemory; Len: Integer) of object;
 
   {:Specify family of socket.}
   TSocketFamily = (
@@ -215,10 +219,12 @@ type
 
   {:Specify requested SSL/TLS version for secure connection.}
   TSSLType = (
+    LT_all,
     LT_SSLv2,
     LT_SSLv3,
     LT_TLSv1,
-    LT_all
+    LT_TLSv1_1,
+    LT_SSHv2
     );
 
   {:Specify type of socket delayed option.}
@@ -244,6 +250,9 @@ type
     Value: Integer;
   end;
 
+  TCustomSSL = class;
+  TSSLClass = class of TCustomSSL;
+
   {:@abstract(Basic IP object.)
    This is parent class for other class with protocol implementations. Do not
    use this class directly! Use @link(TICMPBlockSocket), @link(TRAWBlockSocket),
@@ -252,8 +261,8 @@ type
   private
     FOnStatus: THookSocketStatus;
     FOnReadFilter: THookDataFilter;
-    FOnWriteFilter: THookDataFilter;
     FOnCreateSocket: THookCreateSocket;
+    FOnMonitor: THookMonitor;
     FLocalSin: TVarSin;
     FRemoteSin: TVarSin;
     FTag: integer;
@@ -306,7 +315,7 @@ type
     function GetSinPort(Sin: TVarSin): Integer;
     procedure DoStatus(Reason: THookSocketReason; const Value: string);
     procedure DoReadFilter(Buffer: TMemory; var Len: Integer);
-    procedure DoWriteFilter(Buffer: TMemory; var Len: Integer);
+    procedure DoMonitor(Writing: Boolean; const Buffer: TMemory; Len: Integer);
     procedure DoCreateSocket;
     procedure LimitBandwidth(Length: Integer; MaxB: integer; var Next: ULong);
     procedure SetBandwidth(Value: Integer);
@@ -785,13 +794,13 @@ type
      It is used by telnet client by example.}
     property OnReadFilter: THookDataFilter read FOnReadFilter write FOnReadFilter;
 
-    {:This event is good for some internal thinks about filtering writed datas.}
-    property OnWriteFilter: THookDataFilter read FOnWriteFilter write FOnWriteFilter;
-
     {:This event is called after real socket creation for setting special socket
      options, because you not know when socket is created. (it is depended on
      Ipv4, IPv6 or automatic mode)}
     property OnCreateSocket: THookCreateSocket read FOnCreateSocket write FOnCreateSocket;
+
+    {:This event is good for monitoring content of readed or writed datas.}
+    property OnMonitor: THookMonitor read FOnMonitor write FOnMonitor;
   end;
 
   {:@abstract(Support for SOCKS4 and SOCKS5 proxy)
@@ -867,24 +876,12 @@ type
   end;
 
   {:@abstract(Implementation of TCP socket.)
-   Supported features: IPv4, IPv6, SSL/TLS  (SSL2, SSL3 and TLS), SOCKS5 proxy
-   (outgoing connections and limited incomming), SOCKS4/4a proxy (outgoing
-   connections and limited incomming), TCP through HTTP proxy tunnel.}
+   Supported features: IPv4, IPv6, SSL/TLS or SSH (depending on used plugin),
+   SOCKS5 proxy (outgoing connections and limited incomming), SOCKS4/4a proxy
+   (outgoing connections and limited incomming), TCP through HTTP proxy tunnel.}
   TTCPBlockSocket = class(TSocksBlockSocket)
   protected
-    FSslEnabled: Boolean;
-    FSslBypass: Boolean;
-    FSsl: PSSL;
-    Fctx: PSSL_CTX;
-    FSSLPassword: string;
-    FSSLCiphers: string;
-    FSSLCertificateFile: string;
-    FSSLPrivateKeyFile: string;
-    FSSLCertCAFile: string;
-    FSSLLastError: integer;
-    FSSLLastErrorDesc: string;
-    FSSLverifyCert: Boolean;
-    FSSLType: TSSLType;
+    FSSL: TCustomSSL;
     FHTTPTunnelIP: string;
     FHTTPTunnelPort: string;
     FHTTPTunnel: Boolean;
@@ -893,13 +890,16 @@ type
     FHTTPTunnelUser: string;
     FHTTPTunnelPass: string;
     FHTTPTunnelTimeout: integer;
-    procedure SetSslEnabled(Value: Boolean);
-    function SetSslKeys: boolean;
-    function GetSSLLoaded: Boolean;
     procedure SocksDoConnect(IP, Port: string);
     procedure HTTPTunnelDoConnect(IP, Port: string);
   public
+    {:Create TCP socket class with default plugin for SSL/TSL/SSH implementation
+    (see @link(SSLImplementation))}
     constructor Create;
+
+    {:Create TCP socket class with desired plugin for SSL/TSL/SSH implementation}
+    constructor CreateWithSSL(SSLPlugin: TSSLClass);
+    destructor Destroy; override;
 
     {:See @link(TBlockSocket.CloseSocket)}
     procedure CloseSocket; override;
@@ -939,15 +939,13 @@ type
      tunnel specified in @link(HTTPTunnelIP). (By CONNECT method of HTTP
      protocol.)
 
-     If you additionally use SSL mode, then SSL/TLS session was started.
-
      Note: If you call this on non-created socket, then socket is created
      automaticly.}
     procedure Connect(IP, Port: string); override;
 
-    {:If you need upgrade existing TCP connection to SSL/TLS mode, then call
-     this method. This method switch this class to SSL mode and do SSL/TSL
-     handshake.}
+    {:If you need upgrade existing TCP connection to SSL/TLS (or SSH2, if plugin
+     allows it) mode, then call this method. This method switch this class to
+     SSL mode and do SSL/TSL handshake.}
     procedure SSLDoConnect;
 
     {:By this method you can downgrade existing SSL/TLS connection to normal TCP
@@ -978,51 +976,6 @@ type
     {:See @link(TBlockSocket.RecvBuffer)}
     function RecvBuffer(Buffer: TMemory; Len: Integer): Integer; override;
 
-    {:Return string with identificator of SSL/TLS version of existing
-     connection.}
-    function SSLGetSSLVersion: string;
-
-    {:Return subject of remote SSL peer.}
-    function SSLGetPeerSubject: string;
-
-    {:Return issuer certificate of remote SSL peer.}
-    function SSLGetPeerIssuer: string;
-
-    {:Return peer name from remote side certificate. This is good for verify,
-     if certificate is generated for remote side IP name.}
-    function SSLGetPeerName: string;
-
-    {:Return subject's hash of remote SSL peer.}
-    function SSLGetPeerSubjectHash: Cardinal;
-
-    {:Return issuer's certificate hash of remote SSL peer.}
-    function SSLGetPeerIssuerHash: Cardinal;
-
-    {:Return fingerprint of remote SSL peer.}
-    function SSLGetPeerFingerprint: string;
-
-    {:Return all detailed information about certificate from remote side of
-     SSL/TLS connection. Result string is multilined!}
-    function SSLGetCertInfo: string;
-
-    {:Return currently used Cipher.}
-    function SSLGetCipherName: string;
-
-    {:Return currently used number of bits in current Cipher algorythm.}
-    function SSLGetCipherBits: integer;
-
-    {:Return number of bits in current Cipher algorythm.}
-    function SSLGetCipherAlgBits: integer;
-
-    {:Return result value of verify remote side certificate. Look to OpenSSL
-     documentation for possible values. For example 0 is successfuly verified
-     certificate, or 18 is self-signed certificate.}
-    function SSLGetVerifyCert: integer;
-
-    {:Test last SSL operation for errors. If error occured, then is filled
-     @link(SSLLastError) and @link(SSLLastErrorDesc) properties.}
-    function SSLCheck: Boolean;
-
     {:Return value of socket type. For TCP return SOCK_STREAM.}
     function GetSocketType: integer; override;
 
@@ -1030,61 +983,14 @@ type
      IPPROTO_TCP.}
     function GetSocketProtocol: integer; override;
 
-    {:Is SSL interface loaded or not?}
-    property SSLLoaded: Boolean read GetSslLoaded;
-
-    {:By this property you can enable or disable SSL mode. Enabling loads needed
-     OpenSSL or SSLeay libraries. Libraries is loaded to memory only once for
-     all Synapse's objects.
-
-     Note: when you enable SSL mode, all keys and certificates are loaded (if
-     needed property is unempty)}
-    property SSLEnabled: Boolean read FSslEnabled write SetSslEnabled;
-
-    {:Contains last SSL error code.}
-    property SSLLastError: integer read FSSLLastError;
-
-    {:If some SSL error is occured, then contains human readable description of
-     this error.}
-    property SSLLastErrorDesc: string read FSSLLastErrorDesc;
+    {:Class implementing SSL/TLS support. It is allways some descendant
+     of @link(TCustomSSL) class. When programmer not select some SSL plugin
+     class, then is used @link(TSSLNone)}
+    property SSL: TCustomSSL read FSSL;
 
     {:@True if is used HTTP tunnel mode.}
     property HTTPTunnel: Boolean read FHTTPTunnel;
   published
-    {:Here you can specify requested SSL/TLS mode. Default is autodetection, but
-     on some servers autodetection not working properly. In this case you must
-     specify requested SSL/TLS mode by your hand!}
-    property SSLType: TSSLType read FSSLType write FSSLType;
-
-    {:If is SSL mode enabled and this property is @TRUE, then all data (read
-     and write) will not be encrypted/decrypted.}
-    property SSLBypass: Boolean read FSslBypass write FSslBypass;
-
-    {:Password for decrypting of encoded certificate.
-
-     Note: This not work with delphi8. You cannot use password protected
-     certificates with .NET!}
-    property SSLPassword: string read FSSLPassword write FSSLPassword;
-
-    {:By this property you can modify default set of SSL/TLS ciphers.}
-    property SSLCiphers: string read FSSLCiphers write FSSLCiphers;
-
-    {:Filename and path to PEM file with your certificate. If certificate need
-     password for decrypt, you can assign this password to SSLPassword property.}
-    property SSLCertificateFile: string read FSSLCertificateFile write FSSLCertificateFile;
-
-    {:Filename and path to PEM file with your private key.}
-    property SSLPrivateKeyFile: string read FSSLPrivateKeyFile write FSSLPrivateKeyFile;
-
-    {:filename and path to file with bundle of CA certificates. (you may use
-     ca-bundle.crt file from SynaCert.zip)}
-    property SSLCertCAFile: string read FSSLCertCAFile write FSSLCertCAFile;
-
-    {:If @true, then is verified client certificate. (it is good for writing
-     SSL/TLS servers.) When you are not server, but you are client, then if this
-     property is @true, verify servers certificate.}
-    property SSLverifyCert: Boolean read FSSLverifyCert write FSSLverifyCert;
-
     {:Specify IP address of HTTP proxy. Assingning non-empty value to this
      property enable HTTP-tunnel mode. This mode is for tunnelling any outgoing
      TCP connection through HTTP proxy server. (If policy on HTTP proxy server
@@ -1201,6 +1107,220 @@ type
     function GetSocketProtocol: integer; override;
   end;
 
+  {:@abstract(Parent class for all SSL plugins.)
+   This is abstract class defining interface for other SSL plugins.
+
+   Instance of this class will be created for each @link(TTCPBlockSocket).
+
+   Warning: not all methods and propertis can work in all existing SSL plugins!
+   Please, read documentation of used SSL plugin.}
+  TCustomSSL = class(TObject)
+  protected
+    FSocket: TTCPBlockSocket;
+    FSSLEnabled: Boolean;
+    FLastError: integer;
+    FLastErrorDesc: string;
+    FSSLType: TSSLType;
+    FKeyPassword: string;
+    FCiphers: string;
+    FCertificateFile: string;
+    FPrivateKeyFile: string;
+    FCertificate: string;
+    FPrivateKey: string;
+    FPFX: string;
+    FPFXfile: string;
+    FCertCA: string;
+    FCertCAFile: string;
+    FTrustCertificate: string;
+    FTrustCertificateFile: string;
+    FVerifyCert: Boolean;
+    FUsername: string;
+    FPassword: string;
+    FSSHChannelType: string;
+    FSSHChannelArg1: string;
+    FSSHChannelArg2: string;
+    procedure ReturnError;
+    function CreateSelfSignedCert(Host: string): Boolean; virtual;
+  public
+    {: Create plugin class. it is called internally from @link(TTCPBlockSocket)}
+    constructor Create(const Value: TTCPBlockSocket); virtual;
+
+    {: Assign settings (certificates and configuration) from another SSL plugin
+     class.}
+    procedure Assign(const Value: TCustomSSL); virtual;
+
+    {: return description of used plugin. It usually return name and version
+     of used SSL library.}
+    function LibVersion: String; virtual;
+
+    {: return name of used plugin.}
+    function LibName: String; virtual;
+
+    {: Do not call this directly. It is used internally by @link(TTCPBlockSocket)!
+
+     Here is needed code for start SSL connection.}
+    function Connect: boolean; virtual;
+
+    {: Do not call this directly. It is used internally by @link(TTCPBlockSocket)!
+
+     Here is needed code for acept new SSL connection.}
+    function Accept: boolean; virtual;
+
+    {: Do not call this directly. It is used internally by @link(TTCPBlockSocket)!
+
+     Here is needed code for hard shutdown of SSL connection. (for example,
+     before socket is closed)}
+    function Shutdown: boolean; virtual;
+
+    {: Do not call this directly. It is used internally by @link(TTCPBlockSocket)!
+
+     Here is needed code for soft shutdown of SSL connection. (for example,
+     when you need to continue with unprotected connection.)}
+    function BiShutdown: boolean; virtual;
+
+    {: Do not call this directly. It is used internally by @link(TTCPBlockSocket)!
+
+     Here is needed code for sending some datas by SSL connection.}
+    function SendBuffer(Buffer: TMemory; Len: Integer): Integer; virtual;
+
+    {: Do not call this directly. It is used internally by @link(TTCPBlockSocket)!
+
+     Here is needed code for receiving some datas by SSL connection.}
+    function RecvBuffer(Buffer: TMemory; Len: Integer): Integer; virtual;
+
+    {: Do not call this directly. It is used internally by @link(TTCPBlockSocket)!
+
+     Here is needed code for getting count of datas what waiting for read.
+     If SSL plugin not allows this, then it should return 0.}
+    function WaitingData: Integer; virtual;
+
+    {:Return string with identificator of SSL/TLS version of existing
+     connection.}
+    function GetSSLVersion: string; virtual;
+
+    {:Return subject of remote SSL peer.}
+    function GetPeerSubject: string; virtual;
+
+    {:Return issuer certificate of remote SSL peer.}
+    function GetPeerIssuer: string; virtual;
+
+    {:Return peer name from remote side certificate. This is good for verify,
+     if certificate is generated for remote side IP name.}
+    function GetPeerName: string; virtual;
+
+    {:Return fingerprint of remote SSL peer.}
+    function GetPeerFingerprint: string; virtual;
+
+    {:Return all detailed information about certificate from remote side of
+     SSL/TLS connection. Result string can be multilined! Each plugin can return
+     this informations in different format!}
+    function GetCertInfo: string; virtual;
+
+    {:Return currently used Cipher.}
+    function GetCipherName: string; virtual;
+
+    {:Return currently used number of bits in current Cipher algorythm.}
+    function GetCipherBits: integer; virtual;
+
+    {:Return number of bits in current Cipher algorythm.}
+    function GetCipherAlgBits: integer; virtual;
+
+    {:Return result value of verify remote side certificate. Look to OpenSSL
+     documentation for possible values. For example 0 is successfuly verified
+     certificate, or 18 is self-signed certificate.}
+    function GetVerifyCert: integer; virtual;
+
+    {: Resurn @true if SSL mode is enabled on existing cvonnection.}
+    property SSLEnabled: Boolean read FSSLEnabled;
+
+    {:Return error code of last SSL operation. 0 is OK.}
+    property LastError: integer read FLastError;
+
+    {:Return error description of last SSL operation.}
+    property LastErrorDesc: string read FLastErrorDesc;
+  published
+    {:Here you can specify requested SSL/TLS mode. Default is autodetection, but
+     on some servers autodetection not working properly. In this case you must
+     specify requested SSL/TLS mode by your hand!}
+    property SSLType: TSSLType read FSSLType write FSSLType;
+
+    {:Password for decrypting of encoded certificate or key.}
+    property KeyPassword: string read FKeyPassword write FKeyPassword;
+
+    {:Username for possible credentials.}
+    property Username: string read FUsername write FUsername;
+
+    {:password for possible credentials.}
+    property Password: string read FPassword write FPassword;
+
+    {:By this property you can modify default set of SSL/TLS ciphers.}
+    property Ciphers: string read FCiphers write FCiphers;
+
+    {:Used for loading certificate from disk file. See to plugin documentation
+     if this method is supported and how!}
+    property CertificateFile: string read FCertificateFile write FCertificateFile;
+
+    {:Used for loading private key from disk file. See to plugin documentation
+     if this method is supported and how!}
+    property PrivateKeyFile: string read FPrivateKeyFile write FPrivateKeyFile;
+
+    {:Used for loading certificate from binary string. See to plugin documentation
+     if this method is supported and how!}
+    property Certificate: string read FCertificate write FCertificate;
+
+    {:Used for loading private key from binary string. See to plugin documentation
+     if this method is supported and how!}
+    property PrivateKey: string read FPrivateKey write FPrivateKey;
+
+    {:Used for loading PFX from binary string. See to plugin documentation
+     if this method is supported and how!}
+    property PFX: string read FPFX write FPFX;
+
+    {:Used for loading PFX from disk file. See to plugin documentation
+     if this method is supported and how!}
+    property PFXfile: string read FPFXfile write FPFXfile;
+
+    {:Used for loading trusted certificates from disk file. See to plugin documentation
+     if this method is supported and how!}
+    property TrustCertificateFile: string read FTrustCertificateFile write FTrustCertificateFile;
+
+    {:Used for loading trusted certificates from binary string. See to plugin documentation
+     if this method is supported and how!}
+    property TrustCertificate: string read FTrustCertificate write FTrustCertificate;
+
+    {:Used for loading CA certificates from binary string. See to plugin documentation
+     if this method is supported and how!}
+    property CertCA: string read FCertCA write FCertCA;
+
+    {:Used for loading CA certificates from disk file. See to plugin documentation
+     if this method is supported and how!}
+    property CertCAFile: string read FCertCAFile write FCertCAFile;
+
+    {:If @true, then is verified client certificate. (it is good for writing
+     SSL/TLS servers.) When you are not server, but you are client, then if this
+     property is @true, verify servers certificate.}
+    property VerifyCert: Boolean read FVerifyCert write FVerifyCert;
+
+    {:channel type for possible SSH connections}
+    property SSHChannelType: string read FSSHChannelType write FSSHChannelType;
+
+    {:First argument of channel type for possible SSH connections}
+    property SSHChannelArg1: string read FSSHChannelArg1 write FSSHChannelArg1;
+
+    {:Second argument of channel type for possible SSH connections}
+    property SSHChannelArg2: string read FSSHChannelArg2 write FSSHChannelArg2;
+  end;
+
+  {:@abstract(Default SSL plugin with no SSL support.)
+   Dummy SSL plugin implementation for applications without SSL/TLS support.}
+  TSSLNone = class (TCustomSSL)
+  public
+    {:See @inherited}
+    function LibVersion: String; override;
+    {:See @inherited}
+    function LibName: String; override;
+  end;
+
   {:@abstract(Record with definition of IP packet header.)
    For reading data from ICMP or RAW sockets.}
   TIPHeader = record
@@ -1249,6 +1369,15 @@ type
     {:If protocol need user authorization, then fill here password.}
     property Password: string read FPassword Write FPassword;
   end;
+
+var
+  {:Selected SSL plugin. Default is @link(TSSLNone).
+
+   Do not change this value directly!!!
+
+   Just add your plugin unit to your project uses instead. Each plugin unit have
+   initialization code what modify this variable.}
+  SSLImplementation: TSSLClass = TSSLNone;
 
 implementation
 
@@ -1913,7 +2042,6 @@ begin
   begin
     FStopFlag := False;
     FLastError := WSAECONNABORTED;
-    FLastErrorDesc := GetErrorDesc(FLastError);
     ExceptCheck;
   end;
 end;
@@ -1930,7 +2058,7 @@ begin
   Result := 0;
   if TestStopFlag then
     Exit;
-  DoWriteFilter(Buffer, Length);
+  DoMonitor(True, Buffer, Length);
 {$IFDEF CIL}
   Result := synsock.Send(FSocket, Buffer, Length, 0);
 {$ELSE}
@@ -2030,6 +2158,8 @@ begin
     if yr > 0 then
     begin
       SendBuffer(buf, yr);
+      if FLastError <> 0 then
+        break;
       Inc(x, yr);
     end
     else
@@ -2041,6 +2171,8 @@ begin
     begin
       SetLength(s, yr);
       SendString(s);
+      if FLastError <> 0 then
+        break;
       Inc(x, yr);
     end
     else
@@ -2083,6 +2215,7 @@ begin
   ExceptCheck;
   Inc(FRecvCounter, Result);
   DoStatus(HR_ReadCount, IntToStr(Result));
+  DoMonitor(False, Buffer, Result);
   DoReadFilter(Buffer, Result);
 end;
 
@@ -2504,10 +2637,10 @@ end;
 
 procedure TBlockSocket.Purge;
 begin
+  Sleep(1);
   try
-    repeat
+    while (Length(FBuffer) > 0) or (WaitingData > 0) do
       RecvPacket(0);
-    until FLastError <> 0;
   except
     on exception do;
   end;
@@ -2696,7 +2829,7 @@ begin
       Hints.ai_protocol := GetSocketprotocol;
       Hints.ai_flags := AI_PASSIVE;
       r := synsock.GetAddrInfo(nil, PChar(Port), @Hints, Addr);
-      if r = 0 then
+      if (r = 0) and Assigned(Addr) then
       begin
         if Addr^.ai_family = AF_INET then
           Result := synsock.htons(Addr^.ai_addr^.sin_port);
@@ -2755,7 +2888,7 @@ begin
       Hints.ai_protocol := GetSocketprotocol;
       Hints.ai_flags := 0;
       r := synsock.GetAddrInfo(PChar(IP), nil, @Hints, Addr);
-      if r = 0 then
+      if (r = 0) and Assigned(Addr)then
       begin
         hostlen := NI_MAXHOST;
         servlen := NI_MAXSERV;
@@ -2869,6 +3002,7 @@ begin
   Result := 0;
   if TestStopFlag then
     Exit;
+  DoMonitor(True, Buffer, Length);
   LimitBandwidth(Length, FMaxSendBandwidth, FNextsend);
   Result := synsock.SendTo(FSocket, Buffer, Length, 0, FRemoteSin);
   SockCheck(Result);
@@ -2888,6 +3022,7 @@ begin
   ExceptCheck;
   Inc(FRecvCounter, Result);
   DoStatus(HR_ReadCount, IntToStr(Result));
+  DoMonitor(False, Buffer, Result);
 end;
 
 function TBlockSocket.GetSizeRecvBuffer: Integer;
@@ -3119,7 +3254,7 @@ begin
       Hints.ai_family := AF_INET6;
       Hints.ai_flags := AI_NUMERICHOST;
       r := synsock.GetAddrInfo(PChar(value), nil, @Hints, Addr);
-      if r = 0 then
+      if (r = 0) and Assigned(Addr) then
         if (Addr^.ai_family = AF_INET6) then
             Move(Addr^.ai_addr^, Result, SizeOf(Result));
     finally
@@ -3224,35 +3359,18 @@ begin
       end;
 end;
 
-procedure TBlockSocket.DoWriteFilter(Buffer: TMemory; var Len: Integer);
-var
-  s: string;
-begin
-  if assigned(OnWriteFilter) then
-    if Len > 0 then
-      begin
-        {$IFDEF CIL}
-        s := StringOf(Buffer);
-        {$ELSE}
-        SetLength(s, Len);
-        Move(Buffer^, Pointer(s)^, Len);
-        {$ENDIF}
-        OnWriteFilter(Self, s);
-        if Length(s) > Len then
-          SetLength(s, Len);
-        Len := Length(s);
-        {$IFDEF CIL}
-        Buffer := BytesOf(s);
-        {$ELSE}
-        Move(Pointer(s)^, Buffer^, Len);
-        {$ENDIF}
-      end;
-end;
-
 procedure TBlockSocket.DoCreateSocket;
 begin
   if assigned(OnCreateSocket) then
     OnCreateSocket(Self);
+end;
+
+procedure TBlockSocket.DoMonitor(Writing: Boolean; const Buffer: TMemory; Len: Integer);
+begin
+  if assigned(OnMonitor) then
+  begin
+    OnMonitor(Self, Writing, Buffer, Len);
+  end;
 end;
 
 class function TBlockSocket.GetErrorDesc(ErrorCode: Integer): string;
@@ -3880,37 +3998,10 @@ begin
 end;
 
 {======================================================================}
-
-{$IFNDEF CIL}
-function PasswordCallback(buf:PChar; size:Integer; rwflag:Integer; userdata: Pointer):Integer; cdecl;
-var
-  Password: String;
-begin
-  Password := '';
-  if TTCPBlockSocket(userdata) is TTCPBlockSocket then
-    Password := TTCPBlockSocket(userdata).SSLPassword;
-  if Length(Password) > (Size - 1) then
-    SetLength(Password, Size - 1);
-  Result := Length(Password);
-  StrLCopy(buf, PChar(Password + #0), Result + 1);
-end;
-{$ENDIF}
-
-constructor TTCPBlockSocket.Create;
+constructor TTCPBlockSocket.CreateWithSSL(SSLPlugin: TSSLClass);
 begin
   inherited Create;
-  FSslEnabled := False;
-  FSslBypass := False;
-  FSSLCiphers := 'DEFAULT';
-  FSSLCertificateFile := '';
-  FSSLPrivateKeyFile := '';
-  FSSLPassword  := '';
-  FSsl := nil;
-  Fctx := nil;
-  FSSLLastError := 0;
-  FSSLLastErrorDesc := '';
-  FSSLverifyCert := False;
-  FSSLType := LT_all;
+  FSSL := SSLPlugin.Create(self);
   FHTTPTunnelIP := '';
   FHTTPTunnelPort := '';
   FHTTPTunnel := False;
@@ -3921,14 +4012,21 @@ begin
   FHTTPTunnelTimeout := 30000;
 end;
 
+constructor TTCPBlockSocket.Create;
+begin
+  CreateWithSSL(SSLImplementation);
+end;
+
+destructor TTCPBlockSocket.Destroy;
+begin
+  inherited Destroy;
+  FSSL.Free;
+end;
+
 procedure TTCPBlockSocket.CloseSocket;
 begin
-  if SSLEnabled then
-  begin
-    if assigned(FSsl) then
-      sslshutdown(FSsl);
-    FSSLEnabled := false;
-  end;
+  if FSSL.SSLEnabled then
+    FSSL.Shutdown;
   if FSocket <> INVALID_SOCKET then
   begin
     Synsock.Shutdown(FSocket, 1);
@@ -3940,8 +4038,8 @@ end;
 function TTCPBlockSocket.WaitingData: Integer;
 begin
   Result := 0;
-  if FSslEnabled and not(FSslBypass) and not(FBypassFlag) then
-    Result := sslpending(Fssl);
+  if FSSL.SSLEnabled then
+    Result := FSSL.WaitingData;
   if Result = 0 then
     Result := inherited WaitingData;
 end;
@@ -4001,8 +4099,6 @@ begin
 end;
 
 procedure TTCPBlockSocket.Connect(IP, Port: string);
-var
-  x: integer;
 begin
   if FSocksIP <> '' then
     SocksDoConnect(IP, Port)
@@ -4011,15 +4107,6 @@ begin
       HTTPTunnelDoConnect(IP, Port)
     else
       inherited Connect(IP, Port);
-  if FSslEnabled then
-    if FLastError = 0 then
-      SSLDoConnect
-    else
-    begin
-      x := FLastError;
-      SSLEnabled := False;
-      FLastError := x;
-    end;
 end;
 
 procedure TTCPBlockSocket.SocksDoConnect(IP, Port: string);
@@ -4050,91 +4137,44 @@ procedure TTCPBlockSocket.HTTPTunnelDoConnect(IP, Port: string);
 var
   s: string;
 begin
-  try
-    Port := IntToStr(ResolvePort(Port));
-    FBypassFlag := True;
-    inherited Connect(FHTTPTunnelIP, FHTTPTunnelPort);
+  Port := IntToStr(ResolvePort(Port));
+  inherited Connect(FHTTPTunnelIP, FHTTPTunnelPort);
+  if FLastError <> 0 then
+    Exit;
+  FHTTPTunnel := False;
+  if IsIP6(IP) then
+    IP := '[' + IP + ']';
+  SendString('CONNECT ' + IP + ':' + Port + ' HTTP/1.0' + CRLF);
+  if FHTTPTunnelUser <> '' then
+  Sendstring('Proxy-Authorization: Basic ' +
+    EncodeBase64(FHTTPTunnelUser + ':' + FHTTPTunnelPass) + CRLF);
+  SendString(CRLF);
+  repeat
+    s := RecvTerminated(FHTTPTunnelTimeout, #$0a);
     if FLastError <> 0 then
-      Exit;
-    FHTTPTunnel := False;
-    if IsIP6(IP) then
-      IP := '[' + IP + ']';
-    SendString('CONNECT ' + IP + ':' + Port + ' HTTP/1.0' + CRLF);
-    if FHTTPTunnelUser <> '' then
-    Sendstring('Proxy-Authorization: Basic ' +
-      EncodeBase64(FHTTPTunnelUser + ':' + FHTTPTunnelPass) + CRLF);
-    SendString(CRLF);
-    repeat
-      s := RecvTerminated(FHTTPTunnelTimeout, #$0a);
-      if FLastError <> 0 then
-        Break;
-      if (Pos('HTTP/', s) = 1) and (Length(s) > 11) then
-        FHTTPTunnel := s[10] = '2';
-    until (s = '') or (s = #$0d);
-    if (FLasterror = 0) and not FHTTPTunnel then
-      FLastError := WSASYSNOTREADY;
-    FHTTPTunnelRemoteIP := IP;
-    FHTTPTunnelRemotePort := Port;
-  finally
-    FBypassFlag := False;
-  end;
+      Break;
+    if (Pos('HTTP/', s) = 1) and (Length(s) > 11) then
+      FHTTPTunnel := s[10] = '2';
+  until (s = '') or (s = #$0d);
+  if (FLasterror = 0) and not FHTTPTunnel then
+    FLastError := WSASYSNOTREADY;
+  FHTTPTunnelRemoteIP := IP;
+  FHTTPTunnelRemotePort := Port;
   ExceptCheck;
 end;
 
 procedure TTCPBlockSocket.SSLDoConnect;
-var
-  x: integer;
 begin
   FLastError := 0;
-  if not FSSLEnabled then
-    SSLEnabled := True;
-  if (FLastError = 0) then
-{$IFDEF CIL}
-    if sslsetfd(FSsl, FSocket.Handle.ToInt32) < 1 then
-{$ELSE}
-    if sslsetfd(FSsl, FSocket) < 1 then
-{$ENDIF}
-    begin
-      FLastError := WSASYSNOTREADY;
-      SSLCheck;
-    end;
-  if (FLastError = 0) then
-  begin
-    x := sslconnect(FSsl);
-    if x < 1 then
-    begin
-      FLastError := WSASYSNOTREADY;
-      SSLcheck;
-    end;
-  end;
-  if FSSLverifyCert then
-    if SSLGetVerifyCert <> 0 then
-      FLastError := WSAEACCES;
-  if FLastError <> 0 then
-  begin
-    x := FLastError;
-    SSLEnabled := False;
-    FLastError := x;
-  end;
+  if not FSSL.Connect then
+    FLastError := WSASYSNOTREADY;
   ExceptCheck;
 end;
 
 procedure TTCPBlockSocket.SSLDoShutdown;
-var
-  x: integer;
 begin
   FLastError := 0;
-  if assigned(FSsl) then
-  begin
-    x := sslshutdown(FSsl);
-    if x = 0 then
-    begin
-      Synsock.Shutdown(FSocket, 1);
-      sslshutdown(FSsl);
-    end;
-  end;
-  SSLEnabled := False;
-  ExceptCheck;
+  FSSL.BiShutdown;
 end;
 
 function TTCPBlockSocket.GetLocalSinIP: string;
@@ -4175,169 +4215,21 @@ begin
       Result := inherited GetRemoteSinPort;
 end;
 
-function TTCPBlockSocket.SSLCheck: Boolean;
-var
-  ErrBuf: String;
-begin
-  Result := true;
-  FSSLLastErrorDesc := '';
-  FSSLLastError := ErrGetError;
-  ErrClearError;
-  if FSSLLastError <> 0 then
-  begin
-    Result := False;
-    ErrBuf := StringOfChar(#0, 256);
-    FSSLLastErrorDesc := ErrErrorString(FSSLLastError, ErrBuf);
-  end;
-end;
-
-function TTCPBlockSocket.GetSSLLoaded: Boolean;
-begin
-  Result := IsSSLLoaded;
-end;
-
-function TTCPBlockSocket.SetSslKeys: boolean;
-begin
-  if not assigned(FCtx) then
-  begin
-    Result := False;
-    Exit;
-  end
-  else
-    Result := True;
-  if FSSLCertificateFile <> '' then
-    if SslCtxUseCertificateChainFile(FCtx, FSSLCertificateFile) <> 1 then
-    begin
-      Result := False;
-      SSLCheck;
-      Exit;
-    end;
-  if FSSLPrivateKeyFile <> '' then
-    if SslCtxUsePrivateKeyFile(FCtx, FSSLPrivateKeyFile, 1) <> 1 then
-    begin
-      Result := False;
-      SSLCheck;
-      Exit;
-    end;
-  if FSSLCertCAFile <> '' then
-    if SslCtxLoadVerifyLocations(FCtx, FSSLCertCAFile, '') <> 1 then
-    begin
-      Result := False;
-      SSLCheck;
-    end;
-end;
-
-procedure TTCPBlockSocket.SetSslEnabled(Value: Boolean);
-var
-  err: Boolean;
-begin
-  FLastError := 0;
-  if Value <> FSslEnabled then
-    if Value then
-    begin
-      FBuffer := '';
-      FSSLLastErrorDesc := '';
-      FSSLLastError := 0;
-      if InitSSLInterface then
-      begin
-        err := False;
-        Fctx := nil;
-        case FSSLType of
-          LT_SSLv2:
-            Fctx := SslCtxNew(SslMethodV2);
-          LT_SSLv3:
-            Fctx := SslCtxNew(SslMethodV3);
-          LT_TLSv1:
-            Fctx := SslCtxNew(SslMethodTLSV1);
-          LT_all:
-            Fctx := SslCtxNew(SslMethodV23);
-        end;
-        if Fctx = nil then
-        begin
-          SSLCheck;
-          FlastError := WSAEPROTONOSUPPORT;
-          err := True;
-        end
-        else
-        begin
-          SslCtxSetCipherList(Fctx, FSSLCiphers);
-          if FSSLverifyCert then
-            SslCtxSetVerify(FCtx, SSL_VERIFY_PEER, nil)
-          else
-            SslCtxSetVerify(FCtx, SSL_VERIFY_NONE, nil);
-{$IFNDEF CIL}
-          SslCtxSetDefaultPasswdCb(FCtx, @PasswordCallback);
-          SslCtxSetDefaultPasswdCbUserdata(FCtx, self);
-{$ENDIF}
-          if not SetSSLKeys then
-            FLastError := WSAEINVAL
-          else
-          begin
-            Fssl := nil;
-            Fssl := SslNew(Fctx);
-            if Fssl = nil then
-            begin
-              SSLCheck;
-              FlastError := WSAEPROTONOSUPPORT;
-              err := True;
-            end;
-          end;
-        end;
-        FSslEnabled := not err;
-      end
-      else
-        FlastError := WSAEPROTONOSUPPORT;
-    end
-    else
-    begin
-      FBuffer := '';
-      sslfree(Fssl);
-      Fssl := nil;
-      SslCtxFree(Fctx);
-      Fctx := nil;
-      ErrRemoveState(0);
-      FSslEnabled := False;
-    end;
-  ExceptCheck;
-end;
-
 function TTCPBlockSocket.RecvBuffer(Buffer: TMemory; Len: Integer): Integer;
-var
-  err: integer;
-{$IFDEF CIL}
-  sb: stringbuilder;
-  s: ansistring;
-{$ENDIF}
 begin
-  if FSslEnabled and not(FSslBypass) and not(FBypassFlag) then
+  if FSSL.SSLEnabled then
   begin
     Result := 0;
     if TestStopFlag then
       Exit;
     FLastError := 0;
-    repeat
-{$IFDEF CIL}
-      sb := StringBuilder.Create(Len);
-      Result := SslRead(FSsl, sb, Len);
-      if Result > 0 then
-      begin
-        sb.Length := Result;
-        s := sb.ToString;
-        System.Array.Copy(BytesOf(s), Buffer, length(s));
-      end;
-{$ELSE}
-      Result := SslRead(FSsl, Buffer , Len);
-{$ENDIF}
-      err := SslGetError(FSsl, Result);
-    until (err <> SSL_ERROR_WANT_READ) and (err <> SSL_ERROR_WANT_WRITE);
-    if err = SSL_ERROR_ZERO_RETURN then
-      Result := 0
-    else
-      if (err <> 0) then
-        FLastError := WSASYSNOTREADY;
+    Result := FSSL.RecvBuffer(Buffer, Len);
+    if FSSL.LastError <> 0 then
+      FLastError := WSASYSNOTREADY;
     ExceptCheck;
     Inc(FRecvCounter, Result);
     DoStatus(HR_ReadCount, IntToStr(Result));
+    DoMonitor(False, Buffer, Result);
     DoReadFilter(Buffer, Result);
   end
   else
@@ -4346,36 +4238,25 @@ end;
 
 function TTCPBlockSocket.SendBuffer(Buffer: TMemory; Length: Integer): Integer;
 var
-  err: integer;
   x, y: integer;
   l, r: integer;
-{$IFDEF CIL}
-  s: string;
-{$ELSE}
+{$IFNDEF CIL}
   p: Pointer;
 {$ENDIF}
 begin
-  if FSslEnabled and not(FSslBypass) and not(FBypassFlag) then
+  if FSSL.SSLEnabled then
   begin
     Result := 0;
     if TestStopFlag then
       Exit;
     FLastError := 0;
-    DoWriteFilter(Buffer, Length);
+    DoMonitor(True, Buffer, Length);
 {$IFDEF CIL}
-    s := StringOf(Buffer);
-    repeat
-      r := SslWrite(FSsl, s, Length);
-      err := SslGetError(FSsl, r);
-    until (err <> SSL_ERROR_WANT_READ) and (err <> SSL_ERROR_WANT_WRITE);
-    if err = SSL_ERROR_ZERO_RETURN then
-      r := 0
-    else
-      if (err <> 0) then
-        FLastError := WSASYSNOTREADY;
-    Result := r;
-    Inc(FSendCounter, r);
-    DoStatus(HR_WriteCount, IntToStr(r));
+    Result := FSSL.SendBuffer(Buffer, Length);
+    if FSSL.LastError <> 0 then
+      FLastError := WSASYSNOTREADY;
+    Inc(FSendCounter, Result);
+    DoStatus(HR_WriteCount, IntToStr(Result));
 {$ELSE}
     l := Length;
     x := 0;
@@ -4388,15 +4269,9 @@ begin
       begin
         LimitBandwidth(y, FMaxSendBandwidth, FNextsend);
         p := IncPoint(Buffer, x);
-        repeat
-          r := SslWrite(FSsl, p, y);
-          err := SslGetError(FSsl, r);
-        until (err <> SSL_ERROR_WANT_READ) and (err <> SSL_ERROR_WANT_WRITE);
-        if err = SSL_ERROR_ZERO_RETURN then
-          r := 0
-        else
-          if (err <> 0) then
-            FLastError := WSASYSNOTREADY;
+        r := FSSL.SendBuffer(p, y);
+        if FSSL.LastError <> 0 then
+          FLastError := WSASYSNOTREADY;
         if Flasterror <> 0 then
           Break;
         Inc(x, r);
@@ -4415,230 +4290,12 @@ begin
 end;
 
 function TTCPBlockSocket.SSLAcceptConnection: Boolean;
-var
-  x: integer;
 begin
   FLastError := 0;
-  if not FSSLEnabled then
-    SSLEnabled := True;
-  if (FLastError = 0) then
-  begin
-{$IFDEF CIL}
-    x := FSocket.Handle.ToInt32;
-    if sslsetfd(FSsl, x) < 1 then
-{$ELSE}
-    if sslsetfd(FSsl, FSocket) < 1 then
-{$ENDIF}
-    begin
-      FLastError := WSASYSNOTREADY;
-      SSLCheck;
-    end;
-  end;
-  if (FLastError = 0) then
-    if sslAccept(FSsl) < 1 then
-      FLastError := WSASYSNOTREADY;
-  if FLastError <> 0 then
-  begin
-    x := FLastError;
-    SSLEnabled := False;
-    FLastError := x;
-  end;
+  if not FSSL.Accept then
+    FLastError := WSASYSNOTREADY;
   ExceptCheck;
   Result := FLastError = 0;
-end;
-
-function TTCPBlockSocket.SSLGetSSLVersion: string;
-begin
-  if not assigned(FSsl) then
-    Result := ''
-  else
-    Result := SSlGetVersion(FSsl);
-end;
-
-function TTCPBlockSocket.SSLGetPeerSubject: string;
-var
-  cert: PX509;
-  s: string;
-{$IFDEF CIL}
-  sb: StringBuilder;
-{$ENDIF}
-begin
-  if not assigned(FSsl) then
-  begin
-    Result := '';
-    Exit;
-  end;
-  cert := SSLGetPeerCertificate(Fssl);
-{$IFDEF CIL}
-  sb := StringBuilder.Create(4096);
-  Result := SslX509NameOneline(SslX509GetSubjectName(cert), sb, 4096);
-{$ELSE}
-  setlength(s, 4096);
-  Result := SslX509NameOneline(SslX509GetSubjectName(cert), s, Length(s));
-{$ENDIF}
-  SslX509Free(cert);
-end;
-
-function TTCPBlockSocket.SSLGetPeerName: string;
-var
-  s: string;
-begin
-  s := SSLGetPeerSubject;
-  s := SeparateRight(s, '/CN=');
-  Result := Trim(SeparateLeft(s, '/'));
-end;
-
-function TTCPBlockSocket.SSLGetPeerIssuer: string;
-var
-  cert: PX509;
-  s: string;
-{$IFDEF CIL}
-  sb: StringBuilder;
-{$ENDIF}
-begin
-  if not assigned(FSsl) then
-  begin
-    Result := '';
-    Exit;
-  end;
-  cert := SSLGetPeerCertificate(Fssl);
-{$IFDEF CIL}
-  sb := StringBuilder.Create(4096);
-  Result := SslX509NameOneline(SslX509GetIssuerName(cert), sb, 4096);
-{$ELSE}
-  setlength(s, 4096);
-  Result := SslX509NameOneline(SslX509GetIssuerName(cert), s, Length(s));
-{$ENDIF}
-  SslX509Free(cert);
-end;
-
-function TTCPBlockSocket.SSLGetPeerSubjectHash: Cardinal;
-var
-  cert: PX509;
-begin
-  if not assigned(FSsl) then
-  begin
-    Result := 0;
-    Exit;
-  end;
-  cert := SSLGetPeerCertificate(Fssl);
-  Result := SslX509NameHash(SslX509GetSubjectName(cert));
-  SslX509Free(cert);
-end;
-
-function TTCPBlockSocket.SSLGetPeerIssuerHash: Cardinal;
-var
-  cert: PX509;
-begin
-  if not assigned(FSsl) then
-  begin
-    Result := 0;
-    Exit;
-  end;
-  cert := SSLGetPeerCertificate(Fssl);
-  Result := SslX509NameHash(SslX509GetIssuerName(cert));
-  SslX509Free(cert);
-end;
-
-function TTCPBlockSocket.SSLGetPeerFingerprint: string;
-var
-  cert: PX509;
-  x: integer;
-{$IFDEF CIL}
-  sb: StringBuilder;
-{$ENDIF}
-begin
-  if not assigned(FSsl) then
-  begin
-    Result := '';
-    Exit;
-  end;
-  cert := SSLGetPeerCertificate(Fssl);
-{$IFDEF CIL}
-  sb := StringBuilder.Create(EVP_MAX_MD_SIZE);
-  SslX509Digest(cert, SslEvpMd5, sb, x);
-  sb.Length := x;
-  Result := sb.ToString;
-{$ELSE}
-  setlength(Result, EVP_MAX_MD_SIZE);
-  SslX509Digest(cert, SslEvpMd5, Result, x);
-  SetLength(Result, x);
-{$ENDIF}
-  SslX509Free(cert);
-end;
-
-function TTCPBlockSocket.SSLGetCertInfo: string;
-var
-  cert: PX509;
-  x, y: integer;
-  b: PBIO;
-  s: AnsiString;
-{$IFDEF CIL}
-  sb: stringbuilder;
-{$ENDIF}
-begin
-  if not assigned(FSsl) then
-  begin
-    Result := '';
-    Exit;
-  end;
-  cert := SSLGetPeerCertificate(Fssl);
-  b := BioNew(BioSMem);
-  try
-    X509Print(b, cert);
-    x := bioctrlpending(b);
-{$IFDEF CIL}
-    sb := StringBuilder.Create(x);
-    y := bioread(b, sb, x);
-    if y > 0 then
-    begin
-      sb.Length := y;
-      s := sb.ToString;
-    end;
-{$ELSE}
-    setlength(s,x);
-    y := bioread(b,s,x);
-    if y > 0 then
-      setlength(s, y);
-{$ENDIF}
-    Result := ReplaceString(s, LF, CRLF);
-  finally
-    BioFreeAll(b);
-  end;
-end;
-
-function TTCPBlockSocket.SSLGetCipherName: string;
-begin
-  if not assigned(FSsl) then
-    Result := ''
-  else
-    Result := SslCipherGetName(SslGetCurrentCipher(FSsl));
-end;
-
-function TTCPBlockSocket.SSLGetCipherBits: integer;
-var
-  x: integer;
-begin
-  if not assigned(FSsl) then
-    Result := 0
-  else
-    Result := SSLCipherGetBits(SslGetCurrentCipher(FSsl), x);
-end;
-
-function TTCPBlockSocket.SSLGetCipherAlgBits: integer;
-begin
-  if not assigned(FSsl) then
-    Result := 0
-  else
-    SSLCipherGetBits(SslGetCurrentCipher(FSsl), Result);
-end;
-
-function TTCPBlockSocket.SSLGetVerifyCert: integer;
-begin
-  if not assigned(FSsl) then
-    Result := 1
-  else
-    Result := SslGetVerifyResult(FSsl);
 end;
 
 function TTCPBlockSocket.GetSocketType: integer;
@@ -4689,6 +4346,181 @@ begin
   FTimeout := 5000;
   FUsername := '';
   FPassword := '';
+end;
+
+{======================================================================}
+
+constructor TCustomSSL.Create(const Value: TTCPBlockSocket);
+begin
+  inherited Create;
+  FSocket := Value;
+  FSSLEnabled := False;
+  FUsername := '';
+  FPassword := '';
+  FLastError := 0;
+  FLastErrorDesc := '';
+  FVerifyCert := False;
+  FSSLType := LT_all;
+  FKeyPassword := '';
+  FCiphers := '';
+  FCertificateFile := '';
+  FPrivateKeyFile := '';
+  FCertCAFile := '';
+  FCertCA := '';
+  FTrustCertificate := '';
+  FTrustCertificateFile := '';
+  FCertificate := '';
+  FPrivateKey := '';
+  FPFX := '';
+  FPFXfile := '';
+  FSSHChannelType := '';
+  FSSHChannelArg1 := '';
+  FSSHChannelArg2 := '';
+end;
+
+procedure TCustomSSL.Assign(const Value: TCustomSSL);
+begin
+  FUsername := Value.Username;
+  FPassword := Value.Password;
+  FVerifyCert := Value.VerifyCert;
+  FSSLType := Value.SSLType;
+  FKeyPassword := Value.KeyPassword;
+  FCiphers := Value.Ciphers;
+  FCertificateFile := Value.CertificateFile;
+  FPrivateKeyFile := Value.PrivateKeyFile;
+  FCertCAFile := Value.CertCAFile;
+  FCertCA := Value.CertCA;
+  FTrustCertificate := Value.TrustCertificate;
+  FTrustCertificateFile := Value.TrustCertificateFile;
+  FCertificate := Value.Certificate;
+  FPrivateKey := Value.PrivateKey;
+  FPFX := Value.PFX;
+  FPFXfile := Value.PFXfile;
+end;
+
+procedure TCustomSSL.ReturnError;
+begin
+  FLastError := -1;
+  FLastErrorDesc := 'SLL is not implemented!';
+end;
+
+function TCustomSSL.LibVersion: String;
+begin
+  Result := '';
+end;
+
+function TCustomSSL.LibName: String;
+begin
+  Result := '';
+end;
+
+function TCustomSSL.CreateSelfSignedCert(Host: string): Boolean;
+begin
+  Result := False;
+end;
+
+function TCustomSSL.Connect: boolean;
+begin
+  ReturnError;
+  Result := False;
+end;
+
+function TCustomSSL.Accept: boolean;
+begin
+  ReturnError;
+  Result := False;
+end;
+
+function TCustomSSL.Shutdown: boolean;
+begin
+  ReturnError;
+  Result := False;
+end;
+
+function TCustomSSL.BiShutdown: boolean;
+begin
+  ReturnError;
+  Result := False;
+end;
+
+function TCustomSSL.SendBuffer(Buffer: TMemory; Len: Integer): Integer;
+begin
+  ReturnError;
+  Result := integer(SOCKET_ERROR);
+end;
+
+function TCustomSSL.RecvBuffer(Buffer: TMemory; Len: Integer): Integer;
+begin
+  ReturnError;
+  Result := integer(SOCKET_ERROR);
+end;
+
+function TCustomSSL.WaitingData: Integer;
+begin
+  ReturnError;
+  Result := 0;
+end;
+
+function TCustomSSL.GetSSLVersion: string;
+begin
+  Result := '';
+end;
+
+function TCustomSSL.GetPeerSubject: string;
+begin
+  Result := '';
+end;
+
+function TCustomSSL.GetPeerName: string;
+begin
+  Result := '';
+end;
+
+function TCustomSSL.GetPeerIssuer: string;
+begin
+  Result := '';
+end;
+
+function TCustomSSL.GetPeerFingerprint: string;
+begin
+  Result := '';
+end;
+
+function TCustomSSL.GetCertInfo: string;
+begin
+  Result := '';
+end;
+
+function TCustomSSL.GetCipherName: string;
+begin
+  Result := '';
+end;
+
+function TCustomSSL.GetCipherBits: integer;
+begin
+  Result := 0;
+end;
+
+function TCustomSSL.GetCipherAlgBits: integer;
+begin
+  Result := 0;
+end;
+
+function TCustomSSL.GetVerifyCert: integer;
+begin
+  Result := 1;
+end;
+
+{======================================================================}
+
+function TSSLNone.LibVersion: String;
+begin
+  Result := 'Without SSL support';
+end;
+
+function TSSLNone.LibName: String;
+begin
+  Result := 'ssl_none';
 end;
 
 {======================================================================}

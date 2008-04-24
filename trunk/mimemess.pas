@@ -1,9 +1,9 @@
 {==============================================================================|
-| Project : Ararat Synapse                                       | 002.004.003 |
+| Project : Ararat Synapse                                       | 002.005.000 |
 |==============================================================================|
 | Content: MIME message object                                                 |
 |==============================================================================|
-| Copyright (c)1999-2003, Lukas Gebauer                                        |
+| Copyright (c)1999-2005, Lukas Gebauer                                        |
 | All rights reserved.                                                         |
 |                                                                              |
 | Redistribution and use in source and binary forms, with or without           |
@@ -33,7 +33,7 @@
 | DAMAGE.                                                                      |
 |==============================================================================|
 | The Initial Developer of the Original Code is Lukas Gebauer (Czech Republic).|
-| Portions created by Lukas Gebauer are Copyright (c)2000-2003.                |
+| Portions created by Lukas Gebauer are Copyright (c)2000-2005.                |
 | All Rights Reserved.                                                         |
 |==============================================================================|
 | Contributor(s):                                                              |
@@ -196,6 +196,17 @@ type
      After creation of part set type to text part and set all necessary
      properties. Content of part is readed from value stringlist.}
     function AddPartText(const Value: TStrings; const PartParent: TMimePart): TMimepart;
+
+    {:Add MIME part as subpart of PartParent. If you need set root MIME part,
+     then set as PartParent @NIL value. If you need set more then 1 subpart, you
+     must have PartParent of multipart type!
+
+     After creation of part set type to text part and set all necessary
+     properties. Content of part is readed from value stringlist. You can select
+     your charset and your encoding type. If Raw is @true, then it not doing
+     charset conversion!}
+    function AddPartTextEx(const Value: TStrings; const PartParent: TMimePart;
+      PartCharset: TMimeChar; Raw: Boolean; PartEncoding: TMimeEncoding): TMimepart;
 
     {:Add MIME part as subpart of PartParent. If you need set root MIME part,
      then set as PartParent @NIL value. If you need set more then 1 subpart, you
@@ -622,6 +633,25 @@ begin
       {$ENDIF}
       ]);
     EncodingCode := ME_QUOTED_PRINTABLE;
+    EncodePart;
+    EncodePartHeader;
+  end;
+end;
+
+function TMimeMess.AddPartTextEx(const Value: TStrings; const PartParent: TMimePart;
+  PartCharset: TMimeChar; Raw: Boolean; PartEncoding: TMimeEncoding): TMimepart;
+begin
+  Result := AddPart(PartParent);
+  with Result do
+  begin
+    Value.SaveToStream(DecodedLines);
+    Primary := 'text';
+    Secondary := 'plain';
+    Description := 'Message text';
+    Disposition := 'inline';
+    CharsetCode := PartCharset;
+    EncodingCode := PartEncoding;
+    ConvertCharset := not Raw;
     EncodePart;
     EncodePartHeader;
   end;
