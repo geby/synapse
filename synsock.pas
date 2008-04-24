@@ -1,5 +1,5 @@
 {==============================================================================|
-| Project : Ararat Synapse                                       | 005.000.000 |
+| Project : Ararat Synapse                                       | 005.001.000 |
 |==============================================================================|
 | Content: Socket Independent Platform Layer                                   |
 |==============================================================================|
@@ -52,13 +52,16 @@ unit synsock;
   {$I ssdotnet.pas}
 {$ENDIF}
 
-{$IFDEF LINUX}
-  {$I sslinux.pas}
-{$ENDIF}
-
 {$IFDEF WIN32}
   {$I sswin32.pas}
+{$ELSE}
+  {$IFDEF FPC}
+    {$I ssfpc.pas}
+  {$ELSE}
+    {$I sslinux.pas}
+  {$ENDIF}
 {$ENDIF}
+
 
 end.
 

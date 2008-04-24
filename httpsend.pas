@@ -1,9 +1,9 @@
 {==============================================================================|
-| Project : Ararat Synapse                                       | 003.010.001 |
+| Project : Ararat Synapse                                       | 003.010.005 |
 |==============================================================================|
 | Content: HTTP client                                                         |
 |==============================================================================|
-| Copyright (c)1999-2005, Lukas Gebauer                                        |
+| Copyright (c)1999-2006, Lukas Gebauer                                        |
 | All rights reserved.                                                         |
 |                                                                              |
 | Redistribution and use in source and binary forms, with or without           |
@@ -33,7 +33,7 @@
 | DAMAGE.                                                                      |
 |==============================================================================|
 | The Initial Developer of the Original Code is Lukas Gebauer (Czech Republic).|
-| Portions created by Lukas Gebauer are Copyright (c) 1999-2005.               |
+| Portions created by Lukas Gebauer are Copyright (c) 1999-2006.               |
 | All Rights Reserved.                                                         |
 |==============================================================================|
 | Contributor(s):                                                              |
@@ -58,7 +58,7 @@ interface
 
 uses
   SysUtils, Classes,
-  blcksock, synautil, synacode;
+  blcksock, synautil, synaip, synacode, synsock;
 
 const
   cHttpProtocol = '80';
@@ -97,6 +97,9 @@ type
     function ReadIdentity(Size: Integer): Boolean;
     function ReadChunked: Boolean;
     procedure ParseCookies;
+    function PrepareHeaders: string;
+    function InternalDoConnect(needssl: Boolean): Boolean;
+    function InternalConnect(needssl: Boolean): Boolean;
   public
     constructor Create;
     destructor Destroy; override;
@@ -302,6 +305,51 @@ begin
     FResultString := '';
 end;
 
+function THTTPSend.PrepareHeaders: string;
+begin
+  if FProtocol = '0.9' then
+    Result := FHeaders[0] + CRLF
+  else
+{$IFNDEF WIN32}
+    Result := AdjustLineBreaks(FHeaders.Text, tlbsCRLF);
+{$ELSE}
+    Result := FHeaders.Text;
+{$ENDIF}
+end;
+
+function THTTPSend.InternalDoConnect(needssl: Boolean): Boolean;
+begin
+  Result := False;
+  FSock.CloseSocket;
+  FSock.Bind(FIPInterface, cAnyPort);
+  if FSock.LastError <> 0 then
+    Exit;
+  FSock.Connect(FTargetHost, FTargetPort);
+  if FSock.LastError <> 0 then
+    Exit;
+  if needssl then
+  begin
+    FSock.SSLDoConnect;
+    if FSock.LastError <> 0 then
+      Exit;
+  end;
+  FAliveHost := FTargetHost;
+  FAlivePort := FTargetPort;
+  Result := True;
+end;
+
+function THTTPSend.InternalConnect(needssl: Boolean): Boolean;
+begin
+  if FSock.Socket = INVALID_SOCKET then
+    Result := InternalDoConnect(needssl)
+  else
+    if (FAliveHost <> FTargetHost) or (FAlivePort <> FTargetPort)
+      or FSock.CanRead(0) then
+      Result := InternalDoConnect(needssl)
+    else
+      Result := True;
+end;
+
 function THTTPSend.HTTPMethod(const Method, URL: string): Boolean;
 var
   Sending, Receiving: Boolean;
@@ -344,14 +392,14 @@ begin
     FSock.HTTPTunnelPass := '';
   end;
 
-  Sending := Document.Size > 0;
+  Sending := FDocument.Size > 0;
   {Headers for Sending data}
   status100 := FStatus100 and Sending and (FProtocol = '1.1');
   if status100 then
     FHeaders.Insert(0, 'Expect: 100-continue');
-  FHeaders.Insert(0, 'Content-Length: ' + IntToStr(FDocument.Size));
   if Sending then
   begin
+    FHeaders.Insert(0, 'Content-Length: ' + IntToStr(FDocument.Size));
     if FMimeType <> '' then
       FHeaders.Insert(0, 'Content-Type: ' + FMimeType);
   end;
@@ -415,91 +463,68 @@ begin
     FHeaders.Add('');
 
   { connect }
-  if (FAliveHost <> FTargetHost) or (FAlivePort <> FTargetPort) then
+  if not InternalConnect(UpperCase(Prot) = 'HTTPS') then
   begin
     FSock.CloseSocket;
-    FSock.Bind(FIPInterface, cAnyPort);
-    if FSock.LastError <> 0 then
-      Exit;
-    if FSock.LastError <> 0 then
-      Exit;
-    FSock.Connect(FTargetHost, FTargetPort);
-    if FSock.LastError <> 0 then
-      Exit;
-    if UpperCase(Prot) = 'HTTPS' then
-      FSock.SSLDoConnect;
-    if FSock.LastError <> 0 then
-      Exit;
-    FAliveHost := FTargetHost;
-    FAlivePort := FTargetPort;
-  end
-  else
-  begin
-    if FSock.CanRead(0) then
-    begin
-      FSock.CloseSocket;
-      FSock.Bind(FIPInterface, cAnyPort);
-      if FSock.LastError <> 0 then
-        Exit;
-      if FSock.LastError <> 0 then
-        Exit;
-      FSock.Connect(FTargetHost, FTargetPort);
-      if FSock.LastError = 0 then
-        if UpperCase(Prot) = 'HTTPS' then
-          FSock.SSLDoConnect;
-      if FSock.LastError <> 0 then
-      begin
-        FSock.CloseSocket;
-        FAliveHost := '';
-        FAlivePort := '';
-        Exit;
-      end;
-    end;
+    FAliveHost := '';
+    FAlivePort := '';
+    Exit;
   end;
 
-  { send Headers }
-  if FProtocol = '0.9' then
-    FSock.SendString(FHeaders[0] + CRLF)
-  else
-{$IFDEF LINUX}
-    FSock.SendString(AdjustLineBreaks(FHeaders.Text, tlbsCRLF));
-{$ELSE}
-    FSock.SendString(FHeaders.Text);
-{$ENDIF}
-  if FSock.LastError <> 0 then
-    Exit;
-
   { reading Status }
+  FDocument.Position := 0;
   Status100Error := '';
   if status100 then
   begin
+    { send Headers }
+    FSock.SendString(PrepareHeaders);
+    if FSock.LastError <> 0 then
+      Exit;
     repeat
       s := FSock.RecvString(FTimeout);
       if s <> '' then
         Break;
     until FSock.LastError <> 0;
     DecodeStatus(s);
+    Status100Error := s;
+    repeat
+      s := FSock.recvstring(FTimeout);
+      if s = '' then
+        Break;
+    until FSock.LastError <> 0;
     if (FResultCode >= 100) and (FResultCode < 200) then
-      repeat
-        s := FSock.recvstring(FTimeout);
-        if s = '' then
-          Break;
-      until FSock.LastError <> 0
+    begin
+      { we can upload content }
+      Status100Error := '';
+      FUploadSize := FDocument.Size;
+      FSock.SendBuffer(FDocument.Memory, FDocument.Size);
+    end;
+  end
+  else
+    { upload content }
+    if sending then
+    begin
+      if FDocument.Size >= c64k then
+      begin
+        FSock.SendString(PrepareHeaders);
+        FUploadSize := FDocument.Size;
+        FSock.SendBuffer(FDocument.Memory, FDocument.Size);
+      end
+      else
+      begin
+        s := PrepareHeaders + ReadStrFromStream(FDocument, FDocument.Size);
+        FUploadSize := Length(s);
+        FSock.SendString(s);
+      end;
+    end
     else
     begin
-      Sending := False;
-      Status100Error := s;
+      { we not need to upload document, send headers only }
+      FSock.SendString(PrepareHeaders);
     end;
-  end;
 
-  { send document }
-  if Sending then
-  begin
-    FUploadSize := FDocument.Size;
-    FSock.SendBuffer(FDocument.Memory, FDocument.Size);
-    if FSock.LastError <> 0 then
-      Exit;
-  end;
+  if FSock.LastError <> 0 then
+    Exit;
 
   Clear;
   Size := -1;
@@ -556,6 +581,8 @@ begin
         ToClose := True;
     until FSock.LastError <> 0;
   Result := FSock.LastError = 0;
+  if not Result then
+    Exit;
 
   {if need receive response body, read it}
   Receiving := Method <> 'HEAD';
@@ -590,7 +617,7 @@ begin
     if FSock.LastError = 0 then
       WriteStrToStream(FDocument, s);
   until FSock.LastError <> 0;
-  Result := True;
+  Result := FSock.LastError = WSAECONNRESET;
 end;
 
 function THTTPSend.ReadIdentity(Size: Integer): Boolean;

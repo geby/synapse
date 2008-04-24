@@ -1,5 +1,5 @@
 {==============================================================================|
-| Project : Ararat Synapse                                       | 001.000.002 |
+| Project : Ararat Synapse                                       | 001.001.000 |
 |==============================================================================|
 | Content: SSL/SSH support by Peter Gutmann's CryptLib                         |
 |==============================================================================|
@@ -97,12 +97,14 @@ type
     FCryptSession: CRYPT_SESSION;
     FPrivateKeyLabel: string;
     FDelCert: Boolean;
+    FReadBuffer: string;
     function SSLCheck(Value: integer): Boolean;
     function Init(server:Boolean): Boolean;
     function DeInit: Boolean;
     function Prepare(server:Boolean): Boolean;
     function GetString(const cryptHandle: CRYPT_HANDLE; const attributeType: CRYPT_ATTRIBUTE_TYPE): string;
     function CreateSelfSignedCert(Host: string): Boolean; override;
+    function PopAll: string;
   public
     {:See @inherited}
     constructor Create(const Value: TTCPBlockSocket); override;
@@ -203,6 +205,8 @@ function TSSLCryptLib.SSLCheck(Value: integer): Boolean;
 begin
   Result := true;
   FLastErrorDesc := '';
+  if Value = CRYPT_ERROR_COMPLETE then
+    Value := 0;
   FLastError := Value;
   if FLastError <> 0 then
   begin
@@ -241,6 +245,28 @@ begin
   cryptDestroyContext(privateKey);
   cryptDestroyContext(publicKey);
   Result := True;
+end;
+
+function TSSLCryptLib.PopAll: string;
+const
+  BufferMaxSize = 32768;
+var
+  Outbuffer: string;
+  WriteLen: integer;
+begin
+  Result := '';
+  repeat
+    setlength(outbuffer, BufferMaxSize);
+    Writelen := 0;
+    SSLCheck(CryptPopData(FCryptSession, @OutBuffer[1], BufferMaxSize, Writelen));
+    if FLastError <> 0 then
+      Break;
+    if WriteLen > 0 then
+    begin
+      setlength(outbuffer, WriteLen);
+      Result := Result + outbuffer;
+    end;
+  until WriteLen = 0;
 end;
 
 function TSSLCryptLib.Init(server:Boolean): Boolean;
@@ -385,6 +411,7 @@ begin
       Exit;
     FSSLEnabled := True;
     Result := True;
+    FReadBuffer := '';
   end;
 end;
 
@@ -401,6 +428,7 @@ begin
       Exit;
     FSSLEnabled := True;
     Result := True;
+    FReadBuffer := '';
   end;
 end;
 
@@ -414,6 +442,7 @@ begin
   if FcryptSession <> CRYPT_SESSION(CRYPT_SESSION_NONE) then
     cryptSetAttribute(FCryptSession, CRYPT_SESSINFO_ACTIVE, 0);
   DeInit;
+  FReadBuffer := '';
   Result := True;
 end;
 
@@ -434,13 +463,18 @@ var
 begin
   FLastError := 0;
   FLastErrorDesc := '';
-  SSLCheck(cryptPopData(FCryptSession, Buffer, Len, L));
-  Result := l;
+  if Length(FReadBuffer) = 0 then
+    FReadBuffer := PopAll;
+  if Len > Length(FReadBuffer) then
+    Len := Length(FReadBuffer);
+  Move(Pointer(FReadBuffer)^, buffer^, Len);
+  Delete(FReadBuffer, 1, Len);
+  Result := Len;
 end;
 
 function TSSLCryptLib.WaitingData: Integer;
 begin
-  Result := 0;
+  Result := Length(FReadBuffer);
 end;
 
 function TSSLCryptLib.GetSSLVersion: string;

@@ -62,7 +62,7 @@ interface
 
 uses
   Classes, SysUtils,
-  blcksock, synautil, asn1util, synacode;
+  blcksock, synautil, asn1util, synaip, synacode;
 
 const
   cSnmpProtocol = '161';

@@ -62,10 +62,8 @@ uses
   System.Runtime.InteropServices,
   System.Text,
 {$ENDIF}
-{$IFDEF LINUX}
-  {$IFDEF FPC}
   synafpc,
-  {$ENDIF}
+{$IFNDEF WIN32}
   Libc, SysUtils;
 {$ELSE}
   Windows;
@@ -73,7 +71,7 @@ uses
 
 
 const
-  {$IFDEF LINUX}
+  {$IFNDEF WIN32}
   DLLIconvName = 'libiconv.so';
   {$ELSE}
   DLLIconvName = 'iconv.dll';
@@ -89,7 +87,7 @@ type
   argptr = iconv_t;
 
 var
-  iconvLibHandle: Integer = 0;
+  iconvLibHandle: TLibHandle = 0;
 
 function SynaIconvOpen(const tocode, fromcode: string): iconv_t;
 function SynaIconvOpenTranslit(const tocode, fromcode: string): iconv_t;

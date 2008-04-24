@@ -1,5 +1,5 @@
 {==============================================================================|
-| Project : Ararat Synapse                                       | 001.004.000 |
+| Project : Ararat Synapse                                       | 001.004.001 |
 |==============================================================================|
 | Content: LDAP client                                                         |
 |==============================================================================|
@@ -344,7 +344,9 @@ var
 begin
   s := Value;
   if FIsbinary then
-    s := EncodeBase64(Value);
+    s := EncodeBase64(Value)
+  else
+    s :=UnquoteStr(s, '"');
   inherited Put(Index, s);
 end;
 
@@ -1091,7 +1093,7 @@ begin
               while n < i do
               begin
                 u := ASNItem(n, t, x);
-                a.Add(UnquoteStr(u, '"'));
+                a.Add(u);
               end;
           end;
         end;

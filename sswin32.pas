@@ -241,7 +241,7 @@ For IPv6 support you must have new API!
 interface
 
 uses
-  SyncObjs, SysUtils,
+  SyncObjs, SysUtils, Classes,
   Windows;
 
 function InitSocketInterface(stack: string): Boolean;
@@ -262,6 +262,7 @@ type
   pu_long = ^u_long;
   pu_short = ^u_short;
   TSocket = u_int;
+  TAddrFamily = integer;
 
   TMemory = pointer;
 
@@ -272,6 +273,15 @@ const
     DLLStackName = 'ws2_32.dll';
   {$ENDIF}
   DLLwship6 = 'wship6.dll';
+
+  cLocalhost = '127.0.0.1';
+  cAnyHost = '0.0.0.0';
+  cBroadcast = '255.255.255.255';
+  c6Localhost = '::1';
+  c6AnyHost = '::0';
+  c6Broadcast = 'ffff::1';
+  cAnyPort = '0';
+  
 
 const
   FD_SETSIZE     =   64;
@@ -307,20 +317,12 @@ const
   IPPROTO_MAX    =   256;
 
 type
-  SunB = packed record
-    s_b1, s_b2, s_b3, s_b4: u_char;
-  end;
-
-  SunW = packed record
-    s_w1, s_w2: u_short;
-  end;
 
   PInAddr = ^TInAddr;
   TInAddr = packed record
     case integer of
-      0: (S_un_b: SunB);
-      1: (S_un_w: SunW);
-      2: (S_addr: u_long);
+      0: (S_bytes: packed array [0..3] of byte);
+      1: (S_addr: u_long);
   end;
 
   PSockAddrIn = ^TSockAddrIn;
@@ -339,33 +341,13 @@ type
     imr_interface: TInAddr;     { local IP address of interface }
   end;
 
-  SunB6 = packed record
-    s_b1,  s_b2,  s_b3,  s_b4,
-    s_b5,  s_b6,  s_b7,  s_b8,
-    s_b9,  s_b10, s_b11, s_b12,
-    s_b13, s_b14, s_b15, s_b16: u_char;
-  end;
-
-  SunW6 = packed record
-    s_w1, s_w2, s_w3, s_w4,
-    s_w5, s_w6, s_w7, s_w8: u_short;
-  end;
-
-  SunDW6 = packed record
-    s_dw1, s_dw2, s_dw3, s_dw4: longint;
-  end;
-
-  S6_Bytes   = SunB6;
-  S6_Words   = SunW6;
-  S6_DWords  = SunDW6;
-  S6_Addr    = SunB6;
-
   PInAddr6 = ^TInAddr6;
   TInAddr6 = packed record
     case integer of
-      0: (S_un_b:  SunB6);
-      1: (S_un_w:  SunW6);
-      2: (S_un_dw: SunDW6);
+      0: (S6_addr: packed array [0..15] of byte);
+      1: (u6_addr8: packed array [0..15] of byte);
+      2: (u6_addr16: packed array [0..7] of word);
+      3: (u6_addr32: packed array [0..7] of integer);
   end;
 
   PSockAddrIn6 = ^TSockAddrIn6;
@@ -380,8 +362,8 @@ type
 
   TIPv6_mreq = record
     ipv6mr_multiaddr: TInAddr6; // IPv6 multicast address.
-    ipv6mr_interface: u_long;   // Interface index.
-    padding: u_long;
+    ipv6mr_interface: integer;   // Interface index.
+    padding: integer;
   end;
 
   PHostEnt = ^THostEnt;
@@ -807,7 +789,7 @@ type
     stdcall;
   TListen = function(s: TSocket; backlog: Integer): Integer;
     stdcall;
-  TIoctlSocket = function(s: TSocket; cmd: DWORD; var arg: u_long): Integer;
+  TIoctlSocket = function(s: TSocket; cmd: DWORD; var arg: Integer): Integer;
     stdcall;
   TInet_ntoa = function(inaddr: TInAddr): PChar;
     stdcall;
@@ -930,6 +912,14 @@ function SendTo(s: TSocket; Buf: TMemory; len, flags: Integer; addrto: TVarSin):
 function RecvFrom(s: TSocket; Buf: TMemory; len, flags: Integer; var from: TVarSin): Integer;
 function Accept(s: TSocket; var addr: TVarSin): TSocket;
 
+function IsNewApi(Family: integer): Boolean;
+function SetVarSin(var Sin: TVarSin; IP, Port: string; Family, SockProtocol, SockType: integer; PreferIP4: Boolean): integer;
+function GetSinIP(Sin: TVarSin): string;
+function GetSinPort(Sin: TVarSin): Integer;
+procedure ResolveNameToIP(Name: string;  Family, SockProtocol, SockType: integer; const IPList: TStrings);
+function ResolveIPToName(IP: string; Family, SockProtocol, SockType: integer): string;
+function ResolvePort(Port: string; Family, SockProtocol, SockType: integer): Word;
+
 {==============================================================================}
 implementation
 
@@ -940,31 +930,31 @@ var
 
 function IN6_IS_ADDR_UNSPECIFIED(const a: PInAddr6): boolean;
 begin
-  Result := ((a^.s_un_dw.s_dw1 = 0) and (a^.s_un_dw.s_dw2 = 0) and
-             (a^.s_un_dw.s_dw3 = 0) and (a^.s_un_dw.s_dw4 = 0));
+  Result := ((a^.u6_addr32[0] = 0) and (a^.u6_addr32[1] = 0) and
+             (a^.u6_addr32[2] = 0) and (a^.u6_addr32[3] = 0));
 end;
 
 function IN6_IS_ADDR_LOOPBACK(const a: PInAddr6): boolean;
 begin
-  Result := ((a^.s_un_dw.s_dw1 = 0) and (a^.s_un_dw.s_dw2 = 0) and
-             (a^.s_un_dw.s_dw3 = 0) and
-             (a^.s_un_b.s_b13 = char(0)) and (a^.s_un_b.s_b14 = char(0)) and
-             (a^.s_un_b.s_b15 = char(0)) and (a^.s_un_b.s_b16 = char(1)));
+  Result := ((a^.u6_addr32[0] = 0) and (a^.u6_addr32[1] = 0) and
+             (a^.u6_addr32[2] = 0) and
+             (a^.u6_addr8[12] = 0) and (a^.u6_addr8[13] = 0) and
+             (a^.u6_addr8[14] = 0) and (a^.u6_addr8[15] = 1));
 end;
 
 function IN6_IS_ADDR_LINKLOCAL(const a: PInAddr6): boolean;
 begin
-  Result := ((a^.s_un_b.s_b1 = u_char($FE)) and (a^.s_un_b.s_b2 = u_char($80)));
+  Result := ((a^.u6_addr8[0] = $FE) and (a^.u6_addr8[1] = $80));
 end;
 
 function IN6_IS_ADDR_SITELOCAL(const a: PInAddr6): boolean;
 begin
-  Result := ((a^.s_un_b.s_b1 = u_char($FE)) and (a^.s_un_b.s_b2 = u_char($C0)));
+  Result := ((a^.u6_addr8[0] = $FE) and (a^.u6_addr8[1] = $C0));
 end;
 
 function IN6_IS_ADDR_MULTICAST(const a: PInAddr6): boolean;
 begin
-  Result := (a^.s_un_b.s_b1 = char($FF));
+  Result := (a^.u6_addr8[0] = $FF);
 end;
 
 function IN6_ADDR_EQUAL(const a: PInAddr6; const b: PInAddr6): boolean;
@@ -980,7 +970,7 @@ end;
 procedure SET_LOOPBACK_ADDR6 (const a: PInAddr6);
 begin
   FillChar(a^, sizeof(TInAddr6), 0);
-  a^.s_un_b.s_b16 := char(1);
+  a^.u6_addr8[15] := 1;
 end;
 
 {=============================================================================}
@@ -1107,6 +1097,369 @@ var
 begin
   x := SizeOf(addr);
   Result := ssAccept(s, @addr, x);
+end;
+
+{=============================================================================}
+function IsNewApi(Family: integer): Boolean;
+begin
+  Result := SockEnhancedApi;
+  if not Result then
+    Result := (Family = AF_INET6) and SockWship6Api;
+end;
+
+function SetVarSin(var Sin: TVarSin; IP, Port: string; Family, SockProtocol, SockType: integer; PreferIP4: Boolean): integer;
+type
+  pu_long = ^u_long;
+var
+  ProtoEnt: PProtoEnt;
+  ServEnt: PServEnt;
+  HostEnt: PHostEnt;
+  r: integer;
+  Hints1, Hints2: TAddrInfo;
+  Sin1, Sin2: TVarSin;
+  TwoPass: boolean;
+
+  function GetAddr(const IP, port: string; Hints: TAddrInfo; var Sin: TVarSin): integer;
+  var
+    Addr: PAddrInfo;
+  begin
+    Addr := nil;
+    try
+      FillChar(Sin, Sizeof(Sin), 0);
+      if Hints.ai_socktype = SOCK_RAW then
+      begin
+        Hints.ai_socktype := 0;
+        Hints.ai_protocol := 0;
+        Result := synsock.GetAddrInfo(PChar(IP), nil, @Hints, Addr);
+      end
+      else
+      begin
+        if (IP = cAnyHost) or (IP = c6AnyHost) then
+        begin
+          Hints.ai_flags := AI_PASSIVE;
+          Result := synsock.GetAddrInfo(nil, PChar(Port), @Hints, Addr);
+        end
+        else
+          if (IP = cLocalhost) or (IP = c6Localhost) then
+          begin
+            Result := synsock.GetAddrInfo(nil, PChar(Port), @Hints, Addr);
+          end
+          else
+          begin
+            Result := synsock.GetAddrInfo(PChar(IP), PChar(Port), @Hints, Addr);
+          end;
+      end;
+      if Result = 0 then
+        if (Addr <> nil) then
+          Move(Addr^.ai_addr^, Sin, Addr^.ai_addrlen);
+    finally
+      if Assigned(Addr) then
+        synsock.FreeAddrInfo(Addr);
+    end;
+  end;
+
+begin
+  Result := 0;
+  FillChar(Sin, Sizeof(Sin), 0);
+  if not IsNewApi(family) then
+  begin
+    SynSockCS.Enter;
+    try
+      Sin.sin_family := AF_INET;
+      ProtoEnt := synsock.GetProtoByNumber(SockProtocol);
+      ServEnt := nil;
+      if ProtoEnt <> nil then
+        ServEnt := synsock.GetServByName(PChar(Port), ProtoEnt^.p_name);
+      if ServEnt = nil then
+        Sin.sin_port := synsock.htons(StrToIntDef(Port, 0))
+      else
+        Sin.sin_port := ServEnt^.s_port;
+      if IP = cBroadcast then
+        Sin.sin_addr.s_addr := u_long(INADDR_BROADCAST)
+      else
+      begin
+        Sin.sin_addr.s_addr := synsock.inet_addr(PChar(IP));
+        if Sin.sin_addr.s_addr = u_long(INADDR_NONE) then
+        begin
+          HostEnt := synsock.GetHostByName(PChar(IP));
+          Result := synsock.WSAGetLastError;
+          if HostEnt <> nil then
+            Sin.sin_addr.S_addr := u_long(Pu_long(HostEnt^.h_addr_list^)^);
+        end;
+      end;
+    finally
+      SynSockCS.Leave;
+    end;
+  end
+  else
+  begin
+    FillChar(Hints1, Sizeof(Hints1), 0);
+    FillChar(Hints2, Sizeof(Hints2), 0);
+    TwoPass := False;
+    if Family = AF_UNSPEC then
+    begin
+      if PreferIP4 then
+      begin
+        Hints1.ai_family := AF_INET;
+        Hints2.ai_family := AF_INET6;
+        TwoPass := True;
+      end
+      else
+      begin
+        Hints2.ai_family := AF_INET;
+        Hints1.ai_family := AF_INET6;
+        TwoPass := True;
+      end;
+    end
+    else
+      Hints1.ai_family := Family;
+
+    Hints1.ai_socktype := SockType;
+    Hints1.ai_protocol := SockProtocol;
+    Hints2.ai_socktype := Hints1.ai_socktype;
+    Hints2.ai_protocol := Hints1.ai_protocol;
+
+    r := GetAddr(IP, Port, Hints1, Sin1);
+    Result := r;
+    sin := sin1;
+    if r <> 0 then
+      if TwoPass then
+      begin
+        r := GetAddr(IP, Port, Hints2, Sin2);
+        Result := r;
+        if r = 0 then
+          sin := sin2;
+      end;
+  end;
+end;
+
+function GetSinIP(Sin: TVarSin): string;
+var
+  p: PChar;
+  host, serv: string;
+  hostlen, servlen: integer;
+  r: integer;
+begin
+  Result := '';
+  if not IsNewApi(Sin.AddressFamily) then
+  begin
+    p := synsock.inet_ntoa(Sin.sin_addr);
+    if p <> nil then
+      Result := p;
+  end
+  else
+  begin
+    hostlen := NI_MAXHOST;
+    servlen := NI_MAXSERV;
+    setlength(host, hostlen);
+    setlength(serv, servlen);
+    r := getnameinfo(@sin, SizeOfVarSin(sin), PChar(host), hostlen,
+      PChar(serv), servlen, NI_NUMERICHOST + NI_NUMERICSERV);
+    if r = 0 then
+      Result := PChar(host);
+  end;
+end;
+
+function GetSinPort(Sin: TVarSin): Integer;
+begin
+  if (Sin.sin_family = AF_INET6) then
+    Result := synsock.ntohs(Sin.sin6_port)
+  else
+    Result := synsock.ntohs(Sin.sin_port);
+end;
+
+procedure ResolveNameToIP(Name: string; Family, SockProtocol, SockType: integer; const IPList: TStrings);
+type
+  TaPInAddr = array[0..250] of PInAddr;
+  PaPInAddr = ^TaPInAddr;
+var
+  Hints: TAddrInfo;
+  Addr: PAddrInfo;
+  AddrNext: PAddrInfo;
+  r: integer;
+  host, serv: string;
+  hostlen, servlen: integer;
+  RemoteHost: PHostEnt;
+  IP: u_long;
+  PAdrPtr: PaPInAddr;
+  i: Integer;
+  s: string;
+  InAddr: TInAddr;
+begin
+  IPList.Clear;
+  if not IsNewApi(Family) then
+  begin
+    IP := synsock.inet_addr(PChar(Name));
+    if IP = u_long(INADDR_NONE) then
+    begin
+      SynSockCS.Enter;
+      try
+        RemoteHost := synsock.GetHostByName(PChar(Name));
+        if RemoteHost <> nil then
+        begin
+          PAdrPtr := PAPInAddr(RemoteHost^.h_addr_list);
+          i := 0;
+          while PAdrPtr^[i] <> nil do
+          begin
+            InAddr := PAdrPtr^[i]^;
+            s := Format('%d.%d.%d.%d', [InAddr.S_bytes[0], InAddr.S_bytes[1],
+              InAddr.S_bytes[2], InAddr.S_bytes[3]]);
+            IPList.Add(s);
+            Inc(i);
+          end;
+        end;
+      finally
+        SynSockCS.Leave;
+      end;
+    end
+    else
+      IPList.Add(Name);
+  end
+  else
+  begin
+    Addr := nil;
+    try
+      FillChar(Hints, Sizeof(Hints), 0);
+      Hints.ai_family := AF_UNSPEC;
+      Hints.ai_socktype := SockType;
+      Hints.ai_protocol := SockProtocol;
+      Hints.ai_flags := 0;
+      r := synsock.GetAddrInfo(PChar(Name), nil, @Hints, Addr);
+      if r = 0 then
+      begin
+        AddrNext := Addr;
+        while not(AddrNext = nil) do
+        begin
+          if not(((Family = AF_INET6) and (AddrNext^.ai_family = AF_INET))
+            or ((Family = AF_INET) and (AddrNext^.ai_family = AF_INET6))) then
+          begin
+            hostlen := NI_MAXHOST;
+            servlen := NI_MAXSERV;
+            setlength(host, hostlen);
+            setlength(serv, servlen);
+            r := getnameinfo(AddrNext^.ai_addr, AddrNext^.ai_addrlen,
+              PChar(host), hostlen, PChar(serv), servlen,
+              NI_NUMERICHOST + NI_NUMERICSERV);
+            if r = 0 then
+            begin
+              host := PChar(host);
+              IPList.Add(host);
+            end;
+          end;
+          AddrNext := AddrNext^.ai_next;
+        end;
+      end;
+    finally
+      if Assigned(Addr) then
+        synsock.FreeAddrInfo(Addr);
+    end;
+  end;
+  if IPList.Count = 0 then
+    IPList.Add(cAnyHost);
+end;
+
+function ResolvePort(Port: string; Family, SockProtocol, SockType: integer): Word;
+var
+  ProtoEnt: PProtoEnt;
+  ServEnt: PServEnt;
+  Hints: TAddrInfo;
+  Addr: PAddrInfo;
+  r: integer;
+begin
+  Result := 0;
+  if not IsNewApi(Family) then
+  begin
+    SynSockCS.Enter;
+    try
+      ProtoEnt := synsock.GetProtoByNumber(SockProtocol);
+      ServEnt := nil;
+      if ProtoEnt <> nil then
+        ServEnt := synsock.GetServByName(PChar(Port), ProtoEnt^.p_name);
+      if ServEnt = nil then
+        Result := StrToIntDef(Port, 0)
+      else
+        Result := synsock.htons(ServEnt^.s_port);
+    finally
+      SynSockCS.Leave;
+    end;
+  end
+  else
+  begin
+    Addr := nil;
+    try
+      FillChar(Hints, Sizeof(Hints), 0);
+      Hints.ai_family := AF_UNSPEC;
+      Hints.ai_socktype := SockType;
+      Hints.ai_protocol := Sockprotocol;
+      Hints.ai_flags := AI_PASSIVE;
+      r := synsock.GetAddrInfo(nil, PChar(Port), @Hints, Addr);
+      if (r = 0) and Assigned(Addr) then
+      begin
+        if Addr^.ai_family = AF_INET then
+          Result := synsock.htons(Addr^.ai_addr^.sin_port);
+        if Addr^.ai_family = AF_INET6 then
+          Result := synsock.htons(PSockAddrIn6(Addr^.ai_addr)^.sin6_port);
+      end;
+    finally
+      if Assigned(Addr) then
+        synsock.FreeAddrInfo(Addr);
+    end;
+  end;
+end;
+
+function ResolveIPToName(IP: string; Family, SockProtocol, SockType: integer): string;
+var
+  Hints: TAddrInfo;
+  Addr: PAddrInfo;
+  r: integer;
+  host, serv: string;
+  hostlen, servlen: integer;
+  RemoteHost: PHostEnt;
+  IPn: u_long;
+begin
+  Result := IP;
+  if not IsNewApi(Family) then
+  begin
+    IPn := synsock.inet_addr(PChar(IP));
+    if IPn <> u_long(INADDR_NONE) then
+    begin
+      SynSockCS.Enter;
+      try
+        RemoteHost := GetHostByAddr(@IPn, SizeOf(IPn), AF_INET);
+        if RemoteHost <> nil then
+          Result := RemoteHost^.h_name;
+      finally
+        SynSockCS.Leave;
+      end;
+    end;
+  end
+  else
+  begin
+    Addr := nil;
+    try
+      FillChar(Hints, Sizeof(Hints), 0);
+      Hints.ai_family := AF_UNSPEC;
+      Hints.ai_socktype := SockType;
+      Hints.ai_protocol := SockProtocol;
+      Hints.ai_flags := 0;
+      r := synsock.GetAddrInfo(PChar(IP), nil, @Hints, Addr);
+      if (r = 0) and Assigned(Addr)then
+      begin
+        hostlen := NI_MAXHOST;
+        servlen := NI_MAXSERV;
+        setlength(host, hostlen);
+        setlength(serv, servlen);
+        r := getnameinfo(Addr^.ai_addr, Addr^.ai_addrlen,
+          PChar(host), hostlen, PChar(serv), servlen,
+          NI_NUMERICSERV);
+        if r = 0 then
+          Result := PChar(host);
+      end;
+    finally
+      if Assigned(Addr) then
+        synsock.FreeAddrInfo(Addr);
+    end;
+  end;
 end;
 
 {=============================================================================}

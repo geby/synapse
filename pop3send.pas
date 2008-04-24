@@ -1,5 +1,5 @@
 {==============================================================================|
-| Project : Ararat Synapse                                       | 002.004.000 |
+| Project : Ararat Synapse                                       | 002.005.000 |
 |==============================================================================|
 | Content: POP3 client                                                         |
 |==============================================================================|
@@ -84,6 +84,7 @@ type
     FFullResult: TStringList;
     FStatCount: Integer;
     FStatSize: Integer;
+    FListSize: Integer;
     FTimeStamp: string;
     FAuthType: TPOP3AuthType;
     FPOP3cap: TStringList;
@@ -125,6 +126,10 @@ type
      @link(FullResult). If all OK, result is @true.}
     function Retr(Value: Integer): Boolean;
 
+    {:Send RETR command. After successful operation dowloaded message in
+     @link(Stream). If all OK, result is @true.}
+    function RetrStream(Value: Integer; Stream: TStream): Boolean;
+
     {:Send DELE command for delete specified message. If all OK, result is @true.}
     function Dele(Value: Integer): Boolean;
 
@@ -161,6 +166,9 @@ type
     {:After STAT command is there size of all messages in inbox.}
     property StatSize: Integer read  FStatSize;
 
+    {:After LIST 0 command size of all messages on server, After LIST x size of message x on server}
+    property ListSize: Integer read  FListSize;
+
     {:If server support this, after comnnect is in this property timestamp of
      remote server.}
     property TimeStamp: string read FTimeStamp;
@@ -195,6 +203,7 @@ begin
   FTargetPort := cPop3Protocol;
   FStatCount := 0;
   FStatSize := 0;
+  FListSize := 0;
   FAuthType := POP3AuthAll;
   FAutoTLS := False;
   FFullSSL := False;
@@ -351,18 +360,65 @@ begin
 end;
 
 function TPOP3Send.List(Value: Integer): Boolean;
+var
+  s: string;
+  n: integer;
 begin
   if Value = 0 then
     FSock.SendString('LIST' + CRLF)
   else
     FSock.SendString('LIST ' + IntToStr(Value) + CRLF);
   Result := ReadResult(Value = 0) = 1;
+  FListSize := 0;
+  if Result then
+    if Value <> 0 then
+    begin
+      s := SeparateRight(ResultString, '+OK ');
+      FListSize := StrToIntDef(SeparateLeft(SeparateRight(s, ' '), ' '), 0);
+    end
+    else
+      for n := 0 to FFullResult.Count - 1 do
+        FListSize := FListSize + StrToIntDef(SeparateLeft(SeparateRight(s, ' '), ' '), 0);
 end;
 
 function TPOP3Send.Retr(Value: Integer): Boolean;
 begin
   FSock.SendString('RETR ' + IntToStr(Value) + CRLF);
   Result := ReadResult(True) = 1;
+end;
+
+//based on code by Miha Vrhovnik
+function TPOP3Send.RetrStream(Value: Integer; Stream: TStream): Boolean;
+var
+  s: string;
+begin
+  Result := False;
+  FFullResult.Clear;
+  Stream.Size := 0;
+  FSock.SendString('RETR ' + IntToStr(Value) + CRLF);
+
+  s := FSock.RecvString(FTimeout);
+  if Pos('+OK', s) = 1 then
+    Result := True;
+  FResultString := s;
+  if Result then begin
+    repeat
+      s := FSock.RecvString(FTimeout);
+      if s = '.' then
+        Break;
+      if s <> '' then begin
+        if s[1] = '.' then
+          Delete(s, 1, 1);
+      end;
+      WriteStrToStream(Stream, s);
+      WriteStrToStream(Stream, CRLF);
+    until FSock.LastError <> 0;
+  end;
+
+  if Result then
+    FResultCode := 1
+  else
+    FResultCode := 0;
 end;
 
 function TPOP3Send.Dele(Value: Integer): Boolean;

@@ -1,9 +1,9 @@
 {==============================================================================|
-| Project : Ararat Synapse                                       | 004.008.001 |
+| Project : Ararat Synapse                                       | 004.010.001 |
 |==============================================================================|
 | Content: support procedures and functions                                    |
 |==============================================================================|
-| Copyright (c)1999-2004, Lukas Gebauer                                        |
+| Copyright (c)1999-2005, Lukas Gebauer                                        |
 | All rights reserved.                                                         |
 |                                                                              |
 | Redistribution and use in source and binary forms, with or without           |
@@ -33,7 +33,7 @@
 | DAMAGE.                                                                      |
 |==============================================================================|
 | The Initial Developer of the Original Code is Lukas Gebauer (Czech Republic).|
-| Portions created by Lukas Gebauer are Copyright (c) 1999-2004.               |
+| Portions created by Lukas Gebauer are Copyright (c) 1999-2005.               |
 | Portions created by Hernan Sanchez are Copyright (c) 2000.                   |
 | All Rights Reserved.                                                         |
 |==============================================================================|
@@ -58,15 +58,19 @@ unit synautil;
 interface
 
 uses
-{$IFDEF LINUX}
-  Libc,
-{$ELSE}
+{$IFDEF WIN32}
   Windows,
+{$ELSE}
+  {$IFDEF FPC}
+  UnixUtil, Unix, BaseUnix,
+  {$ELSE}
+  Libc,
+  {$ENDIF}
 {$ENDIF}
 {$IFDEF CIL}
   System.IO,
 {$ENDIF}
-  SysUtils, Classes;
+  SysUtils, Classes, SynaFpc;
 
 {:Return your timezone bias from UTC time in minutes.}
 function TimeZoneBias: integer;
@@ -131,11 +135,11 @@ function SetUTTime(Newdt: TDateTime): Boolean;
 
 {:Return current value of system timer with precizion 1 millisecond. Good for
  measure time difference.}
-function GetTick: ULong;
+function GetTick: LongWord;
 
 {:Return difference between two timestamps. It working fine only for differences
  smaller then maxint. (difference must be smaller then 24 days.)}
-function TickDelta(TickOld, TickNew: ULong): ULong;
+function TickDelta(TickOld, TickNew: LongWord): LongWord;
 
 {:Return two characters, which ordinal values represents the value in byte
  format. (High-endian)}
@@ -152,15 +156,6 @@ function CodeLongInt(Value: LongInt): Ansistring;
 {:Decodes four characters located at "Index" offset position of the "Value"
  string to LongInt values.}
 function DecodeLongInt(const Value: Ansistring; Index: Integer): LongInt;
-
-{:Returns @TRUE, if "Value" is a valid IPv4 address. Cannot be a symbolic Name!}
-function IsIP(const Value: string): Boolean;
-
-{:Returns @TRUE, if "Value" is a valid IPv6 address. Cannot be a symbolic Name!}
-function IsIP6(const Value: string): Boolean;
-
-{:Returns a string with the "Host" ip address converted to binary form.}
-function IPToID(Host: string): string;
 
 {:Dump binary buffer stored in a string to a result string.}
 function DumpStr(const Buffer: Ansistring): string;
@@ -341,19 +336,18 @@ var
 {==============================================================================}
 
 function TimeZoneBias: integer;
-{$IFDEF LINUX}
+{$IFNDEF WIN32}
+{$IFNDEF FPC}
 var
   t: TTime_T;
   UT: TUnixTime;
 begin
-{$IFNDEF FPC}
   __time(@T);
   localtime_r(@T, UT);
   Result := ut.__tm_gmtoff div 60;
 {$ELSE}
-  __time(T);
-  localtime_r(T, UT);
-  Result := ut.tm_gmtoff div 60;
+begin
+  Result := TZSeconds div 60;
 {$ENDIF}
 {$ELSE}
 var
@@ -688,7 +682,7 @@ end;
 {==============================================================================}
 
 function GetUTTime: TDateTime;
-{$IFNDEF LINUX}
+{$IFDEF WIN32}
 {$IFNDEF FPC}
 var
   st: TSystemTime;
@@ -711,23 +705,26 @@ begin
   result := SystemTimeToDateTime(st);
 {$ENDIF}
 {$ELSE}
+{$IFNDEF FPC}
 var
   TV: TTimeVal;
-  TZ: Ttimezone;
-  PZ: PTimeZone;
 begin
-  TZ.tz_minuteswest := 0;
-  TZ.tz_dsttime := 0;
-  PZ := @TZ;
-  gettimeofday(TV, PZ);
+  gettimeofday(TV, nil);
   Result := UnixDateDelta + (TV.tv_sec + TV.tv_usec / 1000000) / 86400;
+{$ELSE}
+var
+  TV: TimeVal;
+begin
+  fpgettimeofday(@TV, nil);
+  Result := UnixDateDelta + (TV.tv_sec + TV.tv_usec / 1000000) / 86400;
+{$ENDIF}
 {$ENDIF}
 end;
 
 {==============================================================================}
 
 function SetUTTime(Newdt: TDateTime): Boolean;
-{$IFNDEF LINUX}
+{$IFDEF WIN32}
 {$IFNDEF FPC}
 var
   st: TSystemTime;
@@ -750,6 +747,7 @@ begin
   Result := SetSystemTime(stw);
 {$ENDIF}
 {$ELSE}
+{$IFNDEF FPC}
 var
   TV: TTimeVal;
   d: double;
@@ -764,13 +762,23 @@ begin
   TV.tv_sec := trunc(d);
   TV.tv_usec := trunc(frac(d) * 1000000);
   Result := settimeofday(TV, TZ) <> -1;
+{$ELSE}
+var
+  TV: TimeVal;
+  d: double;
+begin
+  d := (newdt - UnixDateDelta) * 86400;
+  TV.tv_sec := trunc(d);
+  TV.tv_usec := trunc(frac(d) * 1000000);
+  Result := fpsettimeofday(@TV, nil) <> -1;
+{$ENDIF}
 {$ENDIF}
 end;
 
 {==============================================================================}
 
-{$IFDEF LINUX}
-function GetTick: ULong;
+{$IFNDEF WIN32}
+function GetTick: LongWord;
 var
   Stamp: TTimeStamp;
 begin
@@ -778,15 +786,31 @@ begin
   Result := Stamp.Time;
 end;
 {$ELSE}
-function GetTick: ULong;
+function GetTick: LongWord;
+var
+  tick, freq: TLargeInteger;
+{$IFDEF VER100}
+  x: TLargeInteger;
+{$ENDIF}
 begin
-  Result := Windows.GetTickCount;
+  if Windows.QueryPerformanceFrequency(freq) then
+  begin
+    Windows.QueryPerformanceCounter(tick);
+{$IFDEF VER100}
+    x.QuadPart := (tick.QuadPart / freq.QuadPart) * 1000;
+    Result := x.LowPart;
+{$ELSE}
+    Result := Trunc((tick / freq) * 1000) and High(LongWord)
+{$ENDIF}
+  end
+  else
+    Result := Windows.GetTickCount;
 end;
 {$ENDIF}
 
 {==============================================================================}
 
-function TickDelta(TickOld, TickNew: ULong): ULong;
+function TickDelta(TickOld, TickNew: LongWord): LongWord;
 begin
 //if DWord is signed type (older Deplhi),
 // then it not work properly on differencies larger then maxint!
@@ -795,8 +819,8 @@ begin
   begin
     if TickNew < TickOld then
     begin
-      TickNew := TickNew + ULong(MaxInt) + 1;
-      TickOld := TickOld + ULong(MaxInt) + 1;
+      TickNew := TickNew + LongWord(MaxInt) + 1;
+      TickOld := TickOld + LongWord(MaxInt) + 1;
     end;
     Result := TickNew - TickOld;
     if TickNew < TickOld then
@@ -876,103 +900,6 @@ end;
 
 {==============================================================================}
 
-function IsIP(const Value: string): Boolean;
-var
-  TempIP: string;
-  function ByteIsOk(const Value: string): Boolean;
-  var
-    x, n: integer;
-  begin
-    x := StrToIntDef(Value, -1);
-    Result := (x >= 0) and (x < 256);
-    // X may be in correct range, but value still may not be correct value!
-    // i.e. "$80"
-    if Result then
-      for n := 1 to length(Value) do
-        if not (Value[n] in ['0'..'9']) then
-        begin
-          Result := False;
-          Break;
-        end;
-  end;
-begin
-  TempIP := Value;
-  Result := False;
-  if not ByteIsOk(Fetch(TempIP, '.')) then
-    Exit;
-  if not ByteIsOk(Fetch(TempIP, '.')) then
-    Exit;
-  if not ByteIsOk(Fetch(TempIP, '.')) then
-    Exit;
-  if ByteIsOk(TempIP) then
-    Result := True;
-end;
-
-{==============================================================================}
-
-function IsIP6(const Value: string): Boolean;
-var
-  TempIP: string;
-  s,t: string;
-  x: integer;
-  partcount: integer;
-  zerocount: integer;
-  First: Boolean;
-begin
-  TempIP := Value;
-  Result := False;
-  partcount := 0;
-  zerocount := 0;
-  First := True;
-  while tempIP <> '' do
-  begin
-    s := fetch(TempIP, ':');
-    if not(First) and (s = '') then
-      Inc(zerocount);
-    First := False;
-    if zerocount > 1 then
-      break;
-    Inc(partCount);
-    if s = '' then
-      Continue;
-    if partCount > 8 then
-      break;
-    if tempIP = '' then
-    begin
-      t := SeparateRight(s, '%');
-      s := SeparateLeft(s, '%');
-      x := StrToIntDef('$' + t, -1);
-      if (x < 0) or (x > $ffff) then
-        break;
-    end;
-    x := StrToIntDef('$' + s, -1);
-    if (x < 0) or (x > $ffff) then
-      break;
-    if tempIP = '' then
-      Result := True;
-  end;
-end;
-
-{==============================================================================}
-//Hernan Sanchez
-function IPToID(Host: string): string;
-var
-  s: string;
-  i, x: Integer;
-begin
-  Result := '';
-  for x := 1 to 3 do
-  begin
-    s := Fetch(Host, '.');
-    i := StrToIntDef(s, 0);
-    Result := Result + Chr(i);
-  end;
-  i := StrToIntDef(Host, 0);
-  Result := Result + Chr(i);
-end;
-
-{==============================================================================}
-
 function DumpStr(const Buffer: Ansistring): string;
 var
   n: Integer;
@@ -1040,6 +967,9 @@ function TrimSPLeft(const S: string): string;
 var
   I, L: Integer;
 begin
+  Result := '';
+  if S = '' then
+    Exit;
   L := Length(S);
   I := 1;
   while (I <= L) and (S[I] = ' ') do
@@ -1053,6 +983,9 @@ function TrimSPRight(const S: string): string;
 var
   I: Integer;
 begin
+  Result := '';
+  if S = '' then
+    Exit;
   I := Length(S);
   while (I > 0) and (S[I] = ' ') do
     Dec(I);
@@ -1471,38 +1404,26 @@ end;
 
 function PosCRLF(const Value: AnsiString; var Terminator: AnsiString): integer;
 var
-  p1, p2, p3, p4: integer;
-const
-  t1 = #$0d + #$0a;
-  t2 = #$0a + #$0d;
-  t3 = #$0d;
-  t4 = #$0a;
+  n, l: integer;
 begin
+  Result := -1;
   Terminator := '';
-  p1 := Pos(t1, Value);
-  p2 := Pos(t2, Value);
-  p3 := Pos(t3, Value);
-  p4 := Pos(t4, Value);
-  if p1 > 0 then
-    Terminator := t1;
-  Result := p1;
-  if (p2 > 0) then
-    if (Result = 0) or (p2 < Result) then
+  l := length(value);
+  for n := 1 to l do
+    if value[n] in [#$0d, #$0a] then
     begin
-      Result := p2;
-      Terminator := t2;
-    end;
-  if (p3 > 0) then
-    if (Result = 0) or (p3 < Result) then
-    begin
-      Result := p3;
-      Terminator := t3;
-    end;
-  if (p4 > 0) then
-    if (Result = 0) or (p4 < Result) then
-    begin
-      Result := p4;
-      Terminator := t4;
+      Result := n;
+      Terminator := Value[n];
+      if n <> l then
+        case value[n] of
+          #$0d:
+            if value[n + 1] = #$0a then
+              Terminator := #$0d + #$0a;
+          #$0a:
+            if value[n + 1] = #$0d then
+              Terminator := #$0a + #$0d;
+        end;
+      Break;
     end;
 end;
 
@@ -1553,7 +1474,7 @@ end;
 {$IFNDEF CIL}
 function IncPoint(const p: pointer; Value: integer): pointer;
 begin
-  Result := pointer(integer(p) + Value);
+  Result := PChar(p) + Value;
 end;
 {$ENDIF}
 
@@ -1686,7 +1607,7 @@ end;
 
 procedure HeadersToList(const Value: TStrings);
 var
-  n, x: integer;
+  n, x, y: integer;
   s: string;
 begin
   for n := 0 to Value.Count -1 do
@@ -1695,8 +1616,12 @@ begin
     x := Pos(':', s);
     if x > 0 then
     begin
-      s[x] := '=';
-      Value[n] := s;
+      y:= Pos('=',s); 
+      if not ((y > 0) and (y < x)) then
+      begin
+        s[x] := '=';
+        Value[n] := s;
+      end;
     end;
   end;
 end;
@@ -1775,7 +1700,7 @@ end;
 {==============================================================================}
 function GetTempFile(const Dir, prefix: AnsiString): AnsiString;
 {$IFNDEF FPC}
-{$IFNDEF LINUX}
+{$IFDEF WIN32}
 var
   Path: AnsiString;
   x: integer;
@@ -1785,7 +1710,7 @@ begin
 {$IFDEF FPC}
   Result := GetTempFileName(Dir, Prefix);
 {$ELSE}
-  {$IFDEF LINUX}
+  {$IFNDEF WIN32}
     Result := tempnam(Pointer(Dir), Pointer(prefix));
   {$ELSE}
     {$IFDEF CIL}

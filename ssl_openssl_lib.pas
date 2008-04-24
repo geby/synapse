@@ -1,5 +1,5 @@
 {==============================================================================|
-| Project : Ararat Synapse                                       | 003.004.000 |
+| Project : Ararat Synapse                                       | 003.004.001 |
 |==============================================================================|
 | Content: SSL support by OpenSSL                                              |
 |==============================================================================|
@@ -76,10 +76,8 @@ uses
   System.Text,
 {$ENDIF}
   Classes,
-{$IFDEF LINUX}
-  {$IFDEF FPC}
   synafpc,
-  {$ENDIF}
+{$IFNDEF WIN32}
   Libc, SysUtils;
 {$ELSE}
   Windows;
@@ -97,7 +95,7 @@ const
   {$ENDIF}
 {$ELSE}
 var
-  {$IFDEF LINUX}
+  {$IFNDEF WIN32}
   DLLSSLName: string = 'libssl.so';
   DLLUtilName: string = 'libcrypto.so';
   {$ELSE}
@@ -205,8 +203,8 @@ const
   EVP_PKEY_RSA = 6;
 
 var
-  SSLLibHandle: Integer = 0;
-  SSLUtilHandle: Integer = 0;
+  SSLLibHandle: TLibHandle = 0;
+  SSLUtilHandle: TLibHandle = 0;
   SSLLibFile: string = '';
   SSLUtilFile: string = '';
 

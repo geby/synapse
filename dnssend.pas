@@ -1,5 +1,5 @@
 {==============================================================================|
-| Project : Ararat Synapse                                       | 002.007.000 |
+| Project : Ararat Synapse                                       | 002.007.003 |
 |==============================================================================|
 | Content: DNS client                                                          |
 |==============================================================================|
@@ -60,7 +60,7 @@ interface
 
 uses
   SysUtils, Classes,
-  blcksock, synautil, synsock;
+  blcksock, synautil, synaip, synsock;
 
 const
   cDnsProtocol = 'domain';
@@ -120,13 +120,11 @@ type
     FSock: TUDPBlockSocket;
     FTCPSock: TTCPBlockSocket;
     FUseTCP: Boolean;
-    FAnsferInfo: TStringList;
+    FAnswerInfo: TStringList;
     FNameserverInfo: TStringList;
     FAdditionalInfo: TStringList;
     FAuthoritative: Boolean;
     FTruncated: Boolean;
-    function ReverseIP(Value: AnsiString): AnsiString;
-    function ReverseIP6(Value: AnsiString): AnsiString;
     function CompressName(const Value: AnsiString): AnsiString;
     function CodeHeader: AnsiString;
     function CodeQuery(const Name: AnsiString; QType: Integer): AnsiString;
@@ -177,16 +175,16 @@ type
       4-not implemented, 5-refused.}
     property RCode: Integer read FRCode;
 
-    {:@True, if ansfer is authoritative.}
+    {:@True, if answer is authoritative.}
     property Authoritative: Boolean read FAuthoritative;
 
-    {:@True, if ansfer is truncated to 512 bytes.}
+    {:@True, if answer is truncated to 512 bytes.}
     property Truncated: Boolean read FTRuncated;
 
     {:Detailed informations from name server reply. One record per line. Record
      have comma delimited entries with type number, TTL and data filelds.
      This information contains detailed information about query reply.}
-    property AnsferInfo: TStringList read FAnsferInfo;
+    property AnswerInfo: TStringList read FAnswerInfo;
 
     {:Detailed informations from name server reply. One record per line. Record
      have comma delimited entries with type number, TTL and data filelds.
@@ -218,7 +216,7 @@ begin
   FUseTCP := False;
   FTimeout := 10000;
   FTargetPort := cDnsProtocol;
-  FAnsferInfo := TStringList.Create;
+  FAnswerInfo := TStringList.Create;
   FNameserverInfo := TStringList.Create;
   FAdditionalInfo := TStringList.Create;
   Randomize;
@@ -226,50 +224,12 @@ end;
 
 destructor TDNSSend.Destroy;
 begin
-  FAnsferInfo.Free;
+  FAnswerInfo.Free;
   FNameserverInfo.Free;
   FAdditionalInfo.Free;
   FTCPSock.Free;
   FSock.Free;
   inherited Destroy;
-end;
-
-function TDNSSend.ReverseIP(Value: AnsiString): AnsiString;
-var
-  x: Integer;
-begin
-  Result := '';
-  repeat
-    x := LastDelimiter('.', Value);
-    Result := Result + '.' + Copy(Value, x + 1, Length(Value) - x);
-    Delete(Value, x, Length(Value) - x + 1);
-  until x < 1;
-  if Length(Result) > 0 then
-    if Result[1] = '.' then
-      Delete(Result, 1, 1);
-end;
-
-function TDNSSend.ReverseIP6(Value: AnsiString): AnsiString;
-var
-  ip6: TSockAddrIn6;
-begin
-  ip6 := FSock.StrToIP6(Value);
-  Result := ip6.sin6_addr.S_un_b.s_b16
-    + '.' + ip6.sin6_addr.S_un_b.s_b15
-    + '.' + ip6.sin6_addr.S_un_b.s_b14
-    + '.' + ip6.sin6_addr.S_un_b.s_b13
-    + '.' + ip6.sin6_addr.S_un_b.s_b12
-    + '.' + ip6.sin6_addr.S_un_b.s_b11
-    + '.' + ip6.sin6_addr.S_un_b.s_b10
-    + '.' + ip6.sin6_addr.S_un_b.s_b9
-    + '.' + ip6.sin6_addr.S_un_b.s_b8
-    + '.' + ip6.sin6_addr.S_un_b.s_b7
-    + '.' + ip6.sin6_addr.S_un_b.s_b6
-    + '.' + ip6.sin6_addr.S_un_b.s_b5
-    + '.' + ip6.sin6_addr.S_un_b.s_b4
-    + '.' + ip6.sin6_addr.S_un_b.s_b3
-    + '.' + ip6.sin6_addr.S_un_b.s_b2
-    + '.' + ip6.sin6_addr.S_un_b.s_b1;
 end;
 
 function TDNSSend.CompressName(const Value: AnsiString): AnsiString;
@@ -363,7 +323,7 @@ var
   RType, Len, j, x, y, z, n: Integer;
   R: AnsiString;
   t1, t2, ttl: integer;
-  ip6: TSockAddrIn6;
+  ip6: TIp6bytes;
 begin
   Result := '';
   R := '';
@@ -393,28 +353,9 @@ begin
         end;
       QTYPE_AAAA:
         begin
-//          FillChar(ip6, SizeOf(ip6), 0);
-          ip6.sin6_addr.S_un_b.s_b1 := Char(FBuffer[j]);
-          ip6.sin6_addr.S_un_b.s_b2 := Char(FBuffer[j + 1]);
-          ip6.sin6_addr.S_un_b.s_b3 := Char(FBuffer[j + 2]);
-          ip6.sin6_addr.S_un_b.s_b4 := Char(FBuffer[j + 3]);
-          ip6.sin6_addr.S_un_b.s_b5 := Char(FBuffer[j + 4]);
-          ip6.sin6_addr.S_un_b.s_b6 := Char(FBuffer[j + 5]);
-          ip6.sin6_addr.S_un_b.s_b7 := Char(FBuffer[j + 6]);
-          ip6.sin6_addr.S_un_b.s_b8 := Char(FBuffer[j + 7]);
-          ip6.sin6_addr.S_un_b.s_b9 := Char(FBuffer[j + 8]);
-          ip6.sin6_addr.S_un_b.s_b10 := Char(FBuffer[j + 9]);
-          ip6.sin6_addr.S_un_b.s_b11 := Char(FBuffer[j + 10]);
-          ip6.sin6_addr.S_un_b.s_b12 := Char(FBuffer[j + 11]);
-          ip6.sin6_addr.S_un_b.s_b13 := Char(FBuffer[j + 12]);
-          ip6.sin6_addr.S_un_b.s_b14 := Char(FBuffer[j + 13]);
-          ip6.sin6_addr.S_un_b.s_b15 := Char(FBuffer[j + 14]);
-          ip6.sin6_addr.S_un_b.s_b16 := Char(FBuffer[j + 15]);
-          ip6.sin6_family := word(AF_INET6);
-          ip6.sin6_port := 0;
-          ip6.sin6_flowinfo := 0;
-          ip6.sin6_scope_id := 0;
-          R := FSock.IP6ToStr(ip6);
+          for n := 0 to 15 do
+            ip6[n] := ord(FBuffer[j + n]);
+          R := IP6ToStr(ip6);
         end;
       QTYPE_NS, QTYPE_MD, QTYPE_MF, QTYPE_CNAME, QTYPE_MB,
         QTYPE_MG, QTYPE_MR, QTYPE_PTR, QTYPE_X25, QTYPE_NSAP,
@@ -514,7 +455,7 @@ var
 begin
   Result := False;
   Reply.Clear;
-  FAnsferInfo.Clear;
+  FAnswerInfo.Clear;
   FNameserverInfo.Clear;
   FAdditionalInfo.Clear;
   FAuthoritative := False;
@@ -542,7 +483,7 @@ begin
       if (ancount > 0) and (Length(Buf) > i) then // decode reply
         for n := 1 to ancount do
         begin
-          s := DecodeResource(i, FAnsferInfo, QType);
+          s := DecodeResource(i, FAnswerInfo, QType);
           if s <> '' then
             Reply.Add(s);
         end;
@@ -588,11 +529,11 @@ begin
     try
       repeat
         b := DecodeResponse(FBuffer, Reply, QType);
-        if (t.Count > 1) and (AnsferInfo.Count > 0) then  //find end of transfer
-          b := b and (t[0] <> AnsferInfo[AnsferInfo.count - 1]);
+        if (t.Count > 1) and (AnswerInfo.Count > 0) then  //find end of transfer
+          b := b and (t[0] <> AnswerInfo[AnswerInfo.count - 1]);
         if b then
         begin
-          t.AddStrings(AnsferInfo);
+          t.AddStrings(AnswerInfo);
           FBuffer := RecvTCPResponse(WorkSock);
           if FBuffer = '' then
             Break;
