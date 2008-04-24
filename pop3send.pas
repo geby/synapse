@@ -1,5 +1,5 @@
 {==============================================================================|
-| Project : Delphree - Synapse                                   | 001.001.001 |
+| Project : Delphree - Synapse                                   | 001.001.002 |
 |==============================================================================|
 | Content: POP3 client                                                         |
 |==============================================================================|
@@ -84,6 +84,7 @@ type
     property StatSize: Integer read  FStatSize;
     property TimeStamp: string read FTimeStamp;
     property AuthType: TPOP3AuthType read FAuthType Write FAuthType;
+    property Sock: TTCPBlockSocket read FSock;
   end;
 
 implementation

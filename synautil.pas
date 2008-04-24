@@ -1,5 +1,5 @@
 {==============================================================================|
-| Project : Delphree - Synapse                                   | 002.000.001 |
+| Project : Delphree - Synapse                                   | 002.001.000 |
 |==============================================================================|
 | Content: support procedures and functions                                    |
 |==============================================================================|
@@ -57,6 +57,8 @@ function BinToInt(const Value: string): Integer;
 function ParseURL(URL: string; var Prot, User, Pass, Host, Port, Path,
   Para: string): string;
 function StringReplace(Value, Search, Replace: string): string;
+function RPos(const Sub, Value: String): Integer;
+function Fetch(var Value: string; const Delimiter: string): string;
 
 implementation
 
@@ -473,6 +475,33 @@ begin
     x := Pos(Search, Value);
   end;
   Result := Result + Value;
+end;
+
+{==============================================================================}
+
+function RPos(const Sub, Value: String): Integer;
+var
+  n: Integer;
+  l: Integer;
+begin
+  result := 0;
+  l := Length(Sub);
+  for n := Length(Value) - l + 1 downto 1 do
+  begin
+    if Copy(Value, n, l) = Sub then
+    begin
+      result := n;
+      break;
+    end;
+  end;
+end;
+
+{==============================================================================}
+
+function Fetch(var Value: string; const Delimiter: string): string;
+begin
+  Result := SeparateLeft(Value, Delimiter);
+  Value := SeparateRight(Value, Delimiter);
 end;
 
 end.

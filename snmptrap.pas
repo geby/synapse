@@ -1,5 +1,5 @@
 {==============================================================================|
-| Project : Delphree - Synapse                                   | 002.002.002 |
+| Project : Delphree - Synapse                                   | 002.002.003 |
 |==============================================================================|
 | Content: SNMP traps                                                          |
 |==============================================================================|
@@ -97,6 +97,7 @@ type
     property Trap: TTrapPDU read FTrap;
     property SNMPHost: string read FSNMPHost Write FSNMPHost;
     property Timeout: Integer read FTimeout Write FTimeout;
+    property Sock: TUDPBlockSocket read FSock;
   end;
 
 function SendTrap(const Dest, Source, Enterprise, Community: string;

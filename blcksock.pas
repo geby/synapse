@@ -1,5 +1,5 @@
 {==============================================================================|
-| Project : Delphree - Synapse                                   | 003.002.000 |
+| Project : Delphree - Synapse                                   | 003.003.000 |
 |==============================================================================|
 | Content: Library base                                                        |
 |==============================================================================|
@@ -49,8 +49,27 @@ type
     ErrorMessage: string;
   end;
 
+  THookSocketReason = (
+    HR_ResolvingBegin,
+    HR_ResolvingEnd,
+    HR_SocketCreate,
+    HR_SocketClose,
+    HR_Bind,
+    HR_Connect,
+    HR_CanRead,
+    HR_CanWrite,
+    HR_Listen,
+    HR_Accept,
+    HR_ReadCount,
+    HR_WriteCount
+    );
+
+  THookSocketStatus = procedure(Sender: TObject; Reason: THookSocketReason;
+    const Value: string) of object;
+
   TBlockSocket = class(TObject)
   private
+    FOnStatus: THookSocketStatus;
     FWsaData: TWSADATA;
     FLocalSin: TSockAddrIn;
     FRemoteSin: TSockAddrIn;
@@ -68,6 +87,7 @@ type
     procedure SetSin(var Sin: TSockAddrIn; IP, Port: string);
     function GetSinIP(Sin: TSockAddrIn): string;
     function GetSinPort(Sin: TSockAddrIn): Integer;
+    procedure DoStatus(Reason: THookSocketReason; const Value: string);
   public
     constructor Create;
     constructor CreateAlternate(Stub: string);
@@ -118,6 +138,7 @@ type
     property SizeRecvBuffer: Integer read GetSizeRecvBuffer write SetSizeRecvBuffer;
     property SizeSendBuffer: Integer read GetSizeSendBuffer write SetSizeSendBuffer;
     property WSAData: TWSADATA read FWsaData;
+    property OnStatus: THookSocketStatus read FOnStatus write FOnStatus;
   end;
 
   TUDPBlockSocket = class(TBlockSocket)
@@ -205,6 +226,7 @@ end;
 destructor TBlockSocket.Destroy;
 begin
   CloseSocket;
+  synsock.WSACleanup;
   DestroySocketInterface;
   inherited Destroy;
 end;
@@ -215,6 +237,7 @@ var
   ServEnt: PServEnt;
   HostEnt: PHostEnt;
 begin
+  DoStatus(HR_ResolvingBegin, IP + ':' + Port);
   FillChar(Sin, Sizeof(Sin), 0);
   Sin.sin_family := AF_INET;
   ProtoEnt := synsock.GetProtoByNumber(FProtocol);
@@ -237,6 +260,7 @@ begin
         SIn.sin_addr.S_addr := Longint(PLongint(HostEnt^.h_addr_list^)^);
     end;
   end;
+  DoStatus(HR_ResolvingEnd, IP+':'+Port);
 end;
 
 function TBlockSocket.GetSinIP(Sin: TSockAddrIn): string;
@@ -263,11 +287,13 @@ begin
   else
     FLastError := 0;
   ExceptCheck;
+  DoStatus(HR_SocketCreate, '');
 end;
 
 procedure TBlockSocket.CloseSocket;
 begin
   synsock.CloseSocket(FSocket);
+  DoStatus(HR_SocketClose, '');
 end;
 
 procedure TBlockSocket.Bind(IP, Port: string);
@@ -281,6 +307,7 @@ begin
   synsock.GetSockName(FSocket, FLocalSin, Len);
   FBuffer := '';
   ExceptCheck;
+  DoStatus(HR_Bind, IP + ':' + Port);
 end;
 
 procedure TBlockSocket.Connect(IP, Port: string);
@@ -292,6 +319,7 @@ begin
   GetSins;
   FBuffer := '';
   ExceptCheck;
+  DoStatus(HR_Connect, IP + ':' + Port);
 end;
 
 procedure TBlockSocket.GetSins;
@@ -309,18 +337,21 @@ begin
   Result := synsock.Send(FSocket, Buffer^, Length, 0);
   SockCheck(Result);
   ExceptCheck;
+  DoStatus(HR_WriteCount, IntToStr(Result));
 end;
 
 procedure TBlockSocket.SendByte(Data: Byte);
 begin
   sockcheck(synsock.Send(FSocket, Data, 1, 0));
   ExceptCheck;
+  DoStatus(HR_WriteCount, '1');
 end;
 
 procedure TBlockSocket.SendString(const Data: string);
 begin
   SockCheck(synsock.Send(FSocket, PChar(Data)^, Length(Data), 0));
   ExceptCheck;
+  DoStatus(HR_WriteCount, IntToStr(Length(Data)));
 end;
 
 function TBlockSocket.RecvBuffer(Buffer: Pointer; Length: Integer): Integer;
@@ -331,6 +362,7 @@ begin
   else
     SockCheck(Result);
   ExceptCheck;
+  DoStatus(HR_ReadCount, IntToStr(Result));
 end;
 
 function TBlockSocket.RecvBufferEx(Buffer: Pointer; Length: Integer;
@@ -380,6 +412,7 @@ begin
           SockCheck(x);
         if FLastError <> 0 then
           Break;
+        DoStatus(HR_ReadCount, IntToStr(x));
         lss := system.Length(ss);
         SetLength(ss, lss + x);
         Move(Pointer(st)^, Pointer(@ss[lss + 1])^, x);
@@ -414,6 +447,7 @@ begin
     else
       SockCheck(y);
     Result := Data;
+    DoStatus(HR_ReadCount, '1');
   end
   else
     FLastError := WSAETIMEDOUT;
@@ -456,6 +490,7 @@ begin
           FLastError := WSAENOTCONN;
         if FLastError <> 0 then
           Break;
+        DoStatus(HR_ReadCount, IntToStr(r));
         if r < x then
           SetLength(FBuffer, r);
       end;
@@ -650,6 +685,8 @@ begin
     x := 0;
   Result := x > 0;
   ExceptCheck;
+  if Result then
+    DoStatus(HR_CanRead, '');
 end;
 
 function TBlockSocket.CanWrite(Timeout: Integer): Boolean;
@@ -672,6 +709,8 @@ begin
     x := 0;
   Result := x > 0;
   ExceptCheck;
+  if Result then
+    DoStatus(HR_CanWrite, '');
 end;
 
 function TBlockSocket.SendBufferTo(Buffer: Pointer; Length: Integer): Integer;
@@ -774,6 +813,13 @@ begin
         if FD_ISSET(TBlockSocket(SocketList.Items[n]).Socket, FDSet) then
           CanReadList.Add(TBlockSocket(SocketList.Items[n]));
 end;
+
+procedure TBlockSocket.DoStatus(Reason: THookSocketReason; const Value: string);
+begin
+  if assigned(OnStatus) then
+    OnStatus(Self, Reason, Value);
+end;
+
 
 class function TBlockSocket.GetErrorDesc(ErrorCode: Integer): string;
 begin
@@ -928,6 +974,7 @@ begin
   SockCheck(synsock.Listen(FSocket, SOMAXCONN));
   GetSins;
   ExceptCheck;
+  DoStatus(HR_Listen, '');
 end;
 
 function TTCPBlockSocket.Accept: TSocket;
@@ -938,6 +985,7 @@ begin
   Result := synsock.Accept(FSocket, @FRemoteSin, @Len);
   SockCheck(Result);
   ExceptCheck;
+  DoStatus(HR_Accept, '');
 end;
 
 {======================================================================}

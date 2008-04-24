@@ -1,5 +1,5 @@
 {==============================================================================|
-| Project : Delphree - Synapse                                   | 001.004.001 |
+| Project : Delphree - Synapse                                   | 001.005.000 |
 |==============================================================================|
 | Content: MIME support procedures and functions                               |
 |==============================================================================|
@@ -81,8 +81,8 @@ type
     property ContentID: string read FContentID Write FContentID;
     property Boundary: string read FBoundary Write FBoundary;
     property FileName: string read FFileName Write FFileName;
-    property Lines: TStringList read FLines Write FLines;
-    property DecodedLines: TMemoryStream read FDecodedLines Write FDecodedLines;
+    property Lines: TStringList read FLines;
+    property DecodedLines: TMemoryStream read FDecodedLines;
   end;
 
 const
@@ -212,12 +212,13 @@ begin
     fn := '';
     x := BeginLine;
     b := FBoundary;
+    { if multipart - skip pre-part }
     if b <> '' then
       while Value.Count > x do
       begin
         s := Value[x];
         Inc(x);
-        if Pos('--' + b, s) > 0 then
+        if Pos('--' + b, s) = 1 then
           Break;
       end;
 
@@ -234,7 +235,8 @@ begin
         st2 := SeparateLeft(st, ';');
         Primary := SeparateLeft(st2, '/');
         FSecondary := SeparateRight(st2, '/');
-        if (FSecondary = Primary) and (Pos('/', st2) < 1) then FSecondary := '';
+        if (FSecondary = Primary) and (Pos('/', st2) < 1) then
+          FSecondary := '';
         case FPrimaryCode of
           MP_TEXT:
             Charset := UpperCase(GetParameter(s, 'charset='));
@@ -266,27 +268,30 @@ begin
     FFileName := InlineDecode(FFileName, getCurCP);
     FFileName := ExtractFileName(FFileName);
 
+    { finding part content x1-begin x2-end }
     x1 := x;
     x2 := Value.Count - 1;
+    { if multipart - end is before next boundary }
     if b <> '' then
     begin
       for n := x to Value.Count - 1 do
       begin
         x2 := n;
         s := Value[n];
-        if Pos('--' + b, s) > 0 then
+        if Pos('--' + b, s) = 1 then
         begin
           Dec(x2);
           Break;
         end;
       end;
     end;
+    { if content is multipart - content is delimited by their boundaries }
     if FPrimaryCode = MP_MULTIPART then
     begin
       for n := x to Value.Count - 1 do
       begin
         s := Value[n];
-        if Pos('--' + Boundary, s) > 0 then
+        if Pos('--' + FBoundary, s) = 1 then
         begin
           x1 := n;
           Break;
@@ -295,27 +300,47 @@ begin
       for n := Value.Count - 1 downto x do
       begin
         s := Value[n];
-        if Pos('--' + Boundary, s) > 0 then
+        if Pos('--' + FBoundary, s) = 1 then
         begin
           x2 := n;
           Break;
         end;
       end;
     end;
+    { copy content }
     for n := x1 to x2 do
       FLines.Add(Value[n]);
     Result := x2;
+    { if content is multipart - find real end }
     if FPrimaryCode = MP_MULTIPART then
     begin
       e := False;
       for n := x2 + 1 to Value.Count - 1 do
-        if Pos('--' + Boundary, Value[n]) > 0 then
+        if Pos('--' + FBoundary, Value[n]) = 1 then
         begin
           e := True;
           Break;
         end;
       if not e then
         Result := Value.Count - 1;
+    end;
+    { if multipart - skip ending postpart}
+    if b <> '' then
+    begin
+      x1 := Result;
+      for n := x1 to Value.Count - 1 do
+      begin
+        s := Value[n];
+        if Pos('--' + b, s) = 1 then
+        begin
+          s := TrimRight(s);
+          x := Length(s);
+          if x > 4 then
+            if (s[x] = '-') and (S[x-1] = '-') then
+              Result := Value.Count - 1;
+          Break;
+        end;
+      end;
     end;
   finally
     t.Free;
@@ -465,7 +490,7 @@ begin
       MP_TEXT:
         s := FPrimary + '/' + FSecondary + '; charset=' + GetIDfromCP(FCharsetCode);
       MP_MULTIPART:
-        s := FPrimary + '/' + FSecondary + '; boundary="' + Boundary + '"';
+        s := FPrimary + '/' + FSecondary + '; boundary="' + FBoundary + '"';
       MP_MESSAGE:
         s := FPrimary + '/' + FSecondary + '';
       MP_BINARY:
@@ -500,7 +525,7 @@ begin
   if Primary = '' then
     Primary := 'application';
   if FSecondary = '' then
-    FSecondary := 'mixed';
+    FSecondary := 'octet-string';
 end;
 
 {==============================================================================}
@@ -553,7 +578,7 @@ var
 begin
   Randomize;
   x := Random(MaxInt);
-  Result := '----' + IntToHex(x, 8) + '_Synapse_message_boundary';
+  Result := '--' + IntToHex(x, 8) + '_Synapse_message_boundary--';
 end;
 
 end.

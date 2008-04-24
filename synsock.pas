@@ -1,7 +1,7 @@
 {==============================================================================|
-| Project : Delphree - Synapse                                   | 001.000.002 |
+| Project : Delphree - Synapse                                   | 002.001.000 |
 |==============================================================================|
-| Content: Socket Independent Platform                                         |
+| Content: Socket Independent Platform Layer                                   |
 |==============================================================================|
 | The contents of this file are subject to the Mozilla Public License Ver. 1.1 |
 | (the "License"); you may not use this file except in compliance with the     |
@@ -23,7 +23,11 @@
 |          (Found at URL: http://www.ararat.cz/synapse/)                       |
 |==============================================================================}
 
-{$WEAKPACKAGEUNIT ON}
+{ Comment next line if you need dynamic loading of winsock under Windows
+  or any another DLL stack by CreateAlternate constructor of TBlockSocket Class.
+  if next line stay uncommented, is used static mapping. This is fater method.
+  Under Linx is always used static maping to Libc. }
+{$DEFINE STATICWINSOCK}
 
 unit synsock;
 
@@ -252,6 +256,16 @@ function LSSelect(nfds: Integer; readfds, writefds, exceptfds: PFDSet;
 
 implementation
 
+{$IFNDEF LINUX}
+{$IFNDEF STATICWINSOCK}
+uses syncobjs;
+
+var
+  SynSockCS: TCriticalSection;
+  SynSockCount: Integer = 0;
+{$ENDIF}
+{$ENDIF}
+
 {$IFDEF LINUX}
 
 function LSWSAStartup(wVersionRequired: Word; var WSData: TWSAData): Integer;
@@ -473,47 +487,95 @@ begin
   WSACleanup := LSWSACleanup;
   Result := True;
 {$ELSE}
+{$IFDEF STATICWINSOCK}
+  Accept := Winsock.Accept;
+  Bind := Winsock.Bind;
+  CloseSocket := Winsock.CloseSocket;
+  Connect := Winsock.Connect;
+  GetPeerName := Winsock.GetPeerName;
+  GetSockName := Winsock.GetSockName;
+  GetSockOpt := Winsock.GetSockOpt;
+  Htonl := Winsock.htonl;
+  Htons := Winsock.htons;
+  Inet_Addr := Winsock.inet_addr;
+  Inet_Ntoa := Winsock.inet_ntoa;
+  IoctlSocket := Winsock.ioctlsocket;
+  Listen := Winsock.listen;
+  Ntohl := Winsock.ntohl;
+  Ntohs := Winsock.ntohs;
+  Recv := Winsock.recv;
+  RecvFrom := Winsock.recvfrom;
+  Select := Winsock.select;
+  Send := Winsock.send;
+  SendTo := Winsock.sendto;
+  SetSockOpt := Winsock.setsockopt;
+  ShutDown := Winsock.shutdown;
+  Socket := Winsock.socket;
+  GetHostByAddr := Winsock.GetHostByAddr;
+  GetHostByName := Winsock.GetHostByName;
+  GetProtoByName := Winsock.GetProtoByName;
+  GetProtoByNumber := Winsock.GetProtoByNumber;
+  GetServByName := Winsock.GetServByName;
+  GetServByPort := Winsock.GetServByPort;
+  GetHostName := Winsock.GetHostName;
+  WSAGetLastError := Winsock.WSAGetLastError;
+  WSAStartup := Winsock.WSAStartup;
+  WSACleanup := Winsock.WSACleanup;
+  Result := True;
+{$ELSE}
   Result := False;
   if stack = '' then
     stack := DLLStackName;
-  LibHandle := Windows.LoadLibrary(PChar(Stack));
-  if LibHandle <> 0 then
-  begin
-    Accept := Windows.GetProcAddress(LibHandle, PChar('accept'));
-    Bind := Windows.GetProcAddress(LibHandle, PChar('bind'));
-    CloseSocket := Windows.GetProcAddress(LibHandle, PChar('closesocket'));
-    Connect := Windows.GetProcAddress(LibHandle, PChar('connect'));
-    GetPeerName := Windows.GetProcAddress(LibHandle, PChar('getpeername'));
-    GetSockName := Windows.GetProcAddress(LibHandle, PChar('getsockname'));
-    GetSockOpt := Windows.GetProcAddress(LibHandle, PChar('getsockopt'));
-    Htonl := Windows.GetProcAddress(LibHandle, PChar('htonl'));
-    Htons := Windows.GetProcAddress(LibHandle, PChar('htons'));
-    Inet_Addr := Windows.GetProcAddress(LibHandle, PChar('inet_addr'));
-    Inet_Ntoa := Windows.GetProcAddress(LibHandle, PChar('inet_ntoa'));
-    IoctlSocket := Windows.GetProcAddress(LibHandle, PChar('ioctlsocket'));
-    Listen := Windows.GetProcAddress(LibHandle, PChar('listen'));
-    Ntohl := Windows.GetProcAddress(LibHandle, PChar('ntohl'));
-    Ntohs := Windows.GetProcAddress(LibHandle, PChar('ntohs'));
-    Recv := Windows.GetProcAddress(LibHandle, PChar('recv'));
-    RecvFrom := Windows.GetProcAddress(LibHandle, PChar('recvfrom'));
-    Select := Windows.GetProcAddress(LibHandle, PChar('select'));
-    Send := Windows.GetProcAddress(LibHandle, PChar('send'));
-    SendTo := Windows.GetProcAddress(LibHandle, PChar('sendto'));
-    SetSockOpt := Windows.GetProcAddress(LibHandle, PChar('setsockopt'));
-    ShutDown := Windows.GetProcAddress(LibHandle, PChar('shutdown'));
-    Socket := Windows.GetProcAddress(LibHandle, PChar('socket'));
-    GetHostByAddr := Windows.GetProcAddress(LibHandle, PChar('gethostbyaddr'));
-    GetHostByName := Windows.GetProcAddress(LibHandle, PChar('gethostbyname'));
-    GetProtoByName := Windows.GetProcAddress(LibHandle, PChar('getprotobyname'));
-    GetProtoByNumber := Windows.GetProcAddress(LibHandle, PChar('getprotobynumber'));
-    GetServByName := Windows.GetProcAddress(LibHandle, PChar('getservbyname'));
-    GetServByPort := Windows.GetProcAddress(LibHandle, PChar('getservbyport'));
-    GetHostName := Windows.GetProcAddress(LibHandle, PChar('gethostname'));
-    WSAGetLastError := Windows.GetProcAddress(LibHandle, PChar('WSAGetLastError'));
-    WSAStartup := Windows.GetProcAddress(LibHandle, PChar('WSAStartup'));
-    WSACleanup := Windows.GetProcAddress(LibHandle, PChar('WSACleanup'));
-    Result := True;
+  SynSockCS.Enter;
+  try
+    if SynSockCount = 0 then
+    begin
+      LibHandle := Windows.LoadLibrary(PChar(Stack));
+      if LibHandle <> 0 then
+      begin
+        Accept := Windows.GetProcAddress(LibHandle, PChar('accept'));
+        Bind := Windows.GetProcAddress(LibHandle, PChar('bind'));
+        CloseSocket := Windows.GetProcAddress(LibHandle, PChar('closesocket'));
+        Connect := Windows.GetProcAddress(LibHandle, PChar('connect'));
+        GetPeerName := Windows.GetProcAddress(LibHandle, PChar('getpeername'));
+        GetSockName := Windows.GetProcAddress(LibHandle, PChar('getsockname'));
+        GetSockOpt := Windows.GetProcAddress(LibHandle, PChar('getsockopt'));
+        Htonl := Windows.GetProcAddress(LibHandle, PChar('htonl'));
+        Htons := Windows.GetProcAddress(LibHandle, PChar('htons'));
+        Inet_Addr := Windows.GetProcAddress(LibHandle, PChar('inet_addr'));
+        Inet_Ntoa := Windows.GetProcAddress(LibHandle, PChar('inet_ntoa'));
+        IoctlSocket := Windows.GetProcAddress(LibHandle, PChar('ioctlsocket'));
+        Listen := Windows.GetProcAddress(LibHandle, PChar('listen'));
+        Ntohl := Windows.GetProcAddress(LibHandle, PChar('ntohl'));
+        Ntohs := Windows.GetProcAddress(LibHandle, PChar('ntohs'));
+        Recv := Windows.GetProcAddress(LibHandle, PChar('recv'));
+        RecvFrom := Windows.GetProcAddress(LibHandle, PChar('recvfrom'));
+        Select := Windows.GetProcAddress(LibHandle, PChar('select'));
+        Send := Windows.GetProcAddress(LibHandle, PChar('send'));
+        SendTo := Windows.GetProcAddress(LibHandle, PChar('sendto'));
+        SetSockOpt := Windows.GetProcAddress(LibHandle, PChar('setsockopt'));
+        ShutDown := Windows.GetProcAddress(LibHandle, PChar('shutdown'));
+        Socket := Windows.GetProcAddress(LibHandle, PChar('socket'));
+        GetHostByAddr := Windows.GetProcAddress(LibHandle, PChar('gethostbyaddr'));
+        GetHostByName := Windows.GetProcAddress(LibHandle, PChar('gethostbyname'));
+        GetProtoByName := Windows.GetProcAddress(LibHandle, PChar('getprotobyname'));
+        GetProtoByNumber := Windows.GetProcAddress(LibHandle, PChar('getprotobynumber'));
+        GetServByName := Windows.GetProcAddress(LibHandle, PChar('getservbyname'));
+        GetServByPort := Windows.GetProcAddress(LibHandle, PChar('getservbyport'));
+        GetHostName := Windows.GetProcAddress(LibHandle, PChar('gethostname'));
+        WSAGetLastError := Windows.GetProcAddress(LibHandle, PChar('WSAGetLastError'));
+        WSAStartup := Windows.GetProcAddress(LibHandle, PChar('WSAStartup'));
+        WSACleanup := Windows.GetProcAddress(LibHandle, PChar('WSACleanup'));
+        Result := True;
+      end;
+    end
+    else Result := True;
+    if Result then
+      Inc(SynSockCount);
+  finally
+    SynSockCS.Leave;
   end;
+{$ENDIF}
 {$ENDIF}
 end;
 
@@ -521,11 +583,38 @@ function DestroySocketInterface: Boolean;
 begin
 {$IFDEF LINUX}
 {$ELSE}
-  if LibHandle <> 0 then
-    Windows.FreeLibrary(libHandle);
-  LibHandle := 0;
+{$IFNDEF STATICWINSOCK}
+  SynSockCS.Enter;
+  try
+    Dec(SynSockCount);
+    if SynSockCount < 0 then
+      SynSockCount := 0;
+    if SynSockCount = 0 then
+      if LibHandle <> 0 then
+      begin
+        Windows.FreeLibrary(libHandle);
+        LibHandle := 0;
+      end;
+  finally
+    SynSockCS.Leave;
+  end;
+{$ENDIF}
 {$ENDIF}
   Result := True;
 end;
+
+{$IFNDEF LINUX}
+{$IFNDEF STATICWINSOCK}
+initialization
+begin
+  SynSockCS:= TCriticalSection.Create;
+end;
+
+finalization
+begin
+  SynSockCS.Free;
+end;
+{$ENDIF}
+{$ENDIF}
 
 end.

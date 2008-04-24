@@ -1,5 +1,5 @@
 {==============================================================================|
-| Project : Delphree - Synapse                                   | 002.001.003 |
+| Project : Delphree - Synapse                                   | 002.001.004 |
 |==============================================================================|
 | Content: SMTP client                                                         |
 |==============================================================================|
@@ -96,6 +96,7 @@ type
     property EnhCode2: Integer read FEnhCode2;
     property EnhCode3: Integer read FEnhCode3;
     property SystemName: string read FSystemName Write FSystemName;
+    property Sock: TTCPBlockSocket read FSock;
   end;
 
 function SendToRaw(const MailFrom, MailTo, SMTPHost: string;

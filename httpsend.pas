@@ -1,5 +1,5 @@
 {==============================================================================|
-| Project : Delphree - Synapse                                   | 002.001.001 |
+| Project : Delphree - Synapse                                   | 002.002.000 |
 |==============================================================================|
 | Content: HTTP client                                                         |
 |==============================================================================|
@@ -83,12 +83,15 @@ type
     property ProxyPass: string read FProxyPass Write FProxyPass;
     property ResultCode: Integer read FResultCode;
     property ResultString: string read FResultString;
+    property Sock: TTCPBlockSocket read FSock;
   end;
 
 function HttpGetText(const URL: string; const Response: TStrings): Boolean;
 function HttpGetBinary(const URL: string; const Response: TStream): Boolean;
 function HttpPostBinary(const URL: string; const Data: TStream): Boolean;
 function HttpPostURL(const URL, URLData: string; const Data: TStream): Boolean;
+function HttpPostFile(const URL, FieldName, FileName: string;
+  const Data: TStream; const ResultData: TStringList): Boolean;
 
 implementation
 
@@ -444,8 +447,34 @@ begin
     HTTP.Document.Write(Pointer(URLData)^, Length(URLData));
     HTTP.MimeType := 'application/x-url-encoded';
     Result := HTTP.HTTPMethod('POST', URL);
-    Data.Seek(0, soFromBeginning);
     Data.CopyFrom(HTTP.Document, 0);
+  finally
+    HTTP.Free;
+  end;
+end;
+
+function HttpPostFile(const URL, FieldName, FileName: string;
+  const Data: TStream; const ResultData: TStringList): Boolean;
+const
+  CRLF = #$0D + #$0A;
+var
+  HTTP: THTTPSend;
+  Bound, s: string;
+begin
+  Bound := '--' + IntToHex(Random(MaxInt), 8) + '_Synapse_boundary';
+  HTTP := THTTPSend.Create;
+  try
+    s := Bound + CRLF;
+    s := s + 'content-disposition: form-data; name="' + FieldName + '";';
+    s := s + ' filename="' + FileName +'"' + CRLF;
+    s := s + 'Content-Type: Application/octet-string' + CRLF + CRLF;
+    HTTP.Document.Write(Pointer(s)^, Length(s));
+    HTTP.Document.CopyFrom(Data, 0);
+    s := CRLF + Bound + '--' + CRLF;
+    HTTP.Document.Write(Pointer(s)^, Length(s));
+    HTTP.MimeType := 'multipart/form-data, boundary=' + Bound;
+    Result := HTTP.HTTPMethod('POST', URL);
+    ResultData.LoadFromStream(HTTP.Document);
   finally
     HTTP.Free;
   end;
