@@ -1,5 +1,5 @@
 {==============================================================================|
-| Project : Delphree - Synapse                                   | 001.000.000 |
+| Project : Delphree - Synapse                                   | 001.000.001 |
 |==============================================================================|
 | Content: POP3 client                                                         |
 |==============================================================================|
@@ -140,10 +140,12 @@ end;
 {TPOP3Send.Connect}
 function TPOP3Send.Connect:Boolean;
 begin
+//Do not call this function! It is calling by LOGIn method!
   Result:=false;
   StatCount:=0;
   StatSize:=0;
   sock.CloseSocket;
+  sock.LineBuffer:='';
   sock.CreateSocket;
   sock.Connect(POP3Host,POP3Port);
   if sock.lasterror<>0 then Exit;
@@ -246,7 +248,7 @@ end;
 function TPOP3Send.top(value,maxlines:integer):Boolean;
 begin
   Result:=false;
-  Sock.SendString('TOP '+IntToStr(value)+IntToStr(maxlines)+CRLF);
+  Sock.SendString('TOP '+IntToStr(value)+' '+IntToStr(maxlines)+CRLF);
   if readresult(true)<>1 then Exit;
   Result:=True;
 end;
