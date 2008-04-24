@@ -1,5 +1,5 @@
 {==============================================================================|
-| Project : Ararat Synapse                                       | 003.001.005 |
+| Project : Ararat Synapse                                       | 003.001.006 |
 |==============================================================================|
 | Content: PING sender                                                         |
 |==============================================================================|
@@ -42,6 +42,16 @@
 |          (Found at URL: http://www.ararat.cz/synapse/)                       |
 |==============================================================================}
 
+{:@abstract(ICMP PING implementation.)
+Allows create PING and TRACEROUTE. Or you can diagnose your network.
+
+Warning: this unit using RAW sockets. On some systems you must have special
+ rights for using this sort of sockets. So, it working allways when you have
+ administator/root rights. Otherwise you can have problems!
+
+Note: IPv6 not working under .NET. It is lack of Microsoft's .NET framework.
+}
+
 {$IFDEF FPC}
   {$MODE DELPHI}
 {$ENDIF}
@@ -74,6 +84,7 @@ const
   ICMP6_TIME_EXCEEDED = 3;
 
 type
+  {:Record for ICMP ECHO packet header.}
   TIcmpEchoHeader = record
     i_type: Byte;
     i_code: Byte;
@@ -83,6 +94,8 @@ type
     TimeStamp: ULong;
   end;
 
+  {:record used internally by TPingSend for compute checksum of ICMPv6 packet
+   pseudoheader.}
   TICMP6Packet = record
     in_source: TInAddr6;
     in_dest: TInAddr6;
@@ -93,6 +106,7 @@ type
     proto: Byte;
   end;
 
+  {:List of possible ICMP reply packet types.}
   TICMPError = (
     IE_NoError,
     IE_Other,
@@ -104,6 +118,10 @@ type
     IE_UnreachPort
     );
 
+  {:@abstract(Implementation of ICMP PING and ICMPv6 PING.)
+
+   Note: Are you missing properties for specify server address and port? Look to
+   parent @link(TSynaClient) too!}
   TPINGSend = class(TSynaClient)
   private
     FSock: TICMPBlockSocket;
@@ -125,21 +143,49 @@ type
     function ReadPacket: Boolean;
     procedure TranslateError;
   public
+    {:Send ICMP ping to host and count @link(pingtime). If ping OK, result is
+     @true.}
     function Ping(const Host: string): Boolean;
     constructor Create;
     destructor Destroy; override;
   published
+    {:Size of PING packet. Default size is 32 bytes.}
     property PacketSize: Integer read FPacketSize Write FPacketSize;
+
+    {:Time between request and reply.}
     property PingTime: Integer read FPingTime;
+
+    {:From this address is sended reply for your PING request. It maybe not your
+     requested destination, when some error occured!}
     property ReplyFrom: string read FReplyFrom;
+
+    {:ICMP type of PING reply. Each protocol using another values! For IPv4 and
+     IPv6 are used different values!}
     property ReplyType: byte read FReplyType;
+
+    {:ICMP code of PING reply. Each protocol using another values! For IPv4 and
+     IPv6 are used different values! For protocol independent value look to
+     @link(ReplyError)}
     property ReplyCode: byte read FReplyCode;
+
+    {:Return type of returned ICMP message. This value is independent on used
+     protocol!}
     property ReplyError: TICMPError read FReplyError;
+
+    {:Return human readable description of returned packet type.}
     property ReplyErrorDesc: string read FReplyErrorDesc;
+
+    {:Socket object used for TCP/IP operation. Good for seting OnStatus hook, etc.}
     property Sock: TICMPBlockSocket read FSock;
   end;
 
+{:A very useful function and example of its use would be found in the TPINGSend
+ object. Use it to ping to any host. If successful, returns the ping time in
+ milliseconds.  Returns -1 if an error occurred.}
 function PingHost(const Host: string): Integer;
+
+{:A very useful function and example of its use would be found in the TPINGSend
+ object. Use it to TraceRoute to any host.}
 function TraceRouteHost(const Host: string): string;
 
 implementation
@@ -175,6 +221,7 @@ var
   IcmpEchoHeaderPtr: ^TICMPEchoHeader;
   t: Boolean;
   x: cardinal;
+  IcmpReqHead: string;
 begin
   Result := False;
   FPingTime := -1;
@@ -218,6 +265,8 @@ begin
       i_CheckSum := CheckSum(FBuffer);
   end;
   FSock.SendString(FBuffer);
+  // remember first 8 bytes of ICMP packet
+  IcmpReqHead := Copy(FBuffer, 1, 8);
   x := GetTick;
   repeat
     t := ReadPacket;
@@ -228,9 +277,10 @@ begin
 {$IFDEF LINUX}
       IcmpEchoHeaderPtr := Pointer(FBuffer);
 {$ELSE}
-      FBuffer := StringOfChar(#0, 4) + FBuffer;
+//WinXP SP1 with networking update doing this think by another way ;-O
+//      FBuffer := StringOfChar(#0, 4) + FBuffer;
       IcmpEchoHeaderPtr := Pointer(FBuffer);
-      IcmpEchoHeaderPtr^.i_type := FIcmpEchoReply;
+//      IcmpEchoHeaderPtr^.i_type := FIcmpEchoReply;
 {$ENDIF}
     end
     else
@@ -239,9 +289,11 @@ begin
       IpHdrLen := (IPHeadPtr^.VerLen and $0F) * 4;
       IcmpEchoHeaderPtr := @FBuffer[IpHdrLen + 1];
     end;
+  //it discard sometimes possible 'echoes' of previosly sended packet
+  //or other unwanted ICMP packets...
   until (IcmpEchoHeaderPtr^.i_type <> FIcmpEcho)
-    and ((IcmpEchoHeaderPtr^.i_id = FId) or (IcmpEchoHeaderPtr^.i_id = 0));
-  //it discard sometimes possible 'echoes' of previosly sended packet...
+    and ((IcmpEchoHeaderPtr^.i_id = FId)
+    or (Pos(IcmpReqHead, FBuffer) > 0));
   if t then
     begin
       FPingTime := TickDelta(x, GetTick);

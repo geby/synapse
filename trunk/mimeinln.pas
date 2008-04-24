@@ -1,5 +1,5 @@
 {==============================================================================|
-| Project : Ararat Synapse                                       | 001.001.002 |
+| Project : Ararat Synapse                                       | 001.001.008 |
 |==============================================================================|
 | Content: Inline MIME support procedures and functions                        |
 |==============================================================================|
@@ -42,7 +42,11 @@
 |          (Found at URL: http://www.ararat.cz/synapse/)                       |
 |==============================================================================}
 
-//RFC-1522
+{:@abstract(Utilities for inline MIME)
+Support for Inline MIME encoding and decoding.
+
+Used RFC: RFC-2047, RFC-2231
+}
 
 {$IFDEF FPC}
   {$MODE DELPHI}
@@ -57,12 +61,30 @@ uses
   SysUtils, Classes,
   synachar, synacode, synautil;
 
+{:Decodes mime inline encoding (i.e. in headers) uses target characterset "CP".}
 function InlineDecode(const Value: string; CP: TMimeChar): string;
+
+{:Encodes string to MIME inline encoding. The source characterset is "CP", and
+ the target charset is "MimeP".}
 function InlineEncode(const Value: string; CP, MimeP: TMimeChar): string;
-function NeedInline(const Value: string): boolean;
+
+{:Returns @true, if "Value" contains characters needed for inline coding.}
+function NeedInline(const Value: AnsiString): boolean;
+
+{:Inline mime encoding similar to @link(InlineEncode), but you can specify
+ source charset, and the target characterset is automatically assigned.}
 function InlineCodeEx(const Value: string; FromCP: TMimeChar): string;
+
+{:Inline MIME encoding similar to @link(InlineEncode), but the source charset
+ is automatically set to the system default charset, and the target charset is
+ automatically assigned from set of allowed encoding for MIME.}
 function InlineCode(const Value: string): string;
+
+{:Converts e-mail address to canonical mime form. You can specify source charset.}
 function InlineEmailEx(const Value: string; FromCP: TMimeChar): string;
+
+{:Converts e-mail address to canonical mime form. Source charser it system
+ default charset.}
 function InlineEmail(const Value: string): string;
 
 implementation
@@ -110,10 +132,10 @@ begin
     s := Copy(v, x, y - x + 2);
     Delete(v, 1, y + 1);
     su := Copy(s, 3, Length(s) - 4);
-    ichar := GetCPFromID(su);
     z := Pos('?', su);
     if (Length(su) >= (z + 2)) and (su[z + 2] = '?') then
     begin
+      ichar := GetCPFromID(SeparateLeft(Copy(su, 1, z - 1), '*'));
       c := UpperCase(su)[z + 1];
       su := Copy(su, z + 3, Length(su) - z - 2);
       if c = 'B' then
@@ -144,29 +166,46 @@ end;
 
 function InlineEncode(const Value: string; CP, MimeP: TMimeChar): string;
 var
-  s, s1: string;
+  s, s1, e: string;
   n: Integer;
 begin
   s := CharsetConversion(Value, CP, MimeP);
-  s := EncodeQuotedPrintable(s);
+  s := EncodeSafeQuotedPrintable(s);
+  e := GetIdFromCP(MimeP);
   s1 := '';
+  Result := '';
   for n := 1 to Length(s) do
     if s[n] = ' ' then
-      s1 := s1 + '=20'
+    begin
+//      s1 := s1 + '=20';
+      s1 := s1 + '_';
+      if Length(s1) > 32 then
+      begin
+        if Result <> '' then
+          Result := Result + ' ';
+        Result := Result + '=?' + e + '?Q?' + s1 + '?=';
+        s1 := '';
+      end;
+    end
     else
       s1 := s1 + s[n];
-  Result := '=?' + GetIdFromCP(MimeP) + '?Q?' + s1 + '?=';
+  if s1 <> '' then
+  begin
+    if Result <> '' then
+      Result := Result + ' ';
+    Result := Result + '=?' + e + '?Q?' + s1 + '?=';
+  end;
 end;
 
 {==============================================================================}
 
-function NeedInline(const Value: string): boolean;
+function NeedInline(const Value: AnsiString): boolean;
 var
   n: Integer;
 begin
   Result := False;
   for n := 1 to Length(Value) do
-    if Value[n] in (SpecialChar + [Char(1)..Char(31), Char(128)..Char(255)]) then
+    if Value[n] in (SpecialChar + NonAsciiChar) then
     begin
       Result := True;
       Break;
@@ -183,7 +222,12 @@ begin
   begin
     c := IdealCharsetCoding(Value, FromCP,
       [ISO_8859_1, ISO_8859_2, ISO_8859_3, ISO_8859_4, ISO_8859_5,
-      ISO_8859_6, ISO_8859_7, ISO_8859_8, ISO_8859_9, ISO_8859_10]);
+      ISO_8859_6, ISO_8859_7, ISO_8859_8, ISO_8859_9, ISO_8859_10,
+      KOI8_R, KOI8_U
+      {$IFNDEF CIL} //error URW778 ??? :-O
+      , GB2312, EUC_KR, ISO_2022_JP, EUC_TW
+      {$ENDIF}
+      ]);
     Result := InlineEncode(Value, FromCP, c);
   end
   else

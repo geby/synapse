@@ -1,5 +1,5 @@
 {==============================================================================|
-| Project : Ararat Synapse                                       | 001.004.002 |
+| Project : Ararat Synapse                                       | 001.004.003 |
 |==============================================================================|
 | Content: support for ASN.1 BER coding and decoding                           |
 |==============================================================================|
@@ -44,6 +44,18 @@
 |          (Found at URL: http://www.ararat.cz/synapse/)                       |
 |==============================================================================}
 
+{: @abstract(Utilities for handling ASN.1 BER encoding)
+By this unit you can parse ASN.1 BER encoded data to elements or build back any
+ elements to ASN.1 BER encoded buffer. You can dump ASN.1 BER encoded data to
+ human readable form for easy debugging, too.
+
+Supported element types are: ASN1_BOOL, ASN1_INT, ASN1_OCTSTR, ASN1_NULL,
+ ASN1_OBJID, ASN1_ENUM, ASN1_SEQ, ASN1_SETOF, ASN1_IPADDR, ASN1_COUNTER,
+ ASN1_GAUGE, ASN1_TIMETICKS, ASN1_OPAQUE
+
+For sample of using, look to @link(TSnmpSend) class.
+}
+
 {$Q-}
 {$H+}
 {$IFDEF FPC}
@@ -55,7 +67,7 @@ unit asn1util;
 interface
 
 uses
-  SysUtils, Classes;
+  SysUtils, Classes, SynaUtil;
 
 const
   ASN1_BOOL = $01;
@@ -72,24 +84,50 @@ const
   ASN1_TIMETICKS = $43;
   ASN1_OPAQUE = $44;
 
-function ASNEncOIDItem(Value: Integer): string;
-function ASNDecOIDItem(var Start: Integer; const Buffer: string): Integer;
-function ASNEncLen(Len: Integer): string;
-function ASNDecLen(var Start: Integer; const Buffer: string): Integer;
-function ASNEncInt(Value: Integer): string;
-function ASNEncUInt(Value: Integer): string;
-function ASNObject(const Data: string; ASNType: Integer): string;
-function ASNItem(var Start: Integer; const Buffer: string;
-  var ValueType: Integer): string;
-function MibToId(Mib: string): string;
-function IdToMib(const Id: string): string;
-function IntMibToStr(const Value: string): string;
-function ASNdump(const Value: string): string;
+{:Encodes OID item to binary form.}
+function ASNEncOIDItem(Value: Integer): AnsiString;
+
+{:Decodes an OID item of the next element in the "Buffer" from the "Start"
+ position.}
+function ASNDecOIDItem(var Start: Integer; const Buffer: AnsiString): Integer;
+
+{:Encodes the length of ASN.1 element to binary.}
+function ASNEncLen(Len: Integer): AnsiString;
+
+{:Decodes length of next element in "Buffer" from the "Start" position.}
+function ASNDecLen(var Start: Integer; const Buffer: AnsiString): Integer;
+
+{:Encodes a signed integer to ASN.1 binary}
+function ASNEncInt(Value: Integer): AnsiString;
+
+{:Encodes unsigned integer into ASN.1 binary}
+function ASNEncUInt(Value: Integer): AnsiString;
+
+{:Encodes ASN.1 object to binary form.}
+function ASNObject(const Data: AnsiString; ASNType: Integer): AnsiString;
+
+{:Beginning with the "Start" position, decode the ASN.1 item of the next element
+ in "Buffer". Type of item is stored in "ValueType."}
+function ASNItem(var Start: Integer; const Buffer: AnsiString;
+  var ValueType: Integer): AnsiString;
+
+{:Encodes an MIB OID string to binary form.}
+function MibToId(Mib: String): AnsiString;
+
+{:Decodes MIB OID from binary form to string form.}
+function IdToMib(const Id: AnsiString): String;
+
+{:Encodes an one number from MIB OID to binary form. (used internally from
+@link(MibToId))}
+function IntMibToStr(const Value: AnsiString): AnsiString;
+
+{:Convert ASN.1 BER encoded buffer to human readable form for debugging.}
+function ASNdump(const Value: AnsiString): AnsiString;
 
 implementation
 
 {==============================================================================}
-function ASNEncOIDItem(Value: Integer): string;
+function ASNEncOIDItem(Value: Integer): AnsiString;
 var
   x, xm: Integer;
   b: Boolean;
@@ -104,12 +142,12 @@ begin
       xm := xm or $80;
     if x > 0 then
       b := True;
-    Result := Char(xm) + Result;
+    Result := AnsiChar(xm) + Result;
   until x = 0;
 end;
 
 {==============================================================================}
-function ASNDecOIDItem(var Start: Integer; const Buffer: string): Integer;
+function ASNDecOIDItem(var Start: Integer; const Buffer: AnsiString): Integer;
 var
   x: Integer;
   b: Boolean;
@@ -126,12 +164,12 @@ begin
 end;
 
 {==============================================================================}
-function ASNEncLen(Len: Integer): string;
+function ASNEncLen(Len: Integer): AnsiString;
 var
   x, y: Integer;
 begin
   if Len < $80 then
-    Result := Char(Len)
+    Result := AnsiChar(Len)
   else
   begin
     x := Len;
@@ -139,16 +177,16 @@ begin
     repeat
       y := x mod 256;
       x := x div 256;
-      Result := Char(y) + Result;
+      Result := AnsiChar(y) + Result;
     until x = 0;
     y := Length(Result);
     y := y or $80;
-    Result := Char(y) + Result;
+    Result := AnsiChar(y) + Result;
   end;
 end;
 
 {==============================================================================}
-function ASNDecLen(var Start: Integer; const Buffer: string): Integer;
+function ASNDecLen(var Start: Integer; const Buffer: AnsiString): Integer;
 var
   x, n: Integer;
 begin
@@ -171,7 +209,7 @@ begin
 end;
 
 {==============================================================================}
-function ASNEncInt(Value: Integer): string;
+function ASNEncInt(Value: Integer): AnsiString;
 var
   x, y: Cardinal;
   neg: Boolean;
@@ -184,14 +222,14 @@ begin
   repeat
     y := x mod 256;
     x := x div 256;
-    Result := Char(y) + Result;
+    Result := AnsiChar(y) + Result;
   until x = 0;
   if (not neg) and (Result[1] > #$7F) then
     Result := #0 + Result;
 end;
 
 {==============================================================================}
-function ASNEncUInt(Value: Integer): string;
+function ASNEncUInt(Value: Integer): AnsiString;
 var
   x, y: Integer;
   neg: Boolean;
@@ -204,28 +242,28 @@ begin
   repeat
     y := x mod 256;
     x := x div 256;
-    Result := Char(y) + Result;
+    Result := AnsiChar(y) + Result;
   until x = 0;
   if neg then
-    Result[1] := Char(Ord(Result[1]) or $80);
+    Result[1] := AnsiChar(Ord(Result[1]) or $80);
 end;
 
 {==============================================================================}
-function ASNObject(const Data: string; ASNType: Integer): string;
+function ASNObject(const Data: AnsiString; ASNType: Integer): AnsiString;
 begin
-  Result := Char(ASNType) + ASNEncLen(Length(Data)) + Data;
+  Result := AnsiChar(ASNType) + ASNEncLen(Length(Data)) + Data;
 end;
 
 {==============================================================================}
-function ASNItem(var Start: Integer; const Buffer: string;
-  var ValueType: Integer): string;
+function ASNItem(var Start: Integer; const Buffer: AnsiString;
+  var ValueType: Integer): AnsiString;
 var
   ASNType: Integer;
   ASNSize: Integer;
   y, n: Integer;
   x: byte;
-  s: string;
-  c: char;
+  s: AnsiString;
+  c: AnsiChar;
   neg: Boolean;
   l: Integer;
 begin
@@ -277,7 +315,7 @@ begin
         begin
           for n := 1 to ASNSize do
           begin
-            c := Char(Buffer[Start]);
+            c := AnsiChar(Buffer[Start]);
             Inc(Start);
             s := s + c;
           end;
@@ -287,7 +325,7 @@ begin
         begin
           for n := 1 to ASNSize do
           begin
-            c := Char(Buffer[Start]);
+            c := AnsiChar(Buffer[Start]);
             Inc(Start);
             s := s + c;
           end;
@@ -315,7 +353,7 @@ begin
       begin
         for n := 1 to ASNSize do
         begin
-          c := Char(Buffer[Start]);
+          c := AnsiChar(Buffer[Start]);
           Inc(Start);
           s := s + c;
         end;
@@ -325,14 +363,14 @@ begin
 end;
 
 {==============================================================================}
-function MibToId(Mib: string): string;
+function MibToId(Mib: String): AnsiString;
 var
   x: Integer;
 
-  function WalkInt(var s: string): Integer;
+  function WalkInt(var s: String): Integer;
   var
     x: Integer;
-    t: string;
+    t: AnsiString;
   begin
     x := Pos('.', s);
     if x < 1 then
@@ -361,7 +399,7 @@ begin
 end;
 
 {==============================================================================}
-function IdToMib(const Id: string): string;
+function IdToMib(const Id: AnsiString): String;
 var
   x, y, n: Integer;
 begin
@@ -381,7 +419,7 @@ begin
 end;
 
 {==============================================================================}
-function IntMibToStr(const Value: string): string;
+function IntMibToStr(const Value: AnsiString): AnsiString;
 var
   n, y: Integer;
 begin
@@ -392,10 +430,10 @@ begin
 end;
 
 {==============================================================================}
-function ASNdump(const Value: string): string;
+function ASNdump(const Value: AnsiString): AnsiString;
 var
   i, at, x, n: integer;
-  s, indent: string;
+  s, indent: AnsiString;
   il: TStringList;
 begin
   il := TStringList.Create;
@@ -451,6 +489,8 @@ begin
         else // other
           Result := Result + ' unknown: ';
         end;
+        if IsBinaryString(s) then
+          s := DumpExStr(s);
         Result := Result + s;
       end;
       Result := Result + #$0d + #$0a;

@@ -1,9 +1,9 @@
 {==============================================================================|
-| Project : Ararat Synapse                                       | 004.000.008 |
+| Project : Ararat Synapse                                       | 005.000.001 |
 |==============================================================================|
 | Content: Charset conversion support                                          |
 |==============================================================================|
-| Copyright (c)1999-2003, Lukas Gebauer                                        |
+| Copyright (c)1999-2004, Lukas Gebauer                                        |
 | All rights reserved.                                                         |
 |                                                                              |
 | Redistribution and use in source and binary forms, with or without           |
@@ -33,7 +33,7 @@
 | DAMAGE.                                                                      |
 |==============================================================================|
 | The Initial Developer of the Original Code is Lukas Gebauer (Czech Republic).|
-| Portions created by Lukas Gebauer are Copyright (c)2000-2003.                |
+| Portions created by Lukas Gebauer are Copyright (c)2000-2004.                |
 | All Rights Reserved.                                                         |
 |==============================================================================|
 | Contributor(s):                                                              |
@@ -41,6 +41,18 @@
 | History: see HISTORY.HTM from distribution package                           |
 |          (Found at URL: http://www.ararat.cz/synapse/)                       |
 |==============================================================================}
+
+{: @abstract(Charset conversion support)
+This unit contains a routines for lot of charset conversions.
+
+It using built-in conversion tables or external Iconv library. Iconv is used
+ when needed conversion is known by Iconv library. When Iconv library is not
+ found or Iconv not know requested conversion, then are internal routines used
+ for conversion. (You can disable Iconv support from your program too!)
+
+Internal routines knows all major charsets for Europe or America. For East-Asian
+ charsets you must use Iconv library!
+}
 
 {$IFDEF FPC}
   {$MODE DELPHI}
@@ -53,14 +65,137 @@ unit synachar;
 interface
 
 type
-  TMimeChar = (ISO_8859_1, ISO_8859_2, ISO_8859_3,
-    ISO_8859_4, ISO_8859_5, ISO_8859_6, ISO_8859_7,
-    ISO_8859_8, ISO_8859_9, ISO_8859_10, ISO_8859_13,
-    ISO_8859_14, ISO_8859_15, CP1250, CP1251, CP1252,
-    CP1253, CP1254, CP1255, CP1256, CP1257, CP1258,
-    KOI8_R, CP895, CP852, UCS_2, UCS_4, UTF_8, UTF_7);
+  {:Type with all supported charsets.}
+  TMimeChar = (ISO_8859_1, ISO_8859_2, ISO_8859_3, ISO_8859_4, ISO_8859_5,
+    ISO_8859_6, ISO_8859_7, ISO_8859_8, ISO_8859_9, ISO_8859_10, ISO_8859_13,
+    ISO_8859_14, ISO_8859_15, CP1250, CP1251, CP1252, CP1253, CP1254, CP1255,
+    CP1256, CP1257, CP1258, KOI8_R, CP895, CP852, UCS_2, UCS_4, UTF_8, UTF_7,
+    UTF_7mod, UCS_2LE, UCS_4LE,
+    //next is supported by Iconv only...
+    UTF_16, UTF_16LE, UTF_32, UTF_32LE, C99, JAVA, ISO_8859_16, KOI8_U, KOI8_RU,
+    CP862, CP866, MAC, MACCE, MACICE, MACCRO, MACRO, MACCYR, MACUK, MACGR, MACTU,
+    MACHEB, MACAR, MACTH, ROMAN8, NEXTSTEP, ARMASCII, GEORGIAN_AC, GEORGIAN_PS,
+    KOI8_T, MULELAO, CP1133, TIS620, CP874, VISCII, TCVN, ISO_IR_14, JIS_X0201,
+    JIS_X0208, JIS_X0212, GB1988_80, GB2312_80, ISO_IR_165, ISO_IR_149, EUC_JP,
+    SHIFT_JIS, CP932, ISO_2022_JP, ISO_2022_JP1, ISO_2022_JP2, GB2312, CP936,
+    GB18030, ISO_2022_CN, ISO_2022_CNE, HZ, EUC_TW, BIG5, CP950, BIG5_HKSCS,
+    EUC_KR, CP949, CP1361, ISO_2022_KR, CP737, CP775, CP853, CP855, CP857,
+    CP858, CP860, CP861, CP863, CP864, CP865, CP869, CP1125);
 
+  {:Set of any charsets.}
   TMimeSetChar = set of TMimeChar;
+
+const
+  {:Set of charsets supported by Iconv library only.}
+  IconvOnlyChars: set of TMimeChar = [UTF_16, UTF_16LE, UTF_32, UTF_32LE,
+    C99, JAVA, ISO_8859_16, KOI8_U, KOI8_RU, CP862, CP866, MAC, MACCE, MACICE,
+    MACCRO, MACRO, MACCYR, MACUK, MACGR, MACTU, MACHEB, MACAR, MACTH, ROMAN8,
+    NEXTSTEP, ARMASCII, GEORGIAN_AC, GEORGIAN_PS, KOI8_T, MULELAO, CP1133,
+    TIS620, CP874, VISCII, TCVN, ISO_IR_14, JIS_X0201, JIS_X0208, JIS_X0212,
+    GB1988_80, GB2312_80, ISO_IR_165, ISO_IR_149, EUC_JP, SHIFT_JIS, CP932,
+    ISO_2022_JP, ISO_2022_JP1, ISO_2022_JP2, GB2312, CP936, GB18030,
+    ISO_2022_CN, ISO_2022_CNE, HZ, EUC_TW, BIG5, CP950, BIG5_HKSCS, EUC_KR,
+    CP949, CP1361, ISO_2022_KR, CP737, CP775, CP853, CP855, CP857, CP858,
+    CP860, CP861, CP863, CP864, CP865, CP869, CP1125];
+
+  {:Set of charsets supported by internal routines only.}
+  NoIconvChars: set of TMimeChar = [CP895, UTF_7mod];
+
+  {:null character replace table. (Usable for disable charater replacing.)}
+  Replace_None: array[0..0] of Word =
+    (0);
+
+  {:Character replace table for remove Czech diakritics.}
+  Replace_Czech: array[0..59] of Word =
+    (
+      $00E1, $0061,
+      $010D, $0063,
+      $010F, $0064,
+      $010E, $0044,
+      $00E9, $0065,
+      $011B, $0065,
+      $00ED, $0069,
+      $0148, $006E,
+      $00F3, $006F,
+      $0159, $0072,
+      $0161, $0073,
+      $0165, $0074,
+      $00FA, $0075,
+      $016F, $0075,
+      $00FD, $0079,
+      $017E, $007A,
+      $00C1, $0041,
+      $010C, $0043,
+      $00C9, $0045,
+      $011A, $0045,
+      $00CD, $0049,
+      $0147, $004E,
+      $00D3, $004F,
+      $0158, $0052,
+      $0160, $0053,
+      $0164, $0054,
+      $00DA, $0055,
+      $016E, $0055,
+      $00DD, $0059,
+      $017D, $005A
+    );
+
+var
+  {:By this you can generally disable/enable Iconv support.}
+  DisableIconv: Boolean = False;
+
+{==============================================================================}
+{:Convert Value from one charset to another. See: @link(CharsetConversionEx)}
+function CharsetConversion(const Value: AnsiString; CharFrom: TMimeChar;
+  CharTo: TMimeChar): AnsiString;
+
+{:Convert Value from one charset to another with additional character conversion.
+see: @link(Replace_None) and @link(Replace_Czech)}
+function CharsetConversionEx(const Value: AnsiString; CharFrom: TMimeChar;
+  CharTo: TMimeChar; const TransformTable: array of Word): AnsiString;
+
+{:Convert Value from one charset to another with additional character conversion.
+ This funtion is similar to @link(CharsetConversionEx), but you can disable
+ transliteration of unconvertible characters.}
+function CharsetConversionTrans(Value: AnsiString; CharFrom: TMimeChar;
+  CharTo: TMimeChar; const TransformTable: array of Word; Translit: Boolean): AnsiString;
+
+{:Returns charset used by operating system.}
+function GetCurCP: TMimeChar;
+
+{:Returns charset used by operating system as OEM charset. (in Windows DOS box,
+ for example)}
+function GetCurOEMCP: TMimeChar;
+
+{:Converting string with charset name to TMimeChar.}
+function GetCPFromID(Value: AnsiString): TMimeChar;
+
+{:Converting TMimeChar to string with name of charset.}
+function GetIDFromCP(Value: TMimeChar): AnsiString;
+
+{:return @true when value need to be converted. (It is not 7-bit ASCII)}
+function NeedCharsetConversion(const Value: AnsiString): Boolean;
+
+{:Finding best target charset from set of TMimeChars with minimal count of
+ unconvertible characters.}
+function IdealCharsetCoding(const Value: AnsiString; CharFrom: TMimeChar;
+  CharTo: TMimeSetChar): TMimeChar;
+
+{:Return BOM (Byte Order Mark) for given unicode charset.}
+function GetBOM(Value: TMimeChar): AnsiString;
+
+{==============================================================================}
+implementation
+
+uses
+{$IFDEF LINUX}
+  Libc,
+{$ELSE}
+  Windows,
+{$ENDIF}
+  SysUtils,
+  synautil, synacode, synaicnv;
+
 
 //character transcoding tables X to UCS-2
 {
@@ -555,7 +690,7 @@ const
     $0173, $0142, $015B, $016B, $00FC, $017C, $017E, $02D9
     );
 
-{??
+{Vietnamese
 }
   CharCP_1258: array[128..255] of Word =
   (
@@ -643,78 +778,74 @@ const
     $00B0, $00A8, $02D9, $0171, $0158, $0159, $25A0, $00A0
     );
 
-  // nothing fr replace
-  Replace_None: array[0..0] of Word =
-    (0);
-
-  //remove diakritics from Czech
- Replace_Czech: array[0..59] of Word =
-    (
-      $00E1, $0061,
-      $010D, $0063,
-      $010F, $0064,
-      $010E, $0044,
-      $00E9, $0065,
-      $011B, $0065,
-      $00ED, $0069,
-      $0148, $006E,
-      $00F3, $006F,
-      $0159, $0072,
-      $0161, $0073,
-      $0165, $0074,
-      $00FA, $0075,
-      $016F, $0075,
-      $00FD, $0079,
-      $017E, $007A,
-      $00C1, $0041,
-      $010C, $0043,
-      $00C9, $0045,
-      $011A, $0045,
-      $00CD, $0049,
-      $0147, $004E,
-      $00D3, $004F,
-      $0158, $0052,
-      $0160, $0053,
-      $0164, $0054,
-      $00DA, $0055,
-      $016E, $0055,
-      $00DD, $0059,
-      $017D, $005A
-    );
-
 {==============================================================================}
-function UTF8toUCS4(const Value: string): string;
-function UCS4toUTF8(const Value: string): string;
-function UTF7toUCS2(const Value: string): string;
-function UCS2toUTF7(const Value: string): string;
-function CharsetConversion(Value: string; CharFrom: TMimeChar;
-  CharTo: TMimeChar): string;
-function CharsetConversionEx(Value: string; CharFrom: TMimeChar;
-  CharTo: TMimeChar; const TransformTable: array of Word): string;
-function GetCurCP: TMimeChar;
-function GetCPFromID(Value: string): TMimeChar;
-function GetIDFromCP(Value: TMimeChar): string;
-function NeedCharsetConversion(const Value: string): Boolean;
-function IdealCharsetCoding(const Value: string; CharFrom: TMimeChar;
-  CharTo: TMimeSetChar): TMimeChar;
-
-implementation
-
-uses
-{$IFDEF LINUX}
-  Libc,
-{$ELSE}
-  Windows,
-{$ENDIF}
-  SysUtils,
-  synautil, synacode;
+type
+  TIconvChar = record
+    Charset: TMimeChar;
+    CharName: string;
+  end;
+  TIconvArr = array [0..112] of TIconvChar;
 
 const
   NotFoundChar = '_';
 
 var
-  SetTwo: set of TMimeChar = [UCS_2, UTF_7];
-  SetFour: set of TMimeChar = [UCS_4, UTF_8];
+  SetTwo: set of TMimeChar = [UCS_2, UCS_2LE, UTF_7, UTF_7mod];
+  SetFour: set of TMimeChar = [UCS_4, UCS_4LE, UTF_8];
+  SetLE: set of TMimeChar = [UCS_2LE, UCS_4LE];
+
+  IconvArr: TIconvArr;
+
+{==============================================================================}
+function FindIconvID(const Value, Charname: string): Boolean;
+var
+  s: string;
+begin
+  Result := True;
+  //exact match
+  if Value = Charname then
+    Exit;
+  //Value is on begin of charname
+  s := Value + ' ';
+  if s = Copy(Charname, 1, Length(s)) then
+    Exit;
+  //Value is on end of charname
+  s := ' ' + Value;
+  if s = Copy(Charname, Length(Charname) - Length(s) + 1, Length(s)) then
+    Exit;
+  //value is somewhere inside charname
+  if Pos( s + ' ', Charname) > 0 then
+    Exit;
+  Result := False;
+end;
+
+function GetCPFromIconvID(Value: AnsiString): TMimeChar;
+var
+  n: integer;
+begin
+  Result := ISO_8859_1;
+  Value := UpperCase(Value);
+  for n := 0 to High(IconvArr) do
+    if FindIconvID(Value, IconvArr[n].Charname) then
+    begin
+      Result := IconvArr[n].Charset;
+      Break;
+    end;
+end;
+
+{==============================================================================}
+function GetIconvIDFromCP(Value: TMimeChar): AnsiString;
+var
+  n: integer;
+begin
+  Result := 'ISO-8859-1';
+  for n := 0 to High(IconvArr) do
+    if IconvArr[n].Charset = Value then
+    begin
+      Result := Separateleft(IconvArr[n].Charname, ' ');
+      Break;
+    end;
+end;
 
 {==============================================================================}
 function ReplaceUnicode(Value: Word; const TransformTable: array of Word): Word;
@@ -746,8 +877,6 @@ end;
 procedure GetArray(CharSet: TMimeChar; var Result: array of Word);
 begin
   case CharSet of
-    ISO_8859_1:
-      CopyArray(CharISO_8859_1, Result);
     ISO_8859_2:
       CopyArray(CharISO_8859_2, Result);
     ISO_8859_3:
@@ -796,12 +925,14 @@ begin
       CopyArray(CharCP_895, Result);
     CP852:
       CopyArray(CharCP_852, Result);
+  else
+      CopyArray(CharISO_8859_1, Result);
   end;
 end;
 
 {==============================================================================}
-procedure ReadMulti(const Value: string; var Index: Integer; mb: Byte;
-  var b1, b2, b3, b4: Byte);
+procedure ReadMulti(const Value: AnsiString; var Index: Integer; mb: Byte;
+  var b1, b2, b3, b4: Byte; le: boolean);
 Begin
   b1 := 0;
   b2 := 0;
@@ -813,67 +944,115 @@ Begin
     mb := 1;
   if (Index + mb - 1) <= Length(Value) then
   begin
-    Case mb Of
-      1:
-        b1 := Ord(Value[Index]);
-      2:
-        Begin
+    if le then
+      Case mb Of
+        1:
           b1 := Ord(Value[Index]);
-          b2 := Ord(Value[Index + 1]);
-        End;
-      3:
-        Begin
+        2:
+          Begin
+            b1 := Ord(Value[Index]);
+            b2 := Ord(Value[Index + 1]);
+          End;
+        3:
+          Begin
+            b1 := Ord(Value[Index]);
+            b2 := Ord(Value[Index + 1]);
+            b3 := Ord(Value[Index + 2]);
+          End;
+        4:
+          Begin
+            b1 := Ord(Value[Index]);
+            b2 := Ord(Value[Index + 1]);
+            b3 := Ord(Value[Index + 2]);
+            b4 := Ord(Value[Index + 3]);
+          End;
+      end
+    else
+      Case mb Of
+        1:
           b1 := Ord(Value[Index]);
-          b2 := Ord(Value[Index + 1]);
-          b3 := Ord(Value[Index + 2]);
-        End;
-      4:
-        Begin
-          b1 := Ord(Value[Index]);
-          b2 := Ord(Value[Index + 1]);
-          b3 := Ord(Value[Index + 2]);
-          b4 := Ord(Value[Index + 3]);
-        End;
-    end;
+        2:
+          Begin
+            b2 := Ord(Value[Index]);
+            b1 := Ord(Value[Index + 1]);
+          End;
+        3:
+          Begin
+            b3 := Ord(Value[Index]);
+            b2 := Ord(Value[Index + 1]);
+            b1 := Ord(Value[Index + 2]);
+          End;
+        4:
+          Begin
+            b4 := Ord(Value[Index]);
+            b3 := Ord(Value[Index + 1]);
+            b2 := Ord(Value[Index + 2]);
+            b1 := Ord(Value[Index + 3]);
+          End;
+      end;
     Inc(Index, mb);
   End;
 End;
 
 {==============================================================================}
-function WriteMulti(b1, b2, b3, b4: Byte; mb: Byte): string;
+function WriteMulti(b1, b2, b3, b4: Byte; mb: Byte; le: boolean): AnsiString;
 begin
   if mb > 4 then
     mb := 1;
   SetLength(Result, mb);
-  case mb Of
-    1:
-      Result[1] := Char(b1);
-    2:
-      begin
-        Result[1] := Char(b1);
-        Result[2] := Char(b2);
-      end;
-    3:
-      begin
-        Result[1] := Char(b1);
-        Result[2] := Char(b2);
-        Result[3] := Char(b3);
-      end;
-    4:
-      begin
-        Result[1] := Char(b1);
-        Result[2] := Char(b2);
-        Result[3] := Char(b3);
-        Result[4] := Char(b4);
-      end;
-  end;
+  if le then
+    case mb Of
+      1:
+        Result[1] := AnsiChar(b1);
+      2:
+        begin
+          Result[1] := AnsiChar(b1);
+          Result[2] := AnsiChar(b2);
+        end;
+      3:
+        begin
+          Result[1] := AnsiChar(b1);
+          Result[2] := AnsiChar(b2);
+          Result[3] := AnsiChar(b3);
+        end;
+      4:
+        begin
+          Result[1] := AnsiChar(b1);
+          Result[2] := AnsiChar(b2);
+          Result[3] := AnsiChar(b3);
+          Result[4] := AnsiChar(b4);
+        end;
+    end
+  else
+    case mb Of
+      1:
+        Result[1] := AnsiChar(b1);
+      2:
+        begin
+          Result[2] := AnsiChar(b1);
+          Result[1] := AnsiChar(b2);
+        end;
+      3:
+        begin
+          Result[3] := AnsiChar(b1);
+          Result[2] := AnsiChar(b2);
+          Result[1] := AnsiChar(b3);
+        end;
+      4:
+        begin
+          Result[4] := AnsiChar(b1);
+          Result[3] := AnsiChar(b2);
+          Result[2] := AnsiChar(b3);
+          Result[1] := AnsiChar(b4);
+        end;
+    end;
 end;
 
 {==============================================================================}
-function UTF8toUCS4(const Value: string): string;
+function UTF8toUCS4(const Value: AnsiString): AnsiString;
 var
   n, x, ul, m: Integer;
-  s: string;
+  s: AnsiString;
   w1, w2: Word;
 begin
   Result := '';
@@ -883,7 +1062,7 @@ begin
     x := Ord(Value[n]);
     Inc(n);
     if x < 128 then
-      Result := Result + WriteMulti(x, 0, 0, 0, 4)
+      Result := Result + WriteMulti(x, 0, 0, 0, 4, false)
     else
     begin
       m := 0;
@@ -914,15 +1093,15 @@ begin
       ul := BinToInt(s);
       w1 := ul div 65536;
       w2 := ul mod 65536;
-      Result := Result + WriteMulti(Lo(w2), Hi(w2), Lo(w1), Hi(w1), 4);
+      Result := Result + WriteMulti(Lo(w2), Hi(w2), Lo(w1), Hi(w1), 4, false);
     end;
   end;
 end;
 
 {==============================================================================}
-function UCS4toUTF8(const Value: string): string;
+function UCS4toUTF8(const Value: AnsiString): AnsiString;
 var
-  s, l, k: string;
+  s, l, k: AnsiString;
   b1, b2, b3, b4: Byte;
   n, m, x, y: Integer;
   b: Byte;
@@ -931,9 +1110,9 @@ begin
   n := 1;
   while Length(Value) >= n do
   begin
-    ReadMulti(Value, n, 4, b1, b2, b3, b4);
+    ReadMulti(Value, n, 4, b1, b2, b3, b4, false);
     if (b2 = 0) and (b3 = 0) and (b4 = 0) and (b1 < 128) then
-      Result := Result + Char(b1)
+      Result := Result + AnsiChar(b1)
     else
     begin
       x := (b1 + 256 * b2) + (b3 + 256 * b4) * 65536;
@@ -945,7 +1124,7 @@ begin
         k := Copy(l, Length(l) - 5, 6);
         l := Copy(l, 1, Length(l) - 6);
         b := BinToInt(k) or $80;
-        s := Char(b) + s;
+        s := AnsiChar(b) + s;
       end;
       b := BinToInt(l);
       case y of
@@ -960,27 +1139,39 @@ begin
         1:
           b := b or $C0;
       end;
-      s := Char(b) + s;
+      s := AnsiChar(b) + s;
       Result := Result + s;
     end;
   end;
 end;
 
 {==============================================================================}
-function UTF7toUCS2(const Value: string): string;
+function UTF7toUCS2(const Value: AnsiString; Modified: Boolean): AnsiString;
 var
   n, i: Integer;
-  c: Char;
-  s, t: string;
+  c: AnsiChar;
+  s, t: AnsiString;
+  shift: AnsiChar;
+  table: String;
 begin
   Result := '';
   n := 1;
+  if modified then
+  begin
+    shift := '&';
+    table := TableBase64mod;
+  end
+  else
+  begin
+    shift := '+';
+    table := TableBase64;
+  end;
   while Length(Value) >= n do
   begin
     c := Value[n];
     Inc(n);
-    if c <> '+' then
-      Result := Result + WriteMulti(Ord(c), 0, 0, 0, 2)
+    if c <> shift then
+      Result := Result + WriteMulti(Ord(c), 0, 0, 0, 2, false)
     else
     begin
       s := '';
@@ -990,7 +1181,7 @@ begin
         Inc(n);
         if c = '-' then
           Break;
-        if (c = '=') or (Pos(c, TableBase64) < 1) then
+        if (c = '=') or (Pos(c, table) < 1) then
         begin
           Dec(n);
           Break;
@@ -998,18 +1189,21 @@ begin
         s := s + c;
       end;
       if s = '' then
-        s := WriteMulti(Ord('+'), 0, 0, 0, 2)
+        s := WriteMulti(Ord(shift), 0, 0, 0, 2, false)
       else
       begin
-        t := DecodeBase64(s);
+        if modified then
+          t := DecodeBase64mod(s)
+        else
+          t := DecodeBase64(s);
         if not odd(length(t)) then
           s := t
         else
         begin //ill-formed sequence
           t := s;
-          s := WriteMulti(Ord('+'), 0, 0, 0, 2);
+          s := WriteMulti(Ord(shift), 0, 0, 0, 2, false);
           for i := 1 to length(t) do
-            s := s + WriteMulti(Ord(t[i]), 0, 0, 0, 2);
+            s := s + WriteMulti(Ord(t[i]), 0, 0, 0, 2, false);
         end;
       end;
       Result := Result + s;
@@ -1018,54 +1212,69 @@ begin
 end;
 
 {==============================================================================}
-function UCS2toUTF7(const Value: string): string;
+function UCS2toUTF7(const Value: AnsiString; Modified: Boolean): AnsiString;
 var
-  s: string;
+  s: AnsiString;
   b1, b2, b3, b4: Byte;
   n, m: Integer;
+  shift: AnsiChar;
 begin
   Result := '';
   n := 1;
+  if modified then
+    shift := '&'
+  else
+    shift := '+';
   while Length(Value) >= n do
   begin
-    ReadMulti(Value, n, 2, b1, b2, b3, b4);
+    ReadMulti(Value, n, 2, b1, b2, b3, b4, false);
     if (b2 = 0) and (b1 < 128) then
-      if Char(b1) = '+' then
-        Result := Result + '+-'
+      if AnsiChar(b1) = shift then
+        Result := Result + shift + '-'
       else
-        Result := Result + Char(b1)
+        Result := Result + AnsiChar(b1)
     else
     begin
-      s := Char(b2) + Char(b1);
+      s := AnsiChar(b2) + AnsiChar(b1);
       while Length(Value) >= n do
       begin
-        ReadMulti(Value, n, 2, b1, b2, b3, b4);
+        ReadMulti(Value, n, 2, b1, b2, b3, b4, false);
         if (b2 = 0) and (b1 < 128) then
         begin
           Dec(n, 2);
           Break;
         end;
-        s := s + Char(b2) + Char(b1);
+        s := s + AnsiChar(b2) + AnsiChar(b1);
       end;
-      s := EncodeBase64(s);
+      if modified then
+        s := EncodeBase64mod(s)
+      else
+        s := EncodeBase64(s);
       m := Pos('=', s);
       if m > 0 then
         s := Copy(s, 1, m - 1);
-      Result := Result + '+' + s + '-';
+      Result := Result + shift + s + '-';
     end;
   end;
 end;
 
 {==============================================================================}
-function CharsetConversion(Value: string; CharFrom: TMimeChar;
-  CharTo: TMimeChar): string;
+function CharsetConversion(const Value: AnsiString; CharFrom: TMimeChar;
+  CharTo: TMimeChar): AnsiString;
 begin
   Result := CharsetConversionEx(Value, CharFrom, CharTo, Replace_None);
 end;
 
 {==============================================================================}
-function CharsetConversionEx(Value: string; CharFrom: TMimeChar;
-  CharTo: TMimeChar; const TransformTable: array of Word): string;
+function CharsetConversionEx(const Value: AnsiString; CharFrom: TMimeChar;
+  CharTo: TMimeChar; const TransformTable: array of Word): AnsiString;
+begin
+  Result := CharsetConversionTrans(Value, CharFrom, CharTo, TransformTable, True);
+end;
+
+{==============================================================================}
+function CharsetConversionTrans(Value: AnsiString; CharFrom: TMimeChar;
+  CharTo: TMimeChar; const TransformTable: array of Word; Translit: Boolean): AnsiString;
 var
   uni: Word;
   n, m: Integer;
@@ -1073,71 +1282,177 @@ var
   b1, b2, b3, b4: Byte;
   SourceTable, TargetTable: array[128..255] of Word;
   mbf, mbt: Byte;
+  lef, let: Boolean;
+  ucsstring, s, t: AnsiString;
+  cd: iconv_t;
+  f: Boolean;
+  NotNeedTransform: Boolean;
+  FromID, ToID: string;
 begin
-  GetArray(CharFrom, SourceTable);
-  GetArray(CharTo, TargetTable);
-  mbf := 1;
-  if CharFrom in SetTwo then
-    mbf := 2;
-  if CharFrom in SetFour then
-    mbf := 4;
-  mbt := 1;
-  if CharTo in SetTwo then
-    mbt := 2;
-  if CharTo in SetFour then
-    mbt := 4;
-
-  if CharFrom = UTF_8 then
-    Value := UTF8toUCS4(Value);
-  if CharFrom = UTF_7 then
-    Value := UTF7toUCS2(Value);
-  Result := '';
-
-  n := 1;
-  while Length(Value) >= n do
+  NotNeedTransform := (High(TransformTable) = 0);
+  if (CharFrom = CharTo) and NotNeedTransform then
   begin
-    ReadMulti(Value, n, mbf, b1, b2, b3, b4);
-    if mbf = 1 then
-      if b1 > 127 then
+    Result := Value;
+    Exit;
+  end;
+  FromID := GetIDFromCP(CharFrom);
+  ToID := GetIDFromCP(CharTo);
+  cd := Iconv_t(-1);
+  //do two-pass conversion. Transform to UCS-2 first.
+  if CharFrom = UCS_2 then
+    ucsstring := Value
+  else
+  begin
+    if not DisableIconv then
+      cd := SynaIconvOpenIgnore('UCS-2BE', FromID);
+    try
+      if cd <> iconv_t(-1) then
+        SynaIconv(cd, Value, ucsstring)
+      else
       begin
-        uni := SourceTable[b1];
-        uni := ReplaceUnicode(uni, TransformTable);
-        b1 := Lo(uni);
-        b2 := Hi(uni);
+        s := Value;
+        if CharFrom = UTF_8 then
+          s := UTF8toUCS4(Value)
+        else
+          if CharFrom = UTF_7 then
+            s := UTF7toUCS2(Value, False)
+          else
+            if CharFrom = UTF_7mod then
+              s := UTF7toUCS2(Value, True);
+        GetArray(CharFrom, SourceTable);
+        mbf := 1;
+        if CharFrom in SetTwo then
+          mbf := 2;
+        if CharFrom in SetFour then
+          mbf := 4;
+        lef := CharFrom in SetLe;
+        ucsstring := '';
+        n := 1;
+        while Length(s) >= n do
+        begin
+          ReadMulti(s, n, mbf, b1, b2, b3, b4, lef);
+          //handle BOM
+          if (b3 = 0) and (b4 = 0) then
+          begin
+            if (b1 = $FE) and (b2 = $FF) then
+            begin
+              lef := not lef;
+              continue;
+            end;
+            if (b1 = $FF) and (b2 = $FE) then
+              continue;
+          end;
+          if mbf = 1 then
+            if b1 > 127 then
+            begin
+              uni := SourceTable[b1];
+              b1 := Lo(uni);
+              b2 := Hi(uni);
+            end;
+          ucsstring := ucsstring + WriteMulti(b1, b2, b3, b4, 2, False);
+        end;
       end;
-    // b1..b4 - Unicode Char
-    uni := b2 * 256 + b1;
-    if (b3 <> 0) or (b4 <> 0) then
+    finally
+      SynaIconvClose(cd);
+    end;
+  end;
+  //here we allways have ucstring with UCS-2 encoding
+  //second pass... from UCS-2 to target encoding.
+    if not DisableIconv then
+      if translit then
+        cd := SynaIconvOpenTranslit(ToID, 'UCS-2BE')
+      else
+        cd := SynaIconvOpenIgnore(ToID, 'UCS-2BE');
+  try
+    if (cd <> iconv_t(-1)) and NotNeedTransform then
     begin
-      b1 := Ord(NotFoundChar);
-      b2 := 0;
-      b3 := 0;
-      b4 := 0;
+      if CharTo = UTF_7 then
+        ucsstring := ucsstring + #0 + '-';
+      //when transformtable is not needed and Iconv know target charset,
+      //do it fast by one call.
+      SynaIconv(cd, ucsstring, Result);
+      if CharTo = UTF_7 then
+        Delete(Result, Length(Result), 1);
     end
     else
-      if mbt = 1 then
-        if uni > 127 then
+    begin
+      GetArray(CharTo, TargetTable);
+      mbt := 1;
+      if CharTo in SetTwo then
+        mbt := 2;
+      if CharTo in SetFour then
+        mbt := 4;
+      let := CharTo in SetLe;
+      b3 := 0;
+      b4 := 0;
+      Result := '';
+      for n:= 0 to (Length(ucsstring) div 2) - 1 do
+      begin
+        s := Copy(ucsstring, n * 2 + 1, 2);
+        b2 := Ord(s[1]);
+        b1 := Ord(s[2]);
+        uni := b2 * 256 + b1;
+        if not NotNeedTransform then
         begin
-          b := Ord(NotFoundChar);
-          for m := 128 to 255 do
-            if TargetTable[m] = uni then
-            begin
-              b := m;
-              Break;
-            end;
-          b1 := b;
-          b2 := 0;
+          uni := ReplaceUnicode(uni, TransformTable);
+          b1 := Lo(uni);
+          b2 := Hi(uni);
+          s[1] := AnsiChar(b2);
+          s[2] := AnsiChar(b1);
+        end;
+        if cd <> iconv_t(-1) then
+        begin
+          if CharTo = UTF_7 then
+            s := s + #0 + '-';
+          SynaIconv(cd, s, t);
+          if CharTo = UTF_7 then
+            Delete(t, Length(t), 1);
+          Result := Result + t;
         end
         else
-          b1 := Lo(uni);
-    Result := Result + WriteMulti(b1, b2, b3, b4, mbt)
+        begin
+          f := True;
+          if mbt = 1 then
+            if uni > 127 then
+            begin
+              f := False;
+              b := 0;
+              for m := 128 to 255 do
+                if TargetTable[m] = uni then
+                begin
+                  b := m;
+                  f := True;
+                  Break;
+                end;
+              b1 := b;
+              b2 := 0;
+            end
+            else
+              b1 := Lo(uni);
+          if not f then
+            if translit then
+            begin
+              b1 := Ord(NotFoundChar);
+              b2 := 0;
+              f := True;
+            end;
+          if f then
+            Result := Result + WriteMulti(b1, b2, b3, b4, mbt, let)
+        end;
+      end;
+      if cd = iconv_t(-1) then
+      begin
+        if CharTo = UTF_7 then
+          Result := UCS2toUTF7(Result, false);
+        if CharTo = UTF_7mod then
+          Result := UCS2toUTF7(Result, true);
+        if CharTo = UTF_8 then
+          Result := UCS4toUTF8(Result);
+      end;
+    end;
+  finally
+    SynaIconvClose(cd);
   end;
-
-  if CharTo = UTF_7 then
-    Result := UCS2toUTF7(Result);
-  if CharTo = UTF_8 then
-    Result := UCS4toUTF8(Result);
-
 end;
 
 {==============================================================================}
@@ -1148,11 +1463,62 @@ begin
   Result := GetCPFromID(nl_langinfo(_NL_CTYPE_CODESET_NAME));
 end;
 
+function GetCurOEMCP: TMimeChar;
+begin
+  Result := GetCurCP;
+end;
+
 {$ELSE}
 
-function GetCurCP: TMimeChar;
+function CPToMimeChar(Value: Integer): TMimeChar;
 begin
-  case GetACP of
+  case Value of
+    437, 850, 20127:
+      Result := ISO_8859_1; //I know, it is not ideal!
+    737:
+      Result := CP737;
+    775:
+      Result := CP775;
+    852:
+      Result := CP852;
+    855:
+      Result := CP855;
+    857:
+      Result := CP857;
+    858:
+      Result := CP858;
+    860:
+      Result := CP860;
+    861:
+      Result := CP861;
+    862:
+      Result := CP862;
+    863:
+      Result := CP863;
+    864:
+      Result := CP864;
+    865:
+      Result := CP865;
+    866:
+      Result := CP866;
+    869:
+      Result := CP869;
+    874:
+      Result := ISO_8859_15;
+    895:
+      Result := CP895;
+    932:
+      Result := CP932;
+    936:
+      Result := CP936;
+    949:
+      Result := CP949;
+    950:
+      Result := CP950;
+    1200:
+      Result := UCS_2LE;
+    1201:
+      Result := UCS_2;
     1250:
       Result := CP1250;
     1251:
@@ -1169,179 +1535,116 @@ begin
       Result := CP1257;
     1258:
       Result := CP1258;
+    1361:
+      Result := CP1361;
+    10000:
+      Result := MAC;
+    10004:
+      Result := MACAR;
+    10005:
+      Result := MACHEB;
+    10006:
+      Result := MACGR;
+    10007:
+      Result := MACCYR;
+    10010:
+      Result := MACRO;
+    10017:
+      Result := MACUK;
+    10021:
+      Result := MACTH;
+    10029:
+      Result := MACCE;
+    10079:
+      Result := MACICE;
+    10081:
+      Result := MACTU;
+    10082:
+      Result := MACCRO;
+    12000:
+      Result := UCS_4LE;
+    12001:
+      Result := UCS_4;
+    20866:
+      Result := KOI8_R;
+    20932:
+      Result := JIS_X0208;
+    20936:
+      Result := GB2312;
+    21866:
+      Result := KOI8_U;
+    28591:
+      Result := ISO_8859_1;
+    28592:
+      Result := ISO_8859_2;
+    28593:
+      Result := ISO_8859_3;
+    28594:
+      Result := ISO_8859_4;
+    28595:
+      Result := ISO_8859_5;
+    28596, 708:
+      Result := ISO_8859_6;
+    28597:
+      Result := ISO_8859_7;
+    28598, 38598:
+      Result := ISO_8859_8;
+    28599:
+      Result := ISO_8859_9;
+    28605:
+      Result := ISO_8859_15;
+    50220:
+      Result := ISO_2022_JP; //? ISO 2022 Japanese with no halfwidth Katakana
+    50221:
+      Result := ISO_2022_JP1;//? Japanese with halfwidth Katakana
+    50222:
+      Result := ISO_2022_JP2;//? Japanese JIS X 0201-1989
+    50225:
+      Result := ISO_2022_KR;
+    50227:
+      Result := ISO_2022_CN;//? ISO 2022 Simplified Chinese
+    50229:
+      Result := ISO_2022_CNE;//? ISO 2022 Traditional Chinese
+    51932:
+      Result := EUC_JP;
+    51936:
+      Result := GB2312;
+    51949:
+      Result := EUC_KR;
+    52936:
+      Result := HZ;
+    54936:
+      Result := GB18030;
+    65000:
+      Result := UTF_7;
+    65001:
+      Result := UTF_8;
+    0:
+      Result := UCS_2LE;
   else
     Result := CP1252;
   end;
 end;
 
+function GetCurCP: TMimeChar;
+begin
+  Result := CPToMimeChar(GetACP);
+end;
+
+function GetCurOEMCP: TMimeChar;
+begin
+  Result := CPToMimeChar(GetOEMCP);
+end;
 {$ENDIF}
 
 {==============================================================================}
-function GetCPFromID(Value: string): TMimeChar;
-begin
-  Value := UpperCase(Value);
-  Result := ISO_8859_1;
-  if Pos('ISO-8859-10', Value) = 1 then
-    Result := ISO_8859_10
-  else
-  if Pos('ISO-8859-13', Value) = 1 then
-    Result := ISO_8859_13
-  else
-  if Pos('ISO-8859-14', Value) = 1 then
-    Result := ISO_8859_14
-  else
-  if Pos('ISO-8859-15', Value) = 1 then
-    Result := ISO_8859_15
-  else
-  if Pos('ISO-8859-2', Value) = 1 then
-    Result := ISO_8859_2
-  else
-  if Pos('ISO-8859-3', Value) = 1 then
-    Result := ISO_8859_3
-  else
-  if Pos('ISO-8859-4', Value) = 1 then
-    Result := ISO_8859_4
-  else
-  if Pos('ISO-8859-5', Value) = 1 then
-    Result := ISO_8859_5
-  else
-  if Pos('ISO-8859-6', Value) = 1 then
-    Result := ISO_8859_6
-  else
-  if Pos('ISO-8859-7', Value) = 1 then
-    Result := ISO_8859_7
-  else
-  if Pos('ISO-8859-8', Value) = 1 then
-    Result := ISO_8859_8
-  else
-  if Pos('ISO-8859-9', Value) = 1 then
-    Result := ISO_8859_9
-  else
-  if (Pos('WINDOWS-1250', Value) = 1) or (Pos('X-CP1250', Value) = 1) then
-    Result := CP1250
-  else
-  if (Pos('WINDOWS-1251', Value) = 1) or (Pos('X-CP1251', Value) = 1) then
-    Result := CP1251
-  else
-  if (Pos('WINDOWS-1252', Value) = 1) or (Pos('X-CP1252', Value) = 1) then
-    Result := CP1252
-  else
-  if (Pos('WINDOWS-1253', Value) = 1) or (Pos('X-CP1253', Value) = 1) then
-    Result := CP1253
-  else
-  if (Pos('WINDOWS-1254', Value) = 1) or (Pos('X-CP1254', Value) = 1) then
-    Result := CP1254
-  else
-  if (Pos('WINDOWS-1255', Value) = 1) or (Pos('X-CP1255', Value) = 1) then
-    Result := CP1255
-  else
-  if (Pos('WINDOWS-1256', Value) = 1) or (Pos('X-CP1256', Value) = 1) then
-    Result := CP1256
-  else
-  if (Pos('WINDOWS-1257', Value) = 1) or (Pos('X-CP1257', Value) = 1) then
-    Result := CP1257
-  else
-  if (Pos('WINDOWS-1258', Value) = 1) or (Pos('X-CP1258', Value) = 1) then
-    Result := CP1258
-  else
-  if Pos('KOI8-R', Value) = 1 then
-    Result := KOI8_R
-  else
-  if (Pos('KAMENICKY', Value) > 0) or (Pos('895', Value) > 0) then
-    Result := CP895
-  else
-  if (Pos('LATIN-2', Value) > 0) or (Pos('852', Value) > 0) then
-    Result := CP852
-  else
-  if Pos('UTF-7', Value) = 1 then
-    Result := UTF_7
-  else
-  if Pos('UTF-8', Value) > 0 then
-    Result := UTF_8
-  else
-  if Pos('UCS-4', Value) > 0 then
-    Result := UCS_4
-  else
-  if Pos('UCS-2', Value) > 0 then
-    Result := UCS_2
-  else
-  if Pos('UNICODE', Value) = 1 then
-    Result := UCS_2
-end;
-
-{==============================================================================}
-function GetIDFromCP(Value: TMimeChar): string;
-begin
-  case Value of
-    ISO_8859_2:
-      Result := 'ISO-8859-2';
-    ISO_8859_3:
-      Result := 'ISO-8859-3';
-    ISO_8859_4:
-      Result := 'ISO-8859-4';
-    ISO_8859_5:
-      Result := 'ISO-8859-5';
-    ISO_8859_6:
-      Result := 'ISO-8859-6';
-    ISO_8859_7:
-      Result := 'ISO-8859-7';
-    ISO_8859_8:
-      Result := 'ISO-8859-8';
-    ISO_8859_9:
-      Result := 'ISO-8859-9';
-    ISO_8859_10:
-      Result := 'ISO-8859-10';
-    ISO_8859_13:
-      Result := 'ISO-8859-13';
-    ISO_8859_14:
-      Result := 'ISO-8859-14';
-    ISO_8859_15:
-      Result := 'ISO-8859-15';
-    CP1250:
-      Result := 'WINDOWS-1250';
-    CP1251:
-      Result := 'WINDOWS-1251';
-    CP1252:
-      Result := 'WINDOWS-1252';
-    CP1253:
-      Result := 'WINDOWS-1253';
-    CP1254:
-      Result := 'WINDOWS-1254';
-    CP1255:
-      Result := 'WINDOWS-1255';
-    CP1256:
-      Result := 'WINDOWS-1256';
-    CP1257:
-      Result := 'WINDOWS-1257';
-    CP1258:
-      Result := 'WINDOWS-1258';
-    KOI8_R:
-      Result := 'KOI8-R';
-    CP895:
-      Result := 'CP-895';
-    CP852:
-      Result := 'CP-852';
-    UCS_2:
-      Result := 'Unicode-1-1-UCS-2';
-    UCS_4:
-      Result := 'Unicode-1-1-UCS-4';
-    UTF_8:
-      Result := 'UTF-8';
-    UTF_7:
-      Result := 'UTF-7';
-  else
-    Result := 'ISO-8859-1';
-  end;
-end;
-
-{==============================================================================}
-function NeedCharsetConversion(const Value: string): Boolean;
+function NeedCharsetConversion(const Value: AnsiString): Boolean;
 var
   n: Integer;
 begin
   Result := False;
   for n := 1 to Length(Value) do
-    if Ord(Value[n]) > 127 then
+    if (Ord(Value[n]) > 127) or (Ord(Value[n]) = 0) then
     begin
       Result := True;
       Break;
@@ -1349,35 +1652,311 @@ begin
 end;
 
 {==============================================================================}
-function IdealCharsetCoding(const Value: string; CharFrom: TMimeChar;
+function IdealCharsetCoding(const Value: AnsiString; CharFrom: TMimeChar;
   CharTo: TMimeSetChar): TMimeChar;
 var
-  n, m: Integer;
-  min, x: Integer;
-  s, t: string;
+  n: Integer;
+  max: Integer;
+  s, t, u: AnsiString;
+  CharSet: TMimeChar;
 begin
   Result := ISO_8859_1;
-  s := '';
-  for n := 1 to Length(Value) do
-    if Ord(Value[n]) > 127 then
-      s := s + Value[n];
-  min := 128;
+  s := Copy(Value, 1, 1024);  //max first 1KB for next procedure
+  max := 0;
   for n := Ord(Low(TMimeChar)) to Ord(High(TMimeChar)) do
-    if TMimeChar(n) in CharTo then
+  begin
+    CharSet := TMimeChar(n);
+    if CharSet in CharTo then
     begin
-      t := CharsetConversion(s, CharFrom, TMimeChar(n));
-      x := 0;
-      for m := 1 to Length(t) do
-        if t[m] = NotFoundChar then
-          Inc(x);
-      if x < min then
+      t := CharsetConversionTrans(s, CharFrom, CharSet, Replace_None, False);
+      u := CharsetConversionTrans(t, CharSet, CharFrom, Replace_None, False);
+      if s = u then
       begin
-        min := x;
-        Result := TMimeChar(n);
-        if x = 0 then
-          Break;
+        Result := CharSet;
+        Exit;
+      end;
+      if Length(u) > max then
+      begin
+        Result := CharSet;
+        max := Length(u);
       end;
     end;
+  end;
+end;
+
+{==============================================================================}
+function GetBOM(Value: TMimeChar): AnsiString;
+begin
+  Result := '';
+  case Value of
+    UCS_2:
+      Result := #$fe + #$ff;
+    UCS_4:
+      Result := #$00 + #$00 + #$fe + #$ff;
+    UCS_2LE:
+      Result := #$ff + #$fe;
+    UCS_4LE:
+      Result := #$ff + #$fe + #$00 + #$00;
+    UTF_8:
+      Result := #$ef + #$bb + #$bf;
+  end;
+end;
+
+{==============================================================================}
+function GetCPFromID(Value: AnsiString): TMimeChar;
+begin
+  Value := UpperCase(Value);
+  if (Pos('KAMENICKY', Value) > 0) or (Pos('895', Value) > 0) then
+    Result := CP895
+  else
+  if Pos('MUTF-7', Value) > 0 then
+    Result := UTF_7mod
+  else
+    Result := GetCPFromIconvID(Value);
+end;
+
+{==============================================================================}
+function GetIDFromCP(Value: TMimeChar): AnsiString;
+begin
+  case Value of
+    CP895:
+      Result := 'CP-895';
+    UTF_7mod:
+      Result := 'mUTF-7';
+  else
+    Result := GetIconvIDFromCP(Value);
+  end;
+end;
+
+{==============================================================================}
+initialization
+begin
+  IconvArr[0].Charset := ISO_8859_1;
+  IconvArr[0].Charname := 'ISO-8859-1 CP819 IBM819 ISO-IR-100 ISO8859-1 ISO_8859-1 ISO_8859-1:1987 L1 LATIN1 CSISOLATIN1';
+  IconvArr[1].Charset := UTF_8;
+  IconvArr[1].Charname := 'UTF-8';
+  IconvArr[2].Charset := UCS_2;
+  IconvArr[2].Charname := 'ISO-10646-UCS-2 UCS-2 CSUNICODE';
+  IconvArr[3].Charset := UCS_2;
+  IconvArr[3].Charname := 'UCS-2BE UNICODE-1-1 UNICODEBIG CSUNICODE11';
+  IconvArr[4].Charset := UCS_2LE;
+  IconvArr[4].Charname := 'UCS-2LE UNICODELITTLE';
+  IconvArr[5].Charset := UCS_4;
+  IconvArr[5].Charname := 'ISO-10646-UCS-4 UCS-4 CSUCS4';
+  IconvArr[6].Charset := UCS_4;
+  IconvArr[6].Charname := 'UCS-4BE';
+  IconvArr[7].Charset := UCS_2LE;
+  IconvArr[7].Charname := 'UCS-4LE';
+  IconvArr[8].Charset := UTF_16;
+  IconvArr[8].Charname := 'UTF-16';
+  IconvArr[9].Charset := UTF_16;
+  IconvArr[9].Charname := 'UTF-16BE';
+  IconvArr[10].Charset := UTF_16LE;
+  IconvArr[10].Charname := 'UTF-16LE';
+  IconvArr[11].Charset := UTF_32;
+  IconvArr[11].Charname := 'UTF-32';
+  IconvArr[12].Charset := UTF_32;
+  IconvArr[12].Charname := 'UTF-32BE';
+  IconvArr[13].Charset := UTF_32;
+  IconvArr[13].Charname := 'UTF-32LE';
+  IconvArr[14].Charset := UTF_7;
+  IconvArr[14].Charname := 'UNICODE-1-1-UTF-7 UTF-7 CSUNICODE11UTF7';
+  IconvArr[15].Charset := C99;
+  IconvArr[15].Charname := 'C99';
+  IconvArr[16].Charset := JAVA;
+  IconvArr[16].Charname := 'JAVA';
+  IconvArr[17].Charset := ISO_8859_1;
+  IconvArr[17].Charname := 'US-ASCII ANSI_X3.4-1968 ANSI_X3.4-1986 ASCII CP367 IBM367 ISO-IR-6 ISO646-US ISO_646.IRV:1991 US CSASCII';
+  IconvArr[18].Charset := ISO_8859_2;
+  IconvArr[18].Charname := 'ISO-8859-2 ISO-IR-101 ISO8859-2 ISO_8859-2 ISO_8859-2:1987 L2 LATIN2 CSISOLATIN2';
+  IconvArr[19].Charset := ISO_8859_3;
+  IconvArr[19].Charname := 'ISO-8859-3 ISO-IR-109 ISO8859-3 ISO_8859-3 ISO_8859-3:1988 L3 LATIN3 CSISOLATIN3';
+  IconvArr[20].Charset := ISO_8859_4;
+  IconvArr[20].Charname := 'ISO-8859-4 ISO-IR-110 ISO8859-4 ISO_8859-4 ISO_8859-4:1988 L4 LATIN4 CSISOLATIN4';
+  IconvArr[21].Charset := ISO_8859_5;
+  IconvArr[21].Charname := 'ISO-8859-5 CYRILLIC ISO-IR-144 ISO8859-5 ISO_8859-5 ISO_8859-5:1988 CSISOLATINCYRILLIC';
+  IconvArr[22].Charset := ISO_8859_6;
+  IconvArr[22].Charname := 'ISO-8859-6 ARABIC ASMO-708 ECMA-114 ISO-IR-127 ISO8859-6 ISO_8859-6 ISO_8859-6:1987 CSISOLATINARABIC';
+  IconvArr[23].Charset := ISO_8859_7;
+  IconvArr[23].Charname := 'ISO-8859-7 ECMA-118 ELOT_928 GREEK GREEK8 ISO-IR-126 ISO8859-7 ISO_8859-7 ISO_8859-7:1987 CSISOLATINGREEK';
+  IconvArr[24].Charset := ISO_8859_8;
+  IconvArr[24].Charname := 'ISO_8859-8 HEBREW ISO-8859-8 ISO-IR-138 ISO8859-8 ISO_8859-8:1988 CSISOLATINHEBREW';
+  IconvArr[25].Charset := ISO_8859_9;
+  IconvArr[25].Charname := 'ISO-8859-9 ISO-IR-148 ISO8859-9 ISO_8859-9 ISO_8859-9:1989 L5 LATIN5 CSISOLATIN5';
+  IconvArr[26].Charset := ISO_8859_10;
+  IconvArr[26].Charname := 'ISO-8859-10 ISO-IR-157 ISO8859-10 ISO_8859-10 ISO_8859-10:1992 L6 LATIN6 CSISOLATIN6';
+  IconvArr[27].Charset := ISO_8859_13;
+  IconvArr[27].Charname := 'ISO-8859-13 ISO-IR-179 ISO8859-13 ISO_8859-13 L7 LATIN7';
+  IconvArr[28].Charset := ISO_8859_14;
+  IconvArr[28].Charname := 'ISO-8859-14 ISO-CELTIC ISO-IR-199 ISO8859-14 ISO_8859-14 ISO_8859-14:1998 L8 LATIN8';
+  IconvArr[29].Charset := ISO_8859_15;
+  IconvArr[29].Charname := 'ISO-8859-15 ISO-IR-203 ISO8859-15 ISO_8859-15 ISO_8859-15:1998';
+  IconvArr[30].Charset := ISO_8859_16;
+  IconvArr[30].Charname := 'ISO-8859-16 ISO-IR-226 ISO8859-16 ISO_8859-16 ISO_8859-16:2000';
+  IconvArr[31].Charset := KOI8_R;
+  IconvArr[31].Charname := 'KOI8-R CSKOI8R';
+  IconvArr[32].Charset := KOI8_U;
+  IconvArr[32].Charname := 'KOI8-U';
+  IconvArr[33].Charset := KOI8_RU;
+  IconvArr[33].Charname := 'KOI8-RU';
+  IconvArr[34].Charset := CP1250;
+  IconvArr[34].Charname := 'WINDOWS-1250 CP1250 MS-EE';
+  IconvArr[35].Charset := CP1251;
+  IconvArr[35].Charname := 'WINDOWS-1251 CP1251 MS-CYRL';
+  IconvArr[36].Charset := CP1252;
+  IconvArr[36].Charname := 'WINDOWS-1252 CP1252 MS-ANSI';
+  IconvArr[37].Charset := CP1253;
+  IconvArr[37].Charname := 'WINDOWS-1253 CP1253 MS-GREEK';
+  IconvArr[38].Charset := CP1254;
+  IconvArr[38].Charname := 'WINDOWS-1254 CP1254 MS-TURK';
+  IconvArr[39].Charset := CP1255;
+  IconvArr[39].Charname := 'WINDOWS-1255 CP1255 MS-HEBR';
+  IconvArr[40].Charset := CP1256;
+  IconvArr[40].Charname := 'WINDOWS-1256 CP1256 MS-ARAB';
+  IconvArr[41].Charset := CP1257;
+  IconvArr[41].Charname := 'WINDOWS-1257 CP1257 WINBALTRIM';
+  IconvArr[42].Charset := CP1258;
+  IconvArr[42].Charname := 'WINDOWS-1258 CP1258';
+  IconvArr[43].Charset := ISO_8859_1;
+  IconvArr[43].Charname := '850 CP850 IBM850 CSPC850MULTILINGUAL';
+  IconvArr[44].Charset := CP862;
+  IconvArr[44].Charname := '862 CP862 IBM862 CSPC862LATINHEBREW';
+  IconvArr[45].Charset := CP866;
+  IconvArr[45].Charname := '866 CP866 IBM866 CSIBM866';
+  IconvArr[46].Charset := MAC;
+  IconvArr[46].Charname := 'MAC MACINTOSH MACROMAN CSMACINTOSH';
+  IconvArr[47].Charset := MACCE;
+  IconvArr[47].Charname := 'MACCENTRALEUROPE';
+  IconvArr[48].Charset := MACICE;
+  IconvArr[48].Charname := 'MACICELAND';
+  IconvArr[49].Charset := MACCRO;
+  IconvArr[49].Charname := 'MACCROATIAN';
+  IconvArr[50].Charset := MACRO;
+  IconvArr[50].Charname := 'MACROMANIA';
+  IconvArr[51].Charset := MACCYR;
+  IconvArr[51].Charname := 'MACCYRILLIC';
+  IconvArr[52].Charset := MACUK;
+  IconvArr[52].Charname := 'MACUKRAINE';
+  IconvArr[53].Charset := MACGR;
+  IconvArr[53].Charname := 'MACGREEK';
+  IconvArr[54].Charset := MACTU;
+  IconvArr[54].Charname := 'MACTURKISH';
+  IconvArr[55].Charset := MACHEB;
+  IconvArr[55].Charname := 'MACHEBREW';
+  IconvArr[56].Charset := MACAR;
+  IconvArr[56].Charname := 'MACARABIC';
+  IconvArr[57].Charset := MACTH;
+  IconvArr[57].Charname := 'MACTHAI';
+  IconvArr[58].Charset := ROMAN8;
+  IconvArr[58].Charname := 'HP-ROMAN8 R8 ROMAN8 CSHPROMAN8';
+  IconvArr[59].Charset := NEXTSTEP;
+  IconvArr[59].Charname := 'NEXTSTEP';
+  IconvArr[60].Charset := ARMASCII;
+  IconvArr[60].Charname := 'ARMSCII-8';
+  IconvArr[61].Charset := GEORGIAN_AC;
+  IconvArr[61].Charname := 'GEORGIAN-ACADEMY';
+  IconvArr[62].Charset := GEORGIAN_PS;
+  IconvArr[62].Charname := 'GEORGIAN-PS';
+  IconvArr[63].Charset := KOI8_T;
+  IconvArr[63].Charname := 'KOI8-T';
+  IconvArr[64].Charset := MULELAO;
+  IconvArr[64].Charname := 'MULELAO-1';
+  IconvArr[65].Charset := CP1133;
+  IconvArr[65].Charname := 'CP1133 IBM-CP1133';
+  IconvArr[66].Charset := TIS620;
+  IconvArr[66].Charname := 'TIS-620 ISO-IR-166 TIS620 TIS620-0 TIS620.2529-1 TIS620.2533-0 TIS620.2533-1';
+  IconvArr[67].Charset := CP874;
+  IconvArr[67].Charname := 'CP874 WINDOWS-874';
+  IconvArr[68].Charset := VISCII;
+  IconvArr[68].Charname := 'VISCII VISCII1.1-1 CSVISCII';
+  IconvArr[69].Charset := TCVN;
+  IconvArr[69].Charname := 'TCVN TCVN-5712 TCVN5712-1 TCVN5712-1:1993';
+  IconvArr[70].Charset := ISO_IR_14;
+  IconvArr[70].Charname := 'ISO-IR-14 ISO646-JP JIS_C6220-1969-RO JP CSISO14JISC6220RO';
+  IconvArr[71].Charset := JIS_X0201;
+  IconvArr[71].Charname := 'JISX0201-1976 JIS_X0201 X0201 CSHALFWIDTHKATAKANA';
+  IconvArr[72].Charset := JIS_X0208;
+  IconvArr[72].Charname := 'ISO-IR-87 JIS0208 JIS_C6226-1983 JIS_X0208 JIS_X0208-1983 JIS_X0208-1990 X0208 CSISO87JISX0208';
+  IconvArr[73].Charset := JIS_X0212;
+  IconvArr[73].Charname := 'ISO-IR-159 JIS_X0212 JIS_X0212-1990 JIS_X0212.1990-0 X0212 CSISO159JISX02121990';
+  IconvArr[74].Charset := GB1988_80;
+  IconvArr[74].Charname := 'CN GB_1988-80 ISO-IR-57 ISO646-CN CSISO57GB1988';
+  IconvArr[75].Charset := GB2312_80;
+  IconvArr[75].Charname := 'CHINESE GB_2312-80 ISO-IR-58 CSISO58GB231280';
+  IconvArr[76].Charset := ISO_IR_165;
+  IconvArr[76].Charname := 'CN-GB-ISOIR165 ISO-IR-165';
+  IconvArr[77].Charset := ISO_IR_149;
+  IconvArr[77].Charname := 'ISO-IR-149 KOREAN KSC_5601 KS_C_5601-1987 KS_C_5601-1989 CSKSC56011987';
+  IconvArr[78].Charset := EUC_JP;
+  IconvArr[78].Charname := 'EUC-JP EUCJP EXTENDED_UNIX_CODE_PACKED_FORMAT_FOR_JAPANESE CSEUCPKDFMTJAPANESE';
+  IconvArr[79].Charset := SHIFT_JIS;
+  IconvArr[79].Charname := 'SHIFT-JIS MS_KANJI SHIFT_JIS SJIS CSSHIFTJIS';
+  IconvArr[80].Charset := CP932;
+  IconvArr[80].Charname := 'CP932';
+  IconvArr[81].Charset := ISO_2022_JP;
+  IconvArr[81].Charname := 'ISO-2022-JP CSISO2022JP';
+  IconvArr[82].Charset := ISO_2022_JP1;
+  IconvArr[82].Charname := 'ISO-2022-JP-1';
+  IconvArr[83].Charset := ISO_2022_JP2;
+  IconvArr[83].Charname := 'ISO-2022-JP-2 CSISO2022JP2';
+  IconvArr[84].Charset := GB2312;
+  IconvArr[84].Charname := 'CN-GB EUC-CN EUCCN GB2312 CSGB2312';
+  IconvArr[85].Charset := CP936;
+  IconvArr[85].Charname := 'CP936 GBK';
+  IconvArr[86].Charset := GB18030;
+  IconvArr[86].Charname := 'GB18030';
+  IconvArr[87].Charset := ISO_2022_CN;
+  IconvArr[87].Charname := 'ISO-2022-CN CSISO2022CN';
+  IconvArr[88].Charset := ISO_2022_CNE;
+  IconvArr[88].Charname := 'ISO-2022-CN-EXT';
+  IconvArr[89].Charset := HZ;
+  IconvArr[89].Charname := 'HZ HZ-GB-2312';
+  IconvArr[90].Charset := EUC_TW;
+  IconvArr[90].Charname := 'EUC-TW EUCTW CSEUCTW';
+  IconvArr[91].Charset := BIG5;
+  IconvArr[91].Charname := 'BIG5 BIG-5 BIG-FIVE BIGFIVE CN-BIG5 CSBIG5';
+  IconvArr[92].Charset := CP950;
+  IconvArr[92].Charname := 'CP950';
+  IconvArr[93].Charset := BIG5_HKSCS;
+  IconvArr[93].Charname := 'BIG5-HKSCS BIG5HKSCS';
+  IconvArr[94].Charset := EUC_KR;
+  IconvArr[94].Charname := 'EUC-KR EUCKR CSEUCKR';
+  IconvArr[95].Charset := CP949;
+  IconvArr[95].Charname := 'CP949 UHC';
+  IconvArr[96].Charset := CP1361;
+  IconvArr[96].Charname := 'CP1361 JOHAB';
+  IconvArr[97].Charset := ISO_2022_KR;
+  IconvArr[97].Charname := 'ISO-2022-KR CSISO2022KR';
+  IconvArr[98].Charset := ISO_8859_1;
+  IconvArr[98].Charname := '437 CP437 IBM437 CSPC8CODEPAGE437';
+  IconvArr[99].Charset := CP737;
+  IconvArr[99].Charname := 'CP737';
+  IconvArr[100].Charset := CP775;
+  IconvArr[100].Charname := 'CP775 IBM775 CSPC775BALTIC';
+  IconvArr[101].Charset := CP852;
+  IconvArr[101].Charname := '852 CP852 IBM852 CSPCP852';
+  IconvArr[102].Charset := CP853;
+  IconvArr[102].Charname := 'CP853';
+  IconvArr[103].Charset := CP855;
+  IconvArr[103].Charname := '855 CP855 IBM855 CSIBM855';
+  IconvArr[104].Charset := CP857;
+  IconvArr[104].Charname := '857 CP857 IBM857 CSIBM857';
+  IconvArr[105].Charset := CP858;
+  IconvArr[105].Charname := 'CP858';
+  IconvArr[106].Charset := CP860;
+  IconvArr[106].Charname := '860 CP860 IBM860 CSIBM860';
+  IconvArr[107].Charset := CP861;
+  IconvArr[107].Charname := '861 CP-IS CP861 IBM861 CSIBM861';
+  IconvArr[108].Charset := CP863;
+  IconvArr[108].Charname := '863 CP863 IBM863 CSIBM863';
+  IconvArr[109].Charset := CP864;
+  IconvArr[109].Charname := 'CP864 IBM864 CSIBM864';
+  IconvArr[110].Charset := CP865;
+  IconvArr[110].Charname := '865 CP865 IBM865 CSIBM865';
+  IconvArr[111].Charset := CP869;
+  IconvArr[111].Charname := '869 CP-GR CP869 IBM869 CSIBM869';
+  IconvArr[112].Charset := CP1125;
+  IconvArr[112].Charname := 'CP1125';
 end;
 
 end.

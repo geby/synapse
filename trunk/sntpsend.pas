@@ -1,5 +1,5 @@
 {==============================================================================|
-| Project : Ararat Synapse                                       | 002.002.007 |
+| Project : Ararat Synapse                                       | 003.000.000 |
 |==============================================================================|
 | Content: SNTP client                                                         |
 |==============================================================================|
@@ -43,6 +43,11 @@
 |          (Found at URL: http://www.ararat.cz/synapse/)                       |
 |==============================================================================}
 
+{:@abstract( NTP and SNTP client)
+
+Used RFC: RFC-1305, RFC-2030
+}
+
 {$IFDEF FPC}
   {$MODE DELPHI}
 {$ENDIF}
@@ -61,7 +66,8 @@ const
   cNtpProtocol = 'ntp';
 
 type
-  PNtp = ^TNtp;
+
+  {:@abstract(Record containing the NTP packet.)}
   TNtp = packed record
     mode: Byte;
     stratum: Byte;
@@ -80,6 +86,12 @@ type
     Xmit2: Longint;
   end;
 
+  {:@abstract(Implementation of NTP and SNTP client protocol),
+   include time synchronisation. It can send NTP or SNTP time queries, or it
+   can receive NTP broadcasts too.
+   
+   Note: Are you missing properties for specify server address and port? Look to
+   parent @link(TSynaClient) too!}
   TSNTPSend = class(TSynaClient)
   private
     FNTPReply: TNtp;
@@ -91,21 +103,56 @@ type
     FSock: TUDPBlockSocket;
     FBuffer: string;
     FLi, FVn, Fmode : byte;
+    function StrToNTP(const Value: AnsiString): TNtp;
+    function NTPtoStr(const Value: Tntp): AnsiString;
+    procedure ClearNTP(var Value: Tntp);
   public
     constructor Create;
     destructor Destroy; override;
+
+    {:Decode 128 bit timestamp used in NTP packet to TDateTime type.}
     function DecodeTs(Nsec, Nfrac: Longint): TDateTime;
+
+    {:Decode TDateTime type to 128 bit timestamp used in NTP packet.}
     procedure EncodeTs(dt: TDateTime; var Nsec, Nfrac: Longint);
+
+    {:Send request to @link(TSynaClient.TargetHost) and wait for reply. If all
+     is OK, then result is @true and @link(NTPReply) and @link(NTPTime) are
+     valid.}
     function GetSNTP: Boolean;
+
+    {:Send request to @link(TSynaClient.TargetHost) and wait for reply. If all
+     is OK, then result is @true and @link(NTPReply) and @link(NTPTime) are
+     valid. Result time is after all needed corrections.}
     function GetNTP: Boolean;
+
+    {:Wait for broadcast NTP packet. If all OK, result is @true and
+     @link(NTPReply) and @link(NTPTime) are valid.}
     function GetBroadcastNTP: Boolean;
+
+    {:Holds last received NTP packet.}
     property NTPReply: TNtp read FNTPReply;
   published
+    {:Date and time of remote NTP or SNTP server. (UTC time!!!)}
     property NTPTime: TDateTime read FNTPTime;
+
+    {:Offset between your computer and remote NTP or SNTP server.}
     property NTPOffset: Double read FNTPOffset;
+
+    {:Delay between your computer and remote NTP or SNTP server.}
     property NTPDelay: Double read FNTPDelay;
+
+    {:Define allowed maximum difference between your time and remote time for
+     synchronising time. If difference is bigger, your system time is not
+     changed!}
     property MaxSyncDiff: double read FMaxSyncDiff write FMaxSyncDiff;
+
+    {:If @true, after successfull getting time is local computer clock
+     synchronised to given time.
+     For synchronising time you must have proper rights! (Usually Administrator)}
     property SyncTime: Boolean read FSyncTime write FSyncTime;
+
+    {:Socket object used for TCP/IP operation. Good for seting OnStatus hook, etc.}
     property Sock: TUDPBlockSocket read FSock;
   end;
 
@@ -127,14 +174,74 @@ begin
   inherited Destroy;
 end;
 
+function TSNTPSend.StrToNTP(const Value: AnsiString): TNtp;
+begin
+  if length(FBuffer) >= SizeOf(Result) then
+  begin
+    Result.mode := ord(Value[1]);
+    Result.stratum := ord(Value[2]);
+    Result.poll := ord(Value[3]);
+    Result.Precision := ord(Value[4]);
+    Result.RootDelay := DecodeLongInt(value, 5);
+    Result.RootDisperson := DecodeLongInt(value, 9);
+    Result.RefID := DecodeLongInt(value, 13);
+    Result.Ref1 := DecodeLongInt(value, 17);
+    Result.Ref2 := DecodeLongInt(value, 21);
+    Result.Org1 := DecodeLongInt(value, 25);
+    Result.Org2 := DecodeLongInt(value, 29);
+    Result.Rcv1 := DecodeLongInt(value, 33);
+    Result.Rcv2 := DecodeLongInt(value, 37);
+    Result.Xmit1 := DecodeLongInt(value, 41);
+    Result.Xmit2 := DecodeLongInt(value, 45);
+  end;
+
+end;
+
+function TSNTPSend.NTPtoStr(const Value: Tntp): AnsiString;
+begin
+  SetLength(Result, 4);
+  Result[1] := AnsiChar(Value.mode);
+  Result[2] := AnsiChar(Value.stratum);
+  Result[3] := AnsiChar(Value.poll);
+  Result[4] := AnsiChar(Value.precision);
+  Result := Result + CodeLongInt(Value.RootDelay);
+  Result := Result + CodeLongInt(Value.RootDisperson);
+  Result := Result + CodeLongInt(Value.RefID);
+  Result := Result + CodeLongInt(Value.Ref1);
+  Result := Result + CodeLongInt(Value.Ref2);
+  Result := Result + CodeLongInt(Value.Org1);
+  Result := Result + CodeLongInt(Value.Org2);
+  Result := Result + CodeLongInt(Value.Rcv1);
+  Result := Result + CodeLongInt(Value.Rcv2);
+  Result := Result + CodeLongInt(Value.Xmit1);
+  Result := Result + CodeLongInt(Value.Xmit2);
+end;
+
+procedure TSNTPSend.ClearNTP(var Value: Tntp);
+begin
+  Value.mode := 0;
+  Value.stratum := 0;
+  Value.poll := 0;
+  Value.Precision := 0;
+  Value.RootDelay := 0;
+  Value.RootDisperson := 0;
+  Value.RefID := 0;
+  Value.Ref1 := 0;
+  Value.Ref2 := 0;
+  Value.Org1 := 0;
+  Value.Org2 := 0;
+  Value.Rcv1 := 0;
+  Value.Rcv2 := 0;
+  Value.Xmit1 := 0;
+  Value.Xmit2 := 0;
+end;
+
 function TSNTPSend.DecodeTs(Nsec, Nfrac: Longint): TDateTime;
 const
   maxi = 4294967295.0;
 var
   d, d1: Double;
 begin
-  Nsec := synsock.htonl(Nsec);
-  Nfrac := synsock.htonl(Nfrac);
   d := Nsec;
   if d < 0 then
     d := maxi + d + 1;
@@ -165,13 +272,10 @@ begin
      d1 := d1 - maxi - 1;
   Nsec:=trunc(d);
   Nfrac:=trunc(d1);
-  Nsec := synsock.htonl(Nsec);
-  Nfrac := synsock.htonl(Nfrac);
 end;
 
 function TSNTPSend.GetBroadcastNTP: Boolean;
 var
-  NtpPtr: PNtp;
   x: Integer;
 begin
   Result := False;
@@ -183,8 +287,7 @@ begin
     if (FTargetHost = '0.0.0.0') or (FSock.GetRemoteSinIP = FSock.ResolveName(FTargetHost)) then
       if x >= SizeOf(NTPReply) then
       begin
-        NtpPtr := Pointer(FBuffer);
-        FNTPReply := NtpPtr^;
+        FNTPReply := StrToNTP(FBuffer);
         FNTPTime := DecodeTs(NTPReply.Xmit1, NTPReply.Xmit2);
         if FSyncTime and ((abs(FNTPTime - GetUTTime) * 86400) <= FMaxSyncDiff) then
           SetUTTime(FNTPTime);
@@ -196,23 +299,22 @@ end;
 function TSNTPSend.GetSNTP: Boolean;
 var
   q: TNtp;
-  NtpPtr: PNtp;
   x: Integer;
 begin
   Result := False;
   FSock.Bind(FIPInterface, cAnyPort);
   FSock.Connect(FTargetHost, FTargetPort);
-  FillChar(q, SizeOf(q), 0);
+  ClearNtp(q);
   q.mode := $1B;
-  FSock.SendBuffer(@q, SizeOf(q));
+  FBuffer := NTPtoStr(q);
+  FSock.SendString(FBuffer);
   FBuffer := FSock.RecvPacket(FTimeout);
   if FSock.LastError = 0 then
   begin
     x := Length(FBuffer);
     if x >= SizeOf(NTPReply) then
     begin
-      NtpPtr := Pointer(FBuffer);
-      FNTPReply := NtpPtr^;
+      FNTPReply := StrToNTP(FBuffer);
       FNTPTime := DecodeTs(NTPReply.Xmit1, NTPReply.Xmit2);
       if FSyncTime and ((abs(FNTPTime - GetUTTime) * 86400) <= FMaxSyncDiff) then
         SetUTTime(FNTPTime);
@@ -224,18 +326,18 @@ end;
 function TSNTPSend.GetNTP: Boolean;
 var
   q: TNtp;
-  NtpPtr: PNtp;
   x: Integer;
   t1, t2, t3, t4 : TDateTime;
 begin
   Result := False;
   FSock.Bind(FIPInterface, cAnyPort);
   FSock.Connect(FTargetHost, FTargetPort);
-  FillChar(q, SizeOf(q), 0);
+  ClearNtp(q);
   q.mode := $1B;
   t1 := GetUTTime;
   EncodeTs(t1, q.org1, q.org2);
-  FSock.SendBuffer(@q, SizeOf(q));
+  FBuffer := NTPtoStr(q);
+  FSock.SendString(FBuffer);
   FBuffer := FSock.RecvPacket(FTimeout);
   if FSock.LastError = 0 then
   begin
@@ -243,8 +345,7 @@ begin
     t4 := GetUTTime;
     if x >= SizeOf(NTPReply) then
     begin
-      NtpPtr := Pointer(FBuffer);
-      FNTPReply := NtpPtr^;
+      FNTPReply := StrToNTP(FBuffer);
       FLi := (NTPReply.mode and $C0) shr 6;
       FVn := (NTPReply.mode and $38) shr 3;
       Fmode := NTPReply.mode and $07;

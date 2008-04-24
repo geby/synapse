@@ -42,6 +42,8 @@
 |          (Found at URL: http://www.ararat.cz/synapse/)                       |
 |==============================================================================}
 
+{:@exclude}
+
 {$IFDEF FPC}
   {$MODE DELPHI}
 {$ENDIF}

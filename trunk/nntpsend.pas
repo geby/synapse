@@ -1,5 +1,5 @@
 {==============================================================================|
-| Project : Ararat Synapse                                       | 001.003.003 |
+| Project : Ararat Synapse                                       | 001.004.000 |
 |==============================================================================|
 | Content: NNTP client                                                         |
 |==============================================================================|
@@ -42,7 +42,11 @@
 |          (Found at URL: http://www.ararat.cz/synapse/)                       |
 |==============================================================================}
 
-//RFC-977, RFC-2980
+{:@abstract(NNTP client)
+NNTP (network news transfer protocol)
+
+Used RFC: RFC-977, RFC-2980
+}
 
 {$IFDEF FPC}
   {$MODE DELPHI}
@@ -58,12 +62,20 @@ uses
   {$IFDEF STREAMSEC}
   TlsInternalServer, TlsSynaSock,
   {$ENDIF}
-  blcksock, synautil, synacode;
+  blcksock, synautil;
 
 const
   cNNTPProtocol = 'nntp';
 
 type
+
+  {:abstract(Implementation of Network News Transfer Protocol.
+
+   Note: Are you missing properties for setting Username and Password? Look to
+   parent @link(TSynaClient) object!
+
+   Are you missing properties for specify server address and port? Look to
+   parent @link(TSynaClient) too!}
   TNNTPSend = class(TSynaClient)
   private
     {$IFDEF STREAMSEC}
@@ -76,8 +88,6 @@ type
     FResultString: string;
     FData: TStringList;
     FDataToSend: TStringList;
-    FUsername: string;
-    FPassword: string;
     FAutoTLS: Boolean;
     FFullSSL: Boolean;
     FNNTPcap: TStringList;
@@ -88,40 +98,105 @@ type
   public
     constructor Create;
     destructor Destroy; override;
+
+    {:Connects to NNTP server and begin session.}
     function Login: Boolean;
-    procedure Logout;
+
+    {:Logout from NNTP server and terminate session.}
+    function Logout: Boolean;
+
+    {:By this you can call any NNTP command.}
     function DoCommand(const Command: string): boolean;
+
+    {:by this you can call any NNTP command. This variant is used for commands
+     for download information from server.}
     function DoCommandRead(const Command: string): boolean;
+
+    {:by this you can call any NNTP command. This variant is used for commands
+     for upload information to server.}
     function DoCommandWrite(const Command: string): boolean;
+
+    {:Download full message to @link(data) property. Value can be number of
+     message or message-id (in brackets).}
     function GetArticle(const Value: string): Boolean;
+
+    {:Download only body of message to @link(data) property. Value can be number
+     of message or message-id (in brackets).}
     function GetBody(const Value: string): Boolean;
+
+    {:Download only headers of message to @link(data) property. Value can be
+     number of message or message-id (in brackets).}
     function GetHead(const Value: string): Boolean;
+
+    {:Get message status. Value can be number of message or message-id
+     (in brackets).}
     function GetStat(const Value: string): Boolean;
+
+    {:Select given group.}
     function SelectGroup(const Value: string): Boolean;
+
+    {:Tell to server 'I have mesage with given message-ID.' If server need this
+     message, message is uploaded to server.}
     function IHave(const MessID: string): Boolean;
+
+    {:Move message pointer to last item in group.}
     function GotoLast: Boolean;
+
+    {:Move message pointer to next item in group.}
     function GotoNext: Boolean;
+
+    {:Download to @link(data) property list of all groups on NNTP server.}
     function ListGroups: Boolean;
+
+    {:Download to @link(data) property list of all groups created after given time.}
     function ListNewGroups(Since: TDateTime): Boolean;
+
+    {:Download to @link(data) property list of message-ids in given group since
+     given time.}
     function NewArticles(const Group: string; Since: TDateTime): Boolean;
+
+    {:Upload new article to server. (for new messages by you)}
     function PostArticle: Boolean;
+
+    {:Tells to remote NNTP server 'I am not NNTP client, but I am another NNTP
+     server'.}
     function SwitchToSlave: Boolean;
+
+    {:Call NNTP XOVER command.}
     function Xover(xoStart, xoEnd: string): boolean;
+
+    {:Call STARTTLS command for upgrade connection to SSL/TLS mode.}
     function StartTLS: Boolean;
+
+    {:Try to find given capability in extension list. This list is getted after
+     successful login to NNTP server. If extension capability is not found,
+     then return is empty string.}
     function FindCap(const Value: string): string;
+
+    {:Try get list of server extensions. List is returned in @link(data) property.}
     function ListExtensions: Boolean;
   published
-    property Username: string read FUsername write FUsername;
-    property Password: string read FPassword write FPassword;
+    {:Result code number of last operation.}
     property ResultCode: Integer read FResultCode;
+
+    {:String description of last result code from NNTP server.}
     property ResultString: string read FResultString;
+
+    {:Readed data. (message, etc.)}
     property Data: TStringList read FData;
+
+    {:If is set to @true, then upgrade to SSL/TLS mode after login if remote
+     server support it.}
     property AutoTLS: Boolean read FAutoTLS Write FAutoTLS;
+
+    {:SSL/TLS mode is used from first contact to server. Servers with full
+     SSL/TLS mode usualy using non-standard TCP port!}
     property FullSSL: Boolean read FFullSSL Write FFullSSL;
 {$IFDEF STREAMSEC}
     property Sock: TSsTCPBlockSocket read FSock;
     property TLSServer: TCustomTLSInternalServer read FTLSServer write FTLSServer;
 {$ELSE}
+    {:Socket object used for TCP/IP operation. Good for seting OnStatus hook, etc.}
     property Sock: TTCPBlockSocket read FSock;
 {$ENDIF}
   end;
@@ -144,8 +219,6 @@ begin
   FSock.ConvertLineEnd := True;
   FTimeout := 60000;
   FTargetPort := cNNTPProtocol;
-  FUsername := '';
-  FPassword := '';
   FAutoTLS := False;
   FFullSSL := False;
 end;
@@ -246,9 +319,9 @@ begin
   Result := (ReadResult div 100) = 2;
   ListExtensions;
   FNNTPcap.Assign(Fdata);
-  if result then
+  if Result then
     if (not FullSSL) and FAutoTLS and (FindCap('STARTTLS') <> '') then
-      result := StartTLS;
+      Result := StartTLS;
   if (FUsername <> '') and Result then
   begin
     FSock.SendString('AUTHINFO USER ' + FUsername + CRLF);
@@ -260,10 +333,10 @@ begin
   end;
 end;
 
-procedure TNNTPSend.Logout;
+function TNNTPSend.Logout: Boolean;
 begin
   FSock.SendString('QUIT' + CRLF);
-  ReadResult;
+  Result := (ReadResult div 100) = 2;
   FSock.CloseSocket;
 end;
 

@@ -1,9 +1,9 @@
 {==============================================================================|
-| Project : Ararat Synapse                                       | 002.004.008 |
+| Project : Ararat Synapse                                       | 002.006.002 |
 |==============================================================================|
 | Content: MIME support procedures and functions                               |
 |==============================================================================|
-| Copyright (c)1999-2003, Lukas Gebauer                                        |
+| Copyright (c)1999-2004, Lukas Gebauer                                        |
 | All rights reserved.                                                         |
 |                                                                              |
 | Redistribution and use in source and binary forms, with or without           |
@@ -33,7 +33,7 @@
 | DAMAGE.                                                                      |
 |==============================================================================|
 | The Initial Developer of the Original Code is Lukas Gebauer (Czech Republic).|
-| Portions created by Lukas Gebauer are Copyright (c)2000-2003.                |
+| Portions created by Lukas Gebauer are Copyright (c)2000-2004.                |
 | All Rights Reserved.                                                         |
 |==============================================================================|
 | Contributor(s):                                                              |
@@ -42,10 +42,18 @@
 |          (Found at URL: http://www.ararat.cz/synapse/)                       |
 |==============================================================================}
 
+{:@abstract(MIME part handling)
+Handling with MIME parts.
+
+Used RFC: RFC-2045
+}
+
 {$IFDEF FPC}
   {$MODE DELPHI}
 {$ENDIF}
 {$H+}
+{$Q-}
+{$R-}
 
 unit mimepart;
 
@@ -65,14 +73,41 @@ uses
 type
 
   TMimePart = class;
+
+  {:@abstract(Procedural type for @link(TMimepart.Walkpart) hook). This hook is used for
+   easy walking through MIME subparts.}
   THookWalkPart = procedure(const Sender: TMimePart) of object;
 
-  TMimePrimary = (MP_TEXT, MP_MULTIPART,
-    MP_MESSAGE, MP_BINARY);
+  {:The four types of MIME parts. (textual, multipart, message or any other
+   binary data.)}
+  TMimePrimary = (MP_TEXT, MP_MULTIPART, MP_MESSAGE, MP_BINARY);
 
+  {:The various types of possible part encodings.}
   TMimeEncoding = (ME_7BIT, ME_8BIT, ME_QUOTED_PRINTABLE,
     ME_BASE64, ME_UU, ME_XX);
 
+  {:@abstract(Object for working with parts of MIME e-mail.)
+   Each TMimePart object can handle any number of nested subparts as new
+   TMimepart objects. It can handle any tree hierarchy structure of nested MIME
+   subparts itself.
+
+   Basic tasks are:
+
+   Decoding of MIME message:
+   - store message into Lines property
+   - call DecomposeParts. Now you have decomposed MIME parts in all nested levels!
+   - now you can explore all properties and subparts. (You can use WalkPart method)
+   - if you need decode part, call DecodePart.
+
+   Encoding of MIME message:
+
+   - if you need multipart message, you must create subpart by AddSubPart.
+   - set all properties of all parts.
+   - set content of part into DecodedLines stream
+   - encode this stream by EncodePart.
+   - compose full message by ComposeParts. (it build full MIME message from all subparts. Do not call this method for each subpart! It is needed on root part!)
+   - encoded MIME message is stored in Lines property.
+  }
   TMimePart = class(TObject)
   private
     FPrimary: string;
@@ -108,48 +143,171 @@ type
   public
     constructor Create;
     destructor Destroy; override;
+
+    {:Assign content of another object to this object. (Only this part,
+     not subparts!)}
     procedure Assign(Value: TMimePart);
+
+    {:Assign content of another object to this object. (With all subparts!)}
     procedure AssignSubParts(Value: TMimePart);
+
+    {:Clear all data values to default values. It also call @link(ClearSubparts).}
     procedure Clear;
+
+    {:Decode Mime part from @link(Lines) to @link(DecodedLines).}
     procedure DecodePart;
+
+    {:Parse header lines from Headers property into another properties.}
     procedure DecodePartHeader;
+
+    {:Encode mime part from @link(DecodedLines) to @link(Lines) and build mime
+     headers.}
     procedure EncodePart;
+
+    {:Build header lines in Headers property from another properties.}
     procedure EncodePartHeader;
+
+    {:generate primary and secondary mime type from filename extension in value.
+     If type not recognised, it return 'Application/octet-string' type.}
     procedure MimeTypeFromExt(Value: string);
+
+    {:Return number of decomposed subparts. (On this level! Each of this
+     subparts can hold any number of their own nested subparts!)}
     function GetSubPartCount: integer;
+
+    {:Get nested subpart object as new TMimePart. For getting maximum possible
+     index you can use @link(GetSubPartCount) method.}
     function GetSubPart(index: integer): TMimePart;
+
+    {:delete subpart on given index.}
     procedure DeleteSubPart(index: integer);
+
+    {:Clear and destroy all subpart TMimePart objects.}
     procedure ClearSubParts;
+
+    {:Add and create new subpart.}
     function AddSubPart: TMimePart;
+
+    {:E-mail message in @link(Lines) property is parsed into this object.
+     E-mail headers are stored in @link(Headers) property and is parsed into
+     another properties automaticly. Not need call @link(DecodePartHeader)!
+     Content of message (part) is stored into @link(PartBody) property. This
+     part is in undecoded form! If you need decode it, then you must call
+     @link(DecodePart) method by your hands. Lot of another properties is filled
+     also.
+
+     Decoding of parts you must call separately due performance reasons. (Not
+     needed to decode all parts in all reasons.)
+
+     For each MIME subpart is created new TMimepart object (accessible via
+     method @link(GetSubPart)).}
     procedure DecomposeParts;
+
+    {:This part and all subparts is composed into one MIME message stored in
+     @link(Lines) property.}
     procedure ComposeParts;
+
+    {:By calling this method is called @link(OnWalkPart) event for each part
+     and their subparts. It is very good for calling some code for each part in
+     MIME message}
     procedure WalkPart;
+
+    {:Return @true when is possible create next subpart. (@link(maxSublevel)
+     is still not reached)}
     function CanSubPart: boolean;
   published
+    {:Primary Mime type of part. (i.e. 'application') Writing to this property
+     automaticly generate value of @link(PrimaryCode).}
     property Primary: string read FPrimary write SetPrimary;
+
+    {:String representation of used Mime encoding in part. (i.e. 'base64')
+     Writing to this property automaticly generate value of @link(EncodingCode).}
     property Encoding: string read FEncoding write SetEncoding;
+
+    {:String representation of used Mime charset in part. (i.e. 'iso-8859-1')
+     Writing to this property automaticly generate value of @link(CharsetCode).
+     Charset is used only for text parts.}
     property Charset: string read FCharset write SetCharset;
+
+    {:Define default charset for decoding text MIME parts without charset
+     specification. Default value is 'ISO-8859-1' by RCF documents.
+     But Microsoft Outlook use windows codings as default. This property allows
+     properly decode textual parts from some broken versions of Microsoft
+     Outlook. (this is bad software!)}
     property DefaultCharset: string read FDefaultCharset write FDefaultCharset;
+
+    {:Decoded primary type. Possible values are: MP_TEXT, MP_MULTIPART,
+     MP_MESSAGE and MP_BINARY. If type not recognised, result is MP_BINARY.}
     property PrimaryCode: TMimePrimary read FPrimaryCode Write FPrimaryCode;
+
+    {:Decoded encoding type. Possible values are: ME_7BIT, ME_8BIT,
+     ME_QUOTED_PRINTABLE and ME_BASE64. If type not recognised, result is
+     ME_7BIT.}
     property EncodingCode: TMimeEncoding read FEncodingCode Write FEncodingCode;
+
+    {:Decoded charset type. Possible values are defined in @link(SynaChar) unit.}
     property CharsetCode: TMimeChar read FCharsetCode Write FCharsetCode;
+
+    {:System charset type. Default value is charset used by default in your
+     operating system.}
     property TargetCharset: TMimeChar read FTargetCharset Write FTargetCharset;
+
+    {:Secondary Mime type of part. (i.e. 'mixed')}
     property Secondary: string read FSecondary Write FSecondary;
+
+    {:Description of Mime part.}
     property Description: string read FDescription Write FDescription;
+
+    {:Value of content disposition field. (i.e. 'inline' or 'attachment')}
     property Disposition: string read FDisposition Write FDisposition;
+
+    {:Content ID.}
     property ContentID: string read FContentID Write FContentID;
+
+    {:Boundary delimiter of multipart Mime part. Used only in multipart part.}
     property Boundary: string read FBoundary Write FBoundary;
+
+    {:Filename of file in binary part.}
     property FileName: string read FFileName Write FFileName;
+
+    {:String list with lines contains mime part (It can be a full message).}
     property Lines: TStringList read FLines;
+
+    {:Encoded form of MIME part data.}
     property PartBody: TStringList read FPartBody;
+
+    {:All header lines of MIME part.}
     property Headers: TStringList read FHeaders;
+
+    {:On multipart this contains part of message between first line of message
+     and first boundary.}
     property PrePart: TStringList read FPrePart;
+
+    {:On multipart this contains part of message between last boundary and end
+     of message.}
     property PostPart: TStringList read FPostPart;
+
+    {:Stream with decoded form of budy part.}
     property DecodedLines: TMemoryStream read FDecodedLines;
+
+    {:Show nested level in subpart tree. Value 0 means root part. 1 means
+     subpart from this root. etc.}
     property SubLevel: integer read FSubLevel write FSubLevel;
+
+    {:Specify maximum sublevel value for decomposing.}
     property MaxSubLevel: integer read FMaxSubLevel write FMaxSubLevel;
+
+    {:When is @true, then this part maybe(!) have included some uuencoded binary
+    data.}
     property AttachInside: boolean read FAttachInside;
+
+    {:Here you can assign hook procedure for walking through all part and their
+     subparts.}
     property OnWalkPart: THookWalkPart read FOnWalkPart write FOnWalkPart;
+
+    {:Here you can specify maximum line length for encoding of MIME part.
+     If line is longer, then is splitted by standard of MIME. Correct MIME
+     mailers can de-split this line into original length.}
     property MaxLineLength: integer read FMaxLineLength Write FMaxLineLength;
   end;
 
@@ -185,7 +343,11 @@ const
     ('ZIP', 'application', 'ZIP')
     );
 
+{:Read header from "Value" stringlist beginning at "Index" position. If header
+ is Splitted into multiple lines, then this procedure de-split it into one line.}
 function NormalizeHeader(Value: TStrings; var Index: Integer): string;
+
+{:Generates a unique boundary string.}
 function GenerateBoundary: string;
 
 implementation
@@ -206,7 +368,7 @@ begin
       for n := 1 to Length(t) do
         if t[n] = #9 then
           t[n] := ' ';
-      if t[1] <> ' ' then
+      if not(t[1] in [' ', '"', ':', '=']) then
         Break
       else
       begin
@@ -401,12 +563,11 @@ begin
   //extract prepart
   if FPrimaryCode = MP_MULTIPART then
   begin
-    SkipEmpty;
     while FLines.Count > x do
     begin
-      s := TrimRight(FLines[x]);
+      s := FLines[x];
       Inc(x);
-      if s = '--' + FBoundary then
+      if TrimRight(s) = '--' + FBoundary then
         Break;
       FPrePart.Add(s);
       if not FAttachInside then
@@ -428,7 +589,6 @@ begin
             Break;
           Mime.Lines.Add(s);
         end;
-        StringsTrim(Mime.Lines);
         Mime.DecomposeParts;
       end
       else
@@ -451,26 +611,22 @@ begin
       Inc(x);
       Mime.Lines.Add(s);
     end;
-    StringsTrim(Mime.Lines);
     Mime.DecomposeParts;
   end
   else
   begin
-    SkipEmpty;
     while FLines.Count > x do
     begin
-      s := TrimRight(FLines[x]);
+      s := FLines[x];
       Inc(x);
       FPartBody.Add(s);
       if not FAttachInside then
         FAttachInside := IsUUcode(s);
     end;
-    StringsTrim(FPartBody);
   end;
   //extract postpart
   if FPrimaryCode = MP_MULTIPART then
   begin
-    SkipEmpty;
     while FLines.Count > x do
     begin
       s := TrimRight(FLines[x]);
@@ -479,7 +635,6 @@ begin
       if not FAttachInside then
         FAttachInside := IsUUcode(s);
     end;
-    StringsTrim(FPostPart);
   end;
 end;
 
@@ -570,7 +725,8 @@ end;
 procedure TMIMEPart.DecodePart;
 var
   n: Integer;
-  s: string;
+  s, t: string;
+  b: Boolean;
 begin
   FDecodedLines.Clear;
   case FEncodingCode of
@@ -591,8 +747,27 @@ begin
     s := FPartBody.Text;
   end;
   if FPrimaryCode = MP_TEXT then
-    s := CharsetConversion(s, FCharsetCode, FTargetCharset);
-  FDecodedLines.Write(Pointer(s)^, Length(s));
+    if uppercase(FSecondary) = 'HTML' then
+    begin
+      b := False;
+      for n := 0 to FPartBody.Count - 1 do
+      begin
+        t := uppercase(FPartBody[n]);
+        if Pos('HTTP-EQUIV', t) > 0 then
+          if Pos('CONTENT-TYPE', t) > 0 then
+          begin
+            b := True;
+            Break;
+          end;
+        if Pos('</HEAD>', t) > 0 then
+          Break;
+      end;
+      if not b then
+        s := CharsetConversion(s, FCharsetCode, FTargetCharset);
+    end
+    else
+      s := CharsetConversion(s, FCharsetCode, FTargetCharset);
+  WriteStrToStream(FDecodedLines, s);
   FDecodedLines.Seek(0, soFromBeginning);
 end;
 
@@ -620,39 +795,39 @@ begin
       su := UpperCase(s);
       if Pos('CONTENT-TYPE:', su) = 1 then
       begin
-        st := SeparateRight(su, ':');
-        st2 := SeparateLeft(st, ';');
-        Primary := SeparateLeft(st2, '/');
-        FSecondary := SeparateRight(st2, '/');
+        st := Trim(SeparateRight(su, ':'));
+        st2 := Trim(SeparateLeft(st, ';'));
+        Primary := Trim(SeparateLeft(st2, '/'));
+        FSecondary := Trim(SeparateRight(st2, '/'));
         if (FSecondary = Primary) and (Pos('/', st2) < 1) then
           FSecondary := '';
         case FPrimaryCode of
           MP_TEXT:
             begin
-              Charset := UpperCase(GetParameter(s, 'charset='));
-              FFileName := GetParameter(s, 'name=');
+              Charset := UpperCase(GetParameter(s, 'charset'));
+              FFileName := GetParameter(s, 'name');
             end;
           MP_MULTIPART:
-            FBoundary := GetParameter(s, 'Boundary=');
+            FBoundary := GetParameter(s, 'Boundary');
           MP_MESSAGE:
             begin
             end;
           MP_BINARY:
-            FFileName := GetParameter(s, 'name=');
+            FFileName := GetParameter(s, 'name');
         end;
       end;
       if Pos('CONTENT-TRANSFER-ENCODING:', su) = 1 then
-        Encoding := SeparateRight(su, ':');
+        Encoding := Trim(SeparateRight(su, ':'));
       if Pos('CONTENT-DESCRIPTION:', su) = 1 then
-        FDescription := SeparateRight(s, ':');
+        FDescription := Trim(SeparateRight(s, ':'));
       if Pos('CONTENT-DISPOSITION:', su) = 1 then
       begin
         FDisposition := SeparateRight(su, ':');
         FDisposition := Trim(SeparateLeft(FDisposition, ';'));
-        fn := GetParameter(s, 'FileName=');
+        fn := GetParameter(s, 'FileName');
       end;
       if Pos('CONTENT-ID:', su) = 1 then
-        FContentID := SeparateRight(s, ':');
+        FContentID := Trim(SeparateRight(s, ':'));
     end;
   if FFileName = '' then
     FFileName := fn;
@@ -668,6 +843,7 @@ var
   s, t: string;
   n, x: Integer;
   d1, d2: integer;
+  NeedBOM: Boolean;
 begin
   if (FEncodingCode = ME_UU) or (FEncodingCode = ME_XX) then
     Encoding := 'base64';
@@ -675,6 +851,7 @@ begin
   FPartBody.Clear;
   FDecodedLines.Seek(0, soFromBeginning);
   try
+    NeedBOM := True;
     case FPrimaryCode of
       MP_MULTIPART, MP_MESSAGE:
         FPartBody.LoadFromStream(FDecodedLines);
@@ -683,11 +860,19 @@ begin
         begin
           while FDecodedLines.Position < FDecodedLines.Size do
           begin
-            Setlength(s, 54);
-            x := FDecodedLines.Read(pointer(s)^, 54);
-            Setlength(s, x);
+            s := ReadStrFromStream(FDecodedLines, 54);
+//            Setlength(s, 54);
+//            x := FDecodedLines.Read(pointer(s)^, 54);
+//            Setlength(s, x);
             if FPrimaryCode = MP_TEXT then
+            begin
               s := CharsetConversion(s, FTargetCharset, FCharsetCode);
+              if NeedBOM then
+              begin
+                s := GetBOM(FCharSetCode) + s;
+                NeedBOM := False;
+              end;
+            end;
             s := EncodeBase64(s);
             FPartBody.Add(s);
           end;
@@ -696,9 +881,10 @@ begin
         begin
           if FPrimaryCode = MP_BINARY then
           begin
-            SetLength(s, FDecodedLines.Size);
-            x := FDecodedLines.Read(pointer(s)^, FDecodedLines.Size);
-            Setlength(s, x);
+            s := ReadStrFromStream(FDecodedLines, FDecodedLines.Size);
+//            SetLength(s, FDecodedLines.Size);
+//            x := FDecodedLines.Read(pointer(s)^, FDecodedLines.Size);
+//            Setlength(s, x);
             l.Add(s);
           end
           else
@@ -707,13 +893,17 @@ begin
           begin
             s := l[n];
             if (FPrimaryCode = MP_TEXT) and (FEncodingCode <> ME_7BIT) then
+            begin
               s := CharsetConversion(s, FTargetCharset, FCharsetCode);
+              if NeedBOM then
+              begin
+                s := GetBOM(FCharSetCode) + s;
+                NeedBOM := False;
+              end;
+            end;
             if FEncodingCode = ME_QUOTED_PRINTABLE then
             begin
-              if FPrimaryCode = MP_BINARY then
-                s := EncodeQuotedPrintable(s)
-              else
-                s := EncodeTriplet(s, '=', [Char(0)..Char(31), '=', Char(127)..Char(255)]);
+              s := EncodeQuotedPrintable(s);
               repeat
                 if Length(s) < FMaxLineLength then
                 begin
@@ -908,7 +1098,7 @@ end;
 function TMIMEPart.IsUUcode(Value: string): boolean;
 begin
   Value := UpperCase(Value);
-  Result := (pos('BEGIN ', Value) = 1) and (SeparateRight(Value, ' ') <> '');
+  Result := (pos('BEGIN ', Value) = 1) and (Trim(SeparateRight(Value, ' ')) <> '');
 end;
 
 {==============================================================================}
