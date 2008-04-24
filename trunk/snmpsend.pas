@@ -1,5 +1,5 @@
 {==============================================================================|
-| Project : Delphree - Synapse                                   | 002.003.005 |
+| Project : Delphree - Synapse                                   | 002.003.006 |
 |==============================================================================|
 | Content: SNMP client                                                         |
 |==============================================================================|
@@ -18,7 +18,7 @@
 | All Rights Reserved.                                                         |
 |==============================================================================|
 | Contributor(s):                                                              |
-|   Jean-Fabien Connault (jfconnault@mail.dotcom.fr)                           |
+|   Jean-Fabien Connault (cycocrew@worldnet.fr)                                |
 |==============================================================================|
 | History: see HISTORY.HTM from distribution package                           |
 |          (Found at URL: http://www.ararat.cz/synapse/)                       |
@@ -38,14 +38,14 @@ uses
 const
   cSnmpProtocol = '161';
 
-//PDU type
+  //PDU type
   PDUGetRequest = $A0;
   PDUGetNextRequest = $A1;
   PDUGetResponse = $A2;
   PDUSetRequest = $A3;
   PDUTrap = $A4;
 
-//errors
+  //errors
   ENoError = 0;
   ETooBig = 1;
   ENoSuchName = 2;
@@ -60,9 +60,9 @@ type
     FValue: string;
     FValueType: Integer;
   published
-    property OID: string read FOID Write FOID;
-    property Value: string read FValue Write FValue;
-    property ValueType: Integer read FValueType Write FValueType;
+    property OID: string read FOID write FOID;
+    property Value: string read FValue write FValue;
+    property ValueType: Integer read FValueType write FValueType;
   end;
 
   TSNMPRec = class(TObject)
@@ -84,12 +84,12 @@ type
     procedure MIBDelete(Index: Integer);
     function MIBGet(const MIB: string): string;
   published
-    property Version: Integer read FVersion Write FVersion;
-    property Community: string read FCommunity Write FCommunity;
-    property PDUType: Integer read FPDUType Write FPDUType;
-    property ID: Integer read FID Write FID;
-    property ErrorStatus: Integer read FErrorStatus Write FErrorStatus;
-    property ErrorIndex: Integer read FErrorIndex Write FErrorIndex;
+    property Version: Integer read FVersion write FVersion;
+    property Community: string read FCommunity write FCommunity;
+    property PDUType: Integer read FPDUType write FPDUType;
+    property ID: Integer read FID write FID;
+    property ErrorStatus: Integer read FErrorStatus write FErrorStatus;
+    property ErrorIndex: Integer read FErrorIndex write FErrorIndex;
     property SNMPMibList: TList read FSNMPMibList;
   end;
 
@@ -107,18 +107,16 @@ type
     destructor Destroy; override;
     function DoIt: Boolean;
   published
-    property Timeout: Integer read FTimeout Write FTimeout;
-    property Host: string read FHost Write FHost;
+    property Timeout: Integer read FTimeout write FTimeout;
+    property Host: string read FHost write FHost;
     property HostIP: string read FHostIP;
     property Query: TSNMPRec read FQuery;
     property Reply: TSNMPRec read FReply;
     property Sock: TUDPBlockSocket read FSock;
   end;
 
-function SNMPGet(const Oid, Community, SNMPHost: string;
-  var Value: string): Boolean;
-function SNMPSet(const Oid, Community, SNMPHost, Value: string;
-  ValueType: Integer): Boolean;
+function SNMPGet(const OID, Community, SNMPHost: string; var Value: string): Boolean;
+function SNMPSet(const OID, Community, SNMPHost, Value: string; ValueType: Integer): Boolean;
 
 implementation
 
@@ -128,7 +126,7 @@ constructor TSNMPRec.Create;
 begin
   inherited Create;
   FSNMPMibList := TList.Create;
-  id := 1;
+  FID := 1;
 end;
 
 destructor TSNMPRec.Destroy;
@@ -137,6 +135,7 @@ var
 begin
   for i := 0 to FSNMPMibList.Count - 1 do
     TSNMPMib(FSNMPMibList[i]).Free;
+  FSNMPMibList.Clear;
   FSNMPMibList.Free;
   inherited Destroy;
 end;
@@ -292,12 +291,9 @@ begin
 end;
 
 function TSNMPSend.DoIt: Boolean;
-var
-  x: Integer;
 begin
-  Result := False;
   FReply.Clear;
-  FBuffer := Query.EncodeBuf;
+  FBuffer := FQuery.EncodeBuf;
   FSock.Connect(FHost, cSnmpProtocol);
   FHostIP := '0.0.0.0';
   FSock.SendString(FBuffer);
@@ -305,43 +301,45 @@ begin
   if FSock.LastError = 0 then
   begin
     FHostIP := FSock.GetRemoteSinIP;
-    Result := True;
-  end;
-  if Result then
     Result := FReply.DecodeBuf(FBuffer);
+  end
+  else
+    Result := False;
 end;
 
 {==============================================================================}
 
-function SNMPGet(const Oid, Community, SNMPHost: string;
-  var Value: string): Boolean;
-var
-  SNMP: TSNMPSend;
-begin
-  SNMP := TSNMPSend.Create;
-  try
-    SNMP.Query.Community := Community;
-    SNMP.Query.PDUType := PDUGetRequest;
-    SNMP.Query.MIBAdd(Oid, '', ASN1_NULL);
-    SNMP.Host := SNMPHost;
-    Result := SNMP.DoIt;
-    if Result then
-      Value := SNMP.Reply.MIBGet(Oid);
-  finally
-    SNMP.Free;
-  end;
-end;
-
-function SNMPSet(const Oid, Community, SNMPHost, Value: string;
-  ValueType: Integer): Boolean;
+function SNMPGet(const OID, Community, SNMPHost: string; var Value: string): Boolean;
 var
   SNMPSend: TSNMPSend;
 begin
   SNMPSend := TSNMPSend.Create;
   try
+    SNMPSend.Query.Clear;
+    SNMPSend.Query.Community := Community;
+    SNMPSend.Query.PDUType := PDUGetRequest;
+    SNMPSend.Query.MIBAdd(OID, '', ASN1_NULL);
+    SNMPSend.Host := SNMPHost;
+    Result := SNMPSend.DoIt;
+    if Result then
+      Value := SNMPSend.Reply.MIBGet(OID)
+    else
+      Value := '';
+  finally
+    SNMPSend.Free;
+  end;
+end;
+
+function SNMPSet(const OID, Community, SNMPHost, Value: string; ValueType: Integer): Boolean;
+var
+  SNMPSend: TSNMPSend;
+begin
+  SNMPSend := TSNMPSend.Create;
+  try
+    SNMPSend.Query.Clear;
     SNMPSend.Query.Community := Community;
     SNMPSend.Query.PDUType := PDUSetRequest;
-    SNMPSend.Query.MIBAdd(Oid, Value, ValueType);
+    SNMPSend.Query.MIBAdd(OID, Value, ValueType);
     SNMPSend.Host := SNMPHost;
     Result := SNMPSend.DoIt = True;
   finally
@@ -350,3 +348,5 @@ begin
 end;
 
 end.
+
+

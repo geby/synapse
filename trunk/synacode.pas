@@ -1,5 +1,5 @@
 {==============================================================================|
-| Project : Delphree - Synapse                                   | 001.004.001 |
+| Project : Delphree - Synapse                                   | 001.005.002 |
 |==============================================================================|
 | Content: Coding and decoding support                                         |
 |==============================================================================|
@@ -52,7 +52,33 @@ const
     '`!"#$%&''()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\]^_';
   TableXX =
     '+-0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz_';
-
+  ReTablebase64 =
+    #$40 +#$40 +#$40 +#$40 +#$40 +#$40 +#$40 +#$40 +#$40 +#$40 +#$3E +#$40
+    +#$40 +#$40 +#$3F +#$34 +#$35 +#$36 +#$37 +#$38 +#$39 +#$3A +#$3B +#$3C
+    +#$3D +#$40 +#$40 +#$40 +#$40 +#$40 +#$40 +#$40 +#$00 +#$01 +#$02 +#$03
+    +#$04 +#$05 +#$06 +#$07 +#$08 +#$09 +#$0A +#$0B +#$0C +#$0D +#$0E +#$0F
+    +#$10 +#$11 +#$12 +#$13 +#$14 +#$15 +#$16 +#$17 +#$18 +#$19 +#$40 +#$40
+    +#$40 +#$40 +#$40 +#$40 +#$1A +#$1B +#$1C +#$1D +#$1E +#$1F +#$20 +#$21
+    +#$22 +#$23 +#$24 +#$25 +#$26 +#$27 +#$28 +#$29 +#$2A +#$2B +#$2C +#$2D
+    +#$2E +#$2F +#$30 +#$31 +#$32 +#$33 +#$40 +#$40 +#$40 +#$40 +#$40 +#$40;
+  ReTableUU =
+    #$01 +#$02 +#$03 +#$04 +#$05 +#$06 +#$07 +#$08 +#$09 +#$0A +#$0B +#$0C
+    +#$0D +#$0E +#$0F +#$10 +#$11 +#$12 +#$13 +#$14 +#$15 +#$16 +#$17 +#$18
+    +#$19 +#$1A +#$1B +#$1C +#$1D +#$1E +#$1F +#$20 +#$21 +#$22 +#$23 +#$24
+    +#$25 +#$26 +#$27 +#$28 +#$29 +#$2A +#$2B +#$2C +#$2D +#$2E +#$2F +#$30
+    +#$31 +#$32 +#$33 +#$34 +#$35 +#$36 +#$37 +#$38 +#$39 +#$3A +#$3B +#$3C
+    +#$3D +#$3E +#$3F +#$00 +#$40 +#$40 +#$40 +#$40 +#$40 +#$40 +#$40 +#$40
+    +#$40 +#$40 +#$40 +#$40 +#$40 +#$40 +#$40 +#$40 +#$40 +#$40 +#$40 +#$40
+    +#$40 +#$40 +#$40 +#$40 +#$40 +#$40 +#$40 +#$40 +#$40 +#$40 +#$40 +#$40;
+  ReTableXX =
+    #$40 +#$40 +#$40 +#$40 +#$40 +#$40 +#$40 +#$40 +#$40 +#$40 +#$00 +#$40
+    +#$01 +#$40 +#$40 +#$02 +#$03 +#$04 +#$05 +#$06 +#$07 +#$08 +#$09 +#$0A
+    +#$0B +#$40 +#$40 +#$40 +#$40 +#$40 +#$40 +#$40 +#$0C +#$0D +#$0E +#$0F
+    +#$10 +#$11 +#$12 +#$13 +#$14 +#$15 +#$16 +#$17 +#$18 +#$19 +#$1A +#$1B
+    +#$1C +#$1D +#$1E +#$1F +#$20 +#$21 +#$22 +#$23 +#$24 +#$25 +#$40 +#$40
+    +#$40 +#$40 +#$40 +#$40 +#$26 +#$27 +#$28 +#$29 +#$2A +#$2B +#$2C +#$2D
+    +#$2E +#$2F +#$30 +#$31 +#$32 +#$33 +#$34 +#$35 +#$36 +#$37 +#$38 +#$39
+    +#$3A +#$3B +#$3C +#$3D +#$3E +#$3F +#$40 +#$40 +#$40 +#$40 +#$40 +#$40;
 
 function DecodeTriplet(const Value: string; Delimiter: Char): string;
 function DecodeQuotedPrintable(const Value: string): string;
@@ -63,6 +89,8 @@ function EncodeQuotedPrintable(const Value: string): string;
 function EncodeURLElement(const Value: string): string;
 function EncodeURL(const Value: string): string;
 function Decode4to3(const Value, Table: string): string;
+function Decode4to3Ex(const Value, Table: string): string;
+function Encode3to4(const Value, Table: string): string;
 function DecodeBase64(const Value: string): string;
 function EncodeBase64(const Value: string): string;
 function DecodeUU(const Value: string): string;
@@ -193,27 +221,31 @@ type
 
 function DecodeTriplet(const Value: string; Delimiter: Char): string;
 var
-  x: Integer;
+  x, l: Integer;
   c: Char;
   s: string;
 begin
-  Result := '';
+  SetLength(Result, Length(Value));
   x := 1;
+  l := 1;
   while x <= Length(Value) do
   begin
     c := Value[x];
     Inc(x);
     if c <> Delimiter then
-      Result := Result + c
+      Result[l] := c
     else
       if x < Length(Value) then
       begin
         s := Copy(Value, x, 2);
         Inc(x, 2);
         if pos(#13, s) + pos(#10, s) = 0 then
-          Result := Result + Char(StrToIntDef('$' + s, 32));
+          Result[l] := Char(StrToIntDef('$' + s, 32));
       end;
+    Inc(l);
   end;
+  Dec(l);
+  SetLength(Result, l);
 end;
 
 {==============================================================================}
@@ -235,17 +267,33 @@ end;
 function EncodeTriplet(const Value: string; Delimiter: Char;
   Specials: TSpecials): string;
 var
-  n: Integer;
+  n, l: Integer;
   s: string;
+  c: char;
 begin
-  Result := '';
+  SetLength(Result, Length(Value) * 3);
+  l := 1;
   for n := 1 to Length(Value) do
   begin
-    s := Value[n];
-    if s[1] in Specials then
-      s := Delimiter + IntToHex(Ord(s[1]), 2);
-    Result := Result + s;
+    c := Value[n];
+    if c in Specials then
+    begin
+      Result[l] := Delimiter;
+      Inc(l);
+      s := IntToHex(Ord(c), 2);
+      Result[l] := s[1];
+      Inc(l);
+      Result[l] := s[2];
+      Inc(l);
+    end
+    else
+    begin
+      Result[l] := c;
+      Inc(l);
+    end;
   end;
+  Dec(l);
+  SetLength(Result, l);
 end;
 
 {==============================================================================}
@@ -274,11 +322,12 @@ end;
 
 function Decode4to3(const Value, Table: string): string;
 var
-  x, y, n: Integer;
+  x, y, n, l: Integer;
   d: array[0..3] of Byte;
 begin
-  Result := '';
+  SetLength(Result, Length(Value));
   x := 1;
+  l := 1;
   while x < Length(Value) do
   begin
     for n := 0 to 3 do
@@ -294,33 +343,77 @@ begin
       end;
       Inc(x);
     end;
-    Result := Result + Char((D[0] and $3F) shl 2 + (D[1] and $30) shr 4);
+    Result[l] := Char((D[0] and $3F) shl 2 + (D[1] and $30) shr 4);
+    Inc(l);
     if d[2] <> 64 then
     begin
-      Result := Result + Char((D[1] and $0F) shl 4 + (D[2] and $3C) shr 2);
+      Result[l] := Char((D[1] and $0F) shl 4 + (D[2] and $3C) shr 2);
+      Inc(l);
       if d[3] <> 64 then
-        Result := Result + Char((D[2] and $03) shl 6 + (D[3] and $3F));
+      begin
+        Result[l] := Char((D[2] and $03) shl 6 + (D[3] and $3F));
+        Inc(l);
+      end;
     end;
   end;
+  Dec(l);
+  SetLength(Result, l);
 end;
 
 {==============================================================================}
 
-function DecodeBase64(const Value: string): string;
+function Decode4to3Ex(const Value, Table: string): string;
+var
+  x, y, n, l: Integer;
+  d: array[0..3] of Byte;
 begin
-  Result := Decode4to3(Value, TableBase64);
+  SetLength(Result, Length(Value));
+  x := 1;
+  l := 1;
+  while x < Length(Value) do
+  begin
+    for n := 0 to 3 do
+    begin
+      if x > Length(Value) then
+        d[n] := 64
+      else
+      begin
+        y := Ord(Value[x]);
+        if (y < 33) or (y > 127) then
+          d[n] := 64
+        else
+          d[n] := Ord(Table[y - 32]);
+      end;
+      Inc(x);
+    end;
+    Result[l] := Char((D[0] and $3F) shl 2 + (D[1] and $30) shr 4);
+    Inc(l);
+    if d[2] <> 64 then
+    begin
+      Result[l] := Char((D[1] and $0F) shl 4 + (D[2] and $3C) shr 2);
+      Inc(l);
+      if d[3] <> 64 then
+      begin
+        Result[l] := Char((D[2] and $03) shl 6 + (D[3] and $3F));
+        Inc(l);
+      end;
+    end;
+  end;
+  Dec(l);
+  SetLength(Result, l);
 end;
 
 {==============================================================================}
 
-function EncodeBase64(const Value: string): string;
+function Encode3to4(const Value, Table: string): string;
 var
   c: Byte;
-  n: Integer;
+  n, l: Integer;
   Count: Integer;
   DOut: array[0..3] of Byte;
 begin
-  Result := '';
+  setlength(Result, ((Length(Value) + 2) div 3) * 4);
+  l := 1;
   Count := 1;
   while Count <= Length(Value) do
   begin
@@ -352,8 +445,25 @@ begin
       DOut[3] := $40;
     end;
     for n := 0 to 3 do
-      Result := Result + TableBase64[DOut[n] + 1];
+    begin
+      Result[l] := Table[DOut[n] + 1];
+      Inc(l);
+    end;
   end;
+end;
+
+{==============================================================================}
+
+function DecodeBase64(const Value: string): string;
+begin
+  Result := Decode4to3Ex(Value, ReTableBase64);
+end;
+
+{==============================================================================}
+
+function EncodeBase64(const Value: string): string;
+begin
+  Result := Encode3to4(Value, TableBase64);
 end;
 
 {==============================================================================}

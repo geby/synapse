@@ -1,5 +1,5 @@
 {==============================================================================|
-| Project : Delphree - Synapse                                   | 002.001.002 |
+| Project : Delphree - Synapse                                   | 002.002.000 |
 |==============================================================================|
 | Content: PING sender                                                         |
 |==============================================================================|
@@ -69,7 +69,6 @@ type
     FPacketSize: Integer;
     FPingTime: Integer;
     function Checksum: Integer;
-    function GetTick: Cardinal;
     function ReadPacket: Boolean;
   public
     function Ping(const Host: string): Boolean;
@@ -177,25 +176,6 @@ begin
   CkSum := CkSum + (CkSum shr 16);
   Result := Word(not CkSum);
 end;
-
-{$IFDEF LINUX}
-
-function TPINGSend.GetTick: Cardinal;
-var
-  Stamp: TTimeStamp;
-begin
-  Stamp := DateTimeToTimeStamp(Now);
-  Result := Stamp.Time;
-end;
-
-{$ELSE}
-
-function TPINGSend.GetTick: Cardinal;
-begin
-  Result := Windows.GetTickCount;
-end;
-
-{$ENDIF}
 
 {==============================================================================}
 

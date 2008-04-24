@@ -1,5 +1,5 @@
 {==============================================================================|
-| Project : Delphree - Synapse                                   | 001.000.000 |
+| Project : Delphree - Synapse                                   | 001.000.001 |
 |==============================================================================|
 | Content: SysLog client                                                       |
 |==============================================================================|
@@ -137,6 +137,8 @@ begin
   Buf := Buf + Tag + ': ' + FMessage;
   if Length(Buf) <= 1024 then
   begin
+    if FSock.EnableReuse(True) then
+      Fsock.Bind('0.0.0.0', FSyslogPort);
     FSock.Connect(FSyslogHost, FSyslogPort);
     FSock.SendString(Buf);
     Result := FSock.LastError = 0;

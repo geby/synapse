@@ -1,5 +1,5 @@
 {==============================================================================|
-| Project : Delphree - Synapse                                   | 001.005.000 |
+| Project : Delphree - Synapse                                   | 001.007.000 |
 |==============================================================================|
 | Content: MIME message object                                                 |
 |==============================================================================|
@@ -38,21 +38,27 @@ type
   private
     FFrom: string;
     FToList: TStringList;
+    FCCList: TStringList;
     FSubject: string;
     FOrganization: string;
     FCustomHeaders: TStringList;
+    FDate: TDateTime;
   public
     constructor Create;
     destructor Destroy; override;
     procedure Clear;
-    procedure EncodeHeaders(Value: TStringList);
-    procedure DecodeHeaders(Value: TStringList);
+    procedure EncodeHeaders(const Value: TStringList);
+    procedure DecodeHeaders(const Value: TStringList);
+    function FindHeader(Value: string): string;
+    procedure FindHeaderList(Value: string; const HeaderList: TStringList);
   published
     property From: string read FFrom Write FFrom;
     property ToList: TStringList read FToList;
+    property CCList: TStringList read FCCList;
     property Subject: string read FSubject Write FSubject;
     property Organization: string read FOrganization Write FOrganization;
     property CustomHeaders: TStringList read FCustomHeaders;
+    property Date: TDateTime read FDate Write FDate;
   end;
 
   TMimeMess = class(TObject)
@@ -66,8 +72,8 @@ type
     destructor Destroy; override;
     procedure Clear;
     function AddPart: Integer;
-    procedure AddPartText(Value: TStringList);
-    procedure AddPartHTML(Value: TStringList);
+    procedure AddPartText(const Value: TStringList);
+    procedure AddPartHTML(const Value: TStringList);
     procedure AddPartHTMLBinary(Value, Cid: string);
     procedure AddPartBinary(Value: string);
     procedure EncodeMessage;
@@ -89,12 +95,14 @@ constructor TMessHeader.Create;
 begin
   inherited Create;
   FToList := TStringList.Create;
+  FCCList := TStringList.Create;
   FCustomHeaders := TStringList.Create;
 end;
 
 destructor TMessHeader.Destroy;
 begin
   FCustomHeaders.Free;
+  FCCList.Free;
   FToList.Free;
   inherited Destroy;
 end;
@@ -105,23 +113,29 @@ procedure TMessHeader.Clear;
 begin
   FFrom := '';
   FToList.Clear;
+  FCCList.Clear;
   FSubject := '';
   FOrganization := '';
   FCustomHeaders.Clear;
+  FDate := 0;
 end;
 
-procedure TMessHeader.EncodeHeaders(Value: TStringList);
+procedure TMessHeader.EncodeHeaders(const Value: TStringList);
 var
   n: Integer;
 begin
+  if FDate = 0 then
+    FDate := Now;
   for n := FCustomHeaders.Count - 1 downto 0 do
     if FCustomHeaders[n] <> '' then
       Value.Insert(0, FCustomHeaders[n]);
-  Value.Insert(0, 'x-mailer: Synapse - Delphi TCP/IP library by Lukas Gebauer');
+  Value.Insert(0, 'x-mailer: Synapse - Delphi & Kylix TCP/IP library by Lukas Gebauer');
   Value.Insert(0, 'MIME-Version: 1.0 (produced by Synapse)');
-  Value.Insert(0, 'date: ' + Rfc822DateTime(Now));
   if FOrganization <> '' then
     Value.Insert(0, 'Organization: ' + InlineCode(FOrganization));
+  for n := 0 to FCCList.Count - 1 do
+    Value.Insert(0, 'CC: ' + InlineEmail(FCCList[n]));
+  Value.Insert(0, 'Date: ' + Rfc822DateTime(FDate));
   if FSubject <> '' then
     Value.Insert(0, 'Subject: ' + InlineCode(FSubject));
   for n := 0 to FToList.Count - 1 do
@@ -129,9 +143,9 @@ begin
   Value.Insert(0, 'From: ' + InlineEmail(FFrom));
 end;
 
-procedure TMessHeader.DecodeHeaders(Value: TStringList);
+procedure TMessHeader.DecodeHeaders(const Value: TStringList);
 var
-  s: string;
+  s, t: string;
   x: Integer;
   cp: TMimeChar;
 begin
@@ -160,11 +174,56 @@ begin
     end;
     if Pos('TO:', UpperCase(s)) = 1 then
     begin
-      FToList.Add(InlineDecode(SeparateRight(s, ':'), cp));
+      s := SeparateRight(s, ':');
+      repeat
+        t := InlineDecode(fetch(s, ','), cp);
+        if t <> '' then
+          FToList.Add(t);
+      until s = '';
+      continue;
+    end;
+    if Pos('CC:', UpperCase(s)) = 1 then
+    begin
+      s := SeparateRight(s, ':');
+      repeat
+        t := InlineDecode(fetch(s, ','), cp);
+        if t <> '' then
+          FCCList.Add(t);
+      until s = '';
+      continue;
+    end;
+    if Pos('DATE:', UpperCase(s)) = 1 then
+    begin
+      FDate := DecodeRfcDateTime(SeparateRight(s, ':'));
       continue;
     end;
     FCustomHeaders.Add(s);
   end;
+end;
+
+function TMessHeader.FindHeader(Value: string): string;
+var
+  n: integer;
+begin
+  Result := '';
+  for n := 0 to FCustomHeaders.Count - 1 do
+    if Pos(Value, FCustomHeaders[n]) = 1 then
+    begin
+      Result := SeparateRight(FCustomHeaders[n], ':');
+      break;
+    end;
+end;
+
+procedure TMessHeader.FindHeaderList(Value: string; const HeaderList: TStringList);
+var
+  n: integer;
+begin
+  HeaderList.Clear;
+  for n := 0 to FCustomHeaders.Count - 1 do
+    if Pos(Value, FCustomHeaders[n]) = 1 then
+    begin
+      HeaderList.Add(SeparateRight(FCustomHeaders[n], ':'));
+    end;
 end;
 
 {==============================================================================}
@@ -180,6 +239,7 @@ end;
 
 destructor TMimeMess.Destroy;
 begin
+  Clear;
   FHeader.Free;
   Lines.Free;
   PartList.Free;
@@ -209,7 +269,7 @@ end;
 
 {==============================================================================}
 
-procedure TMimeMess.AddPartText(Value: TStringList);
+procedure TMimeMess.AddPartText(const Value: TStringList);
 begin
   with TMimePart(FPartList[AddPart]) do
   begin
@@ -228,7 +288,7 @@ end;
 
 {==============================================================================}
 
-procedure TMimeMess.AddPartHTML(Value: TStringList);
+procedure TMimeMess.AddPartHTML(const Value: TStringList);
 begin
   with TMimePart(FPartList[AddPart]) do
   begin
