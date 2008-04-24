@@ -1,5 +1,5 @@
 {==============================================================================|
-| Project : Delphree - Synapse                                   | 004.004.000 |
+| Project : Delphree - Synapse                                   | 005.002.000 |
 |==============================================================================|
 | Content: Library base                                                        |
 |==============================================================================|
@@ -37,7 +37,7 @@ uses
 {$ELSE}
   Windows, WinSock,
 {$ENDIF}
-  synsock, SynaUtil;
+  synsock, SynaUtil, SynaCode, SynaSSL;
 
 const
   cLocalhost = 'localhost';
@@ -115,6 +115,7 @@ type
     function PeekBuffer(Buffer: Pointer; Length: Integer): Integer; virtual;
     function PeekByte(Timeout: Integer): Byte; virtual;
     function WaitingData: Integer;
+    function WaitingDataEx: Integer;
     procedure SetLinger(Enable: Boolean; Linger: Integer);
     procedure GetSins;
     function SockCheck(SockResult: Integer): Integer;
@@ -129,6 +130,7 @@ type
     function GetLocalSinPort: Integer; virtual;
     function GetRemoteSinPort: Integer; virtual;
     function CanRead(Timeout: Integer): Boolean;
+    function CanReadEx(Timeout: Integer): Boolean;
     function CanWrite(Timeout: Integer): Boolean;
     function SendBufferTo(Buffer: Pointer; Length: Integer): Integer; virtual;
     function RecvBufferFrom(Buffer: Pointer; Length: Integer): Integer; virtual;
@@ -175,6 +177,7 @@ type
     FSocksLocalPort: string;
     FSocksRemoteIP: string;
     FSocksRemotePort: string;
+    FBypassFlag: Boolean;
     function SocksCode(IP, Port: string): string;
     function SocksDecode(Value: string): integer;
   public
@@ -193,16 +196,52 @@ type
   end;
 
   TTCPBlockSocket = class(TSocksBlockSocket)
+  protected
+    FSslEnabled: Boolean;
+    FSslBypass: Boolean;
+    FSsl: PSSL;
+    Fctx: PSSL_CTX;
+    FHTTPTunnelIP: string;
+    FHTTPTunnelPort: string;
+    FHTTPTunnel: Boolean;
+    FHTTPTunnelRemoteIP: string;
+    FHTTPTunnelRemotePort: string;
+    FHTTPTunnelUser: string;
+    FHTTPTunnelPass: string;
+    procedure SetSslEnabled(Value: Boolean);
+    procedure SocksDoConnect(IP, Port: string);
+    procedure HTTPTunnelDoConnect(IP, Port: string);
   public
+    constructor Create;
+    destructor Destroy; override;
     procedure CreateSocket; override;
     procedure CloseSocket; override;
     procedure Listen;
     function Accept: TSocket;
     procedure Connect(IP, Port: string); override;
+    procedure SSLDoConnect;
+    procedure SSLDoShutdown;
+    function SSLAcceptConnection(const PrivateKey, Certificate: string): Boolean;
     function GetLocalSinIP: string; override;
     function GetRemoteSinIP: string; override;
     function GetLocalSinPort: Integer; override;
     function GetRemoteSinPort: Integer; override;
+    function SendBuffer(Buffer: Pointer; Length: Integer): Integer; override;
+    function RecvBuffer(Buffer: Pointer; Length: Integer): Integer; override;
+    function SSLGetSSLVersion: string;
+    function SSLGetPeerSubject: string;
+    function SSLGetPeerIssuer: string;
+    function SSLGetPeerSubjectHash: Cardinal;
+    function SSLGetPeerIssuerHash: Cardinal;
+    function SSLGetPeerFingerprint: string;
+  published
+    property SSLEnabled: Boolean read FSslEnabled write SetSslEnabled;
+    property SSLBypass: Boolean read FSslBypass write FSslBypass;
+    property HTTPTunnelIP: string read FHTTPTunnelIP Write FHTTPTunnelIP;
+    property HTTPTunnelPort: string read FHTTPTunnelPort Write FHTTPTunnelPort;
+    property HTTPTunnel: Boolean read FHTTPTunnel;
+    property HTTPTunnelUser: string read FHTTPTunnelUser Write FHTTPTunnelUser;
+    property HTTPTunnelPass: string read FHTTPTunnelPass Write FHTTPTunnelPass;
   end;
 
   TUDPBlockSocket = class(TSocksBlockSocket)
@@ -570,8 +609,7 @@ const
 var
   x: Integer;
   s: string;
-  c: Char;
-  r,l: Integer;
+  l: Integer;
 begin
   s := '';
   l := Length(Terminator);
@@ -583,25 +621,9 @@ begin
     x := 0;
     if FBuffer = '' then
     begin
-      x := WaitingData;
-      if x > MaxSize then
-        x := MaxSize;
-      if x <= 1 then
-      begin
-        c := Char(RecvByte(Timeout));
-        if FLastError <> 0 then
-          Break;
-        FBuffer := c;
-      end
-      else
-      begin
-        SetLength(FBuffer, x);
-        r := RecvBuffer(Pointer(FBuffer), x);
-        if FLastError <> 0 then
-          Break;
-        if r < x then
-          SetLength(FBuffer, r);
-      end;
+      FBuffer := RecvPacket(Timeout);
+      if FLastError <> 0 then
+        Break;
     end;
     s := s + FBuffer;
     FBuffer := '';
@@ -617,10 +639,7 @@ begin
       Break;
     end;
   until x > 0;
-  if FLastError = 0 then
-    Result := s
-  else
-    Result := '';
+  Result := s;
   ExceptCheck;
 end;
 
@@ -690,6 +709,15 @@ begin
   synsock.IoctlSocket(FSocket, FIONREAD, u_long(x));
   Result := x;
 end;
+
+function TBlockSocket.WaitingDataEx: Integer;
+begin
+  if FBuffer <> '' then
+    Result := Length(FBuffer)
+  else
+    Result := WaitingData;
+end;
+
 
 procedure TBlockSocket.SetLinger(Enable: Boolean; Linger: Integer);
 var
@@ -858,6 +886,14 @@ begin
   ExceptCheck;
   if Result then
     DoStatus(HR_CanWrite, '');
+end;
+
+function TBlockSocket.CanReadEx(Timeout: Integer): Boolean;
+begin
+  if FBuffer <> '' then
+    Result := True
+  else
+    Result := CanRead(Timeout);
 end;
 
 function TBlockSocket.SendBufferTo(Buffer: Pointer; Length: Integer): Integer;
@@ -1135,6 +1171,7 @@ begin
   FSocksLocalPort := '';
   FSocksRemoteIP := '';
   FSocksRemotePort := '';
+  FBypassFlag := False;
 end;
 
 function TSocksBlockSocket.SocksOpen: boolean;
@@ -1144,38 +1181,43 @@ var
 begin
   Result := False;
   FUsingSocks := False;
-  if FSocksUsername = '' then
-    Buf := #5 + #1 + #0
-  else
-    Buf := #5 + #2 + #2 +#0;
-  SendString(Buf);
-  Buf := RecvPacket(FSocksTimeout);
-  FBuffer := Copy(Buf, 3, Length(buf) - 2);
-  if Length(Buf) < 2 then
-    Exit;
-  if Buf[1] <> #5 then
-    Exit;
-  n := Ord(Buf[2]);
-  case n of
-    0: //not need authorisation
-      ;
-    2:
-      begin
-        Buf := #1 + char(Length(FSocksUsername)) + FSocksUsername
-          + char(Length(FSocksPassword)) + FSocksPassword;
-        SendString(Buf);
-        Buf := RecvPacket(FSocksTimeout);
-        FBuffer := Copy(Buf, 3, Length(buf) - 2);
-        if Length(Buf) < 2 then
-          Exit;
-        if Buf[2] <> #0 then
-          Exit;
-      end;
-  else
-    Exit;
+  FBypassFlag := True;
+  try
+    if FSocksUsername = '' then
+      Buf := #5 + #1 + #0
+    else
+      Buf := #5 + #2 + #2 +#0;
+    SendString(Buf);
+    Buf := RecvPacket(FSocksTimeout);
+    FBuffer := Copy(Buf, 3, Length(buf) - 2);
+    if Length(Buf) < 2 then
+      Exit;
+    if Buf[1] <> #5 then
+      Exit;
+    n := Ord(Buf[2]);
+    case n of
+      0: //not need authorisation
+        ;
+      2:
+        begin
+          Buf := #1 + char(Length(FSocksUsername)) + FSocksUsername
+            + char(Length(FSocksPassword)) + FSocksPassword;
+          SendString(Buf);
+          Buf := RecvPacket(FSocksTimeout);
+          FBuffer := Copy(Buf, 3, Length(buf) - 2);
+          if Length(Buf) < 2 then
+            Exit;
+          if Buf[2] <> #0 then
+            Exit;
+        end;
+    else
+      Exit;
+    end;
+    FUsingSocks := True;
+    Result := True;
+  finally
+    FBypassFlag := False;
   end;
-  FUsingSocks := True;
-  Result := True;
 end;
 
 function TSocksBlockSocket.SocksRequest(Cmd: Byte;
@@ -1184,9 +1226,14 @@ var
   Buf: string;
 begin
   Result := False;
-  Buf := #5 + char(Cmd) + #0 + SocksCode(IP, Port);
-  SendString(Buf);
-  Result := FLastError = 0;
+  FBypassFlag := True;
+  try
+    Buf := #5 + char(Cmd) + #0 + SocksCode(IP, Port);
+    SendString(Buf);
+    Result := FLastError = 0;
+  finally
+    FBypassFlag := False;
+  end;
 end;
 
 function TSocksBlockSocket.SocksResponse: Boolean;
@@ -1195,21 +1242,26 @@ var
   x: integer;
 begin
   Result := False;
-  FSocksResponseIP := '';
-  FSocksResponsePort := '';
-  Buf := RecvPacket(FSocksTimeout);
-  if FLastError <> 0 then
-    Exit;
-  if Length(Buf) < 5 then
-    Exit;
-  if Buf[1] <> #5 then
-    Exit;
-  FSocksLastError := Ord(Buf[2]);
-  if FSocksLastError <> 0 then
-    Exit;
-  x := SocksDecode(Buf);
-  FBuffer := Copy(Buf, x, Length(buf) - x + 1);
-  Result := True;
+  FBypassFlag := True;
+  try
+    FSocksResponseIP := '';
+    FSocksResponsePort := '';
+    Buf := RecvPacket(FSocksTimeout);
+    if FLastError <> 0 then
+      Exit;
+    if Length(Buf) < 5 then
+      Exit;
+    if Buf[1] <> #5 then
+      Exit;
+    FSocksLastError := Ord(Buf[2]);
+    if FSocksLastError <> 0 then
+      Exit;
+    x := SocksDecode(Buf);
+    FBuffer := Copy(Buf, x, Length(buf) - x + 1);
+    Result := True;
+  finally
+    FBypassFlag := False;
+  end;
 end;
 
 function TSocksBlockSocket.SocksCode(IP, Port: string): string;
@@ -1407,6 +1459,29 @@ end;
 
 {======================================================================}
 
+constructor TTCPBlockSocket.Create;
+begin
+  inherited Create;
+  FSslEnabled := False;
+  FSslBypass := False;
+  FSsl := nil;
+  Fctx := nil;
+  FHTTPTunnelIP := '';
+  FHTTPTunnelPort := '';
+  FHTTPTunnel := False;
+  FHTTPTunnelRemoteIP := '';
+  FHTTPTunnelRemotePort := '';
+  FHTTPTunnelUser := '';
+  FHTTPTunnelPass := '';
+end;
+
+destructor TTCPBlockSocket.Destroy;
+begin
+  if FSslEnabled then
+    SslEnabled := False;
+  inherited;
+end;
+
 procedure TTCPBlockSocket.CreateSocket;
 begin
   FSocket := synsock.Socket(PF_INET, Integer(SOCK_STREAM), IPPROTO_TCP);
@@ -1478,28 +1553,88 @@ begin
 end;
 
 procedure TTCPBlockSocket.Connect(IP, Port: string);
+begin
+  if FSocksIP <> '' then
+    SocksDoConnect(IP, Port)
+  else
+    if FHTTPTunnelIP <> '' then
+      HTTPTunnelDoConnect(IP, Port)
+    else
+      inherited Connect(IP, Port);
+  if FSslEnabled then
+    SSLDoConnect;
+end;
+
+procedure TTCPBlockSocket.SocksDoConnect(IP, Port: string);
 var
   b: Boolean;
 begin
-  if FSocksIP = '' then
-    inherited Connect(IP, Port)
-  else
-  begin
-    inherited Connect(FSocksIP, FSocksPort);
-    b := SocksOpen;
-    if b then
-      b := SocksRequest(1, IP, Port);
-    if b then
-      b := SocksResponse;
-    if not b and (FLastError = 0) then
-      FLastError := WSANO_RECOVERY;
-    FSocksLocalIP := FSocksResponseIP;
-    FSocksLocalPort := FSocksResponsePort;
-    FSocksRemoteIP := IP;
-    FSocksRemotePort := Port;
-    ExceptCheck;
-    DoStatus(HR_Connect, IP + ':' + Port);
+  inherited Connect(FSocksIP, FSocksPort);
+  b := SocksOpen;
+  if b then
+    b := SocksRequest(1, IP, Port);
+  if b then
+    b := SocksResponse;
+  if not b and (FLastError = 0) then
+    FLastError := WSASYSNOTREADY;
+  FSocksLocalIP := FSocksResponseIP;
+  FSocksLocalPort := FSocksResponsePort;
+  FSocksRemoteIP := IP;
+  FSocksRemotePort := Port;
+  ExceptCheck;
+  DoStatus(HR_Connect, IP + ':' + Port);
+end;
+
+procedure TTCPBlockSocket.HTTPTunnelDoConnect(IP, Port: string);
+var
+  s: string;
+begin
+  try
+    FBypassFlag := True;
+    inherited Connect(FHTTPTunnelIP, FHTTPTunnelPort);
+    FHTTPTunnel := False;
+    SendString('CONNECT ' + IP + ':' + Port + 'HTTP/1.0' + #$0d + #$0a);
+    if FHTTPTunnelUser <> '' then
+    Sendstring('Proxy-Authorization: Basic ' +
+      EncodeBase64(FHTTPTunnelUser + ':' + FHTTPTunnelPass) + #$0d + #$0a);
+    SendString(#$0d + #$0a);
+    repeat
+      s := RecvString(30000);
+      if FLastError <> 0 then
+        Break;
+      if (Pos('HTTP/', s) = 1) and (Length(s) > 11) then
+        FHTTPTunnel := s[10] = '2';
+    until s = '';
+    if (FLasterror = 0) and not FHTTPTunnel then
+      FLastError := WSASYSNOTREADY;
+    FHTTPTunnelRemoteIP := IP;
+    FHTTPTunnelRemotePort := Port;
+  finally
+    FBypassFlag := False;
   end;
+  ExceptCheck;
+end;
+
+procedure TTCPBlockSocket.SSLDoConnect;
+begin
+  FLastError := 0;
+  if not FSSLEnabled then
+    SSLEnabled := True;
+  if sslsetfd(FSsl, FSocket) < 0 then
+    FLastError := WSASYSNOTREADY;
+  if (FLastError = 0) then
+    if sslconnect(FSsl) < 0 then
+      FLastError := WSASYSNOTREADY;
+  ExceptCheck;
+end;
+
+procedure TTCPBlockSocket.SSLDoShutdown;
+begin
+  FLastError := 0;
+  if sslshutdown(FSsl) < 0 then
+    FLastError := WSASYSNOTREADY;
+  ExceptCheck;
+  SSLEnabled := False;
 end;
 
 function TTCPBlockSocket.GetLocalSinIP: string;
@@ -1515,7 +1650,10 @@ begin
   if FUsingSocks then
     Result := FSocksRemoteIP
   else
-    Result := inherited GetRemoteSinIP;
+    if FHTTPTunnel then
+      Result := FHTTPTunnelRemoteIP
+    else
+      Result := inherited GetRemoteSinIP;
 end;
 
 function TTCPBlockSocket.GetLocalSinPort: Integer;
@@ -1531,7 +1669,158 @@ begin
   if FUsingSocks then
     Result := StrToIntDef(FSocksRemotePort, 0)
   else
-    Result := inherited GetRemoteSinPort;
+    if FHTTPTunnel then
+      Result := StrToIntDef(FHTTPTunnelRemotePort, 0)
+    else
+      Result := inherited GetRemoteSinPort;
+end;
+
+procedure TTCPBlockSocket.SetSslEnabled(Value: Boolean);
+begin
+  if Value <> FSslEnabled then
+    if Value then
+    begin
+      if InitSSLInterface then
+      begin
+        SslLoadErrorStrings;
+        SslLibraryInit;
+        Fctx := nil;
+        Fctx := SslCtxNew(SslMethodV23);
+        Fssl := nil;
+        Fssl := SslNew(Fctx);
+        FSslEnabled := True;
+      end
+      else DestroySSLInterface;
+    end
+    else
+    begin
+      sslfree(Fssl);
+      SslCtxFree(Fctx);
+      DestroySSLInterface;
+      FSslEnabled := False;
+    end;
+end;
+
+function TTCPBlockSocket.RecvBuffer(Buffer: Pointer; Length: Integer): Integer;
+var
+  err: integer;
+begin
+  if FSslEnabled and not(FSslBypass) and not(FBypassFlag) then
+  begin
+    FLastError := 0;
+    repeat
+      Result := SslRead(FSsl, Buffer, Length);
+      err := SslGetError(FSsl, Result);
+    until (err <> SSL_ERROR_WANT_READ) or (err <> SSL_ERROR_WANT_WRITE);
+    if err = SSL_ERROR_ZERO_RETURN then
+      Result := 0
+    else
+      if (err <> 0) then
+        FLastError := WSASYSNOTREADY;
+    ExceptCheck;
+    DoStatus(HR_ReadCount, IntToStr(Result));
+  end
+  else
+    Result := inherited RecvBuffer(Buffer, Length);
+end;
+
+function TTCPBlockSocket.SendBuffer(Buffer: Pointer; Length: Integer): Integer;
+var
+  err: integer;
+begin
+  if FSslEnabled and not(FSslBypass) and not(FBypassFlag) then
+  begin
+    FLastError := 0;
+    repeat
+      Result := SslWrite(FSsl, Buffer, Length);
+      err := SslGetError(FSsl, Result);
+    until (err <> SSL_ERROR_WANT_READ) or (err <> SSL_ERROR_WANT_WRITE);
+    if err = SSL_ERROR_ZERO_RETURN then
+      Result := 0
+    else
+      if (err <> 0) then
+        FLastError := WSASYSNOTREADY;
+    ExceptCheck;
+    DoStatus(HR_WriteCount, IntToStr(Result));
+  end
+  else
+    Result := inherited SendBuffer(Buffer, Length);
+end;
+
+function TTCPBlockSocket.SSLAcceptConnection(const PrivateKey, Certificate: string): Boolean;
+begin
+  Result := False;
+  FLastError := 0;
+  if SslCtxUseCertificateFile(FCtx, PChar(Certificate), 1) < 0 then
+    FLastError := WSASYSNOTREADY;
+  if (FLastError = 0) then
+    if SslCtxUsePrivateKeyFile(FCtx, PChar(PrivateKey), 1) < 0 then
+      FLastError := WSASYSNOTREADY;
+  if (FLastError = 0) then
+    if sslsetfd(FSsl, FSocket) < 0 then
+      FLastError := WSASYSNOTREADY;
+  if (FLastError = 0) then
+    if sslAccept(FSsl) < 0 then
+      FLastError := WSASYSNOTREADY;
+  ExceptCheck;
+  Result := FLastError = 0;
+end;
+
+function TTCPBlockSocket.SSLGetSSLVersion: string;
+begin
+  Result := SSlGetVersion(FSsl);
+end;
+
+function TTCPBlockSocket.SSLGetPeerSubject: string;
+var
+  cert: PX509;
+  s: string;
+begin
+  cert := SSLGetPeerCertificate(Fssl);
+  setlength(s, 4096);
+  Result := SslX509NameOneline(SslX509GetSubjectName(cert), PChar(s), length(s));
+  SslX509Free(cert);
+end;
+
+function TTCPBlockSocket.SSLGetPeerIssuer: string;
+var
+  cert: PX509;
+  s: string;
+begin
+  cert := SSLGetPeerCertificate(Fssl);
+  setlength(s, 4096);
+  Result := SslX509NameOneline(SslX509GetIssuerName(cert), PChar(s), length(s));
+  SslX509Free(cert);
+end;
+
+function TTCPBlockSocket.SSLGetPeerSubjectHash: Cardinal;
+var
+  cert: PX509;
+begin
+  cert := SSLGetPeerCertificate(Fssl);
+  Result := SslX509NameHash(SslX509GetSubjectName(cert));
+  SslX509Free(cert);
+end;
+
+function TTCPBlockSocket.SSLGetPeerIssuerHash: Cardinal;
+var
+  cert: PX509;
+begin
+  cert := SSLGetPeerCertificate(Fssl);
+  Result := SslX509NameHash(SslX509GetIssuerName(cert));
+  SslX509Free(cert);
+end;
+
+function TTCPBlockSocket.SSLGetPeerFingerprint: string;
+var
+  cert: PX509;
+  x: integer;
+begin
+  cert := SSLGetPeerCertificate(Fssl);
+  setlength(Result, EVP_MAX_MD_SIZE);
+  SslX509Digest(cert, SslEvpMd5, PChar(Result), @x);
+  SetLength(Result, x);
+  SslX509Free(cert);
 end;
 
 {======================================================================}

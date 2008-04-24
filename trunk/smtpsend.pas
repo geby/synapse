@@ -1,5 +1,5 @@
 {==============================================================================|
-| Project : Delphree - Synapse                                   | 002.001.004 |
+| Project : Delphree - Synapse                                   | 002.002.000 |
 |==============================================================================|
 | Content: SMTP client                                                         |
 |==============================================================================|
@@ -455,19 +455,32 @@ function SendToRaw(const MailFrom, MailTo, SMTPHost: string;
   const MailData: TStrings; const Username, Password: string): Boolean;
 var
   SMTP: TSMTPSend;
+  s, t: string;
 begin
   Result := False;
   SMTP := TSMTPSend.Create;
   try
-    SMTP.SMTPHost := SMTPHost;
+    SMTP.SMTPHost := SeparateLeft(SMTPHost, ':');
+    s := SeparateRight(SMTPHost, ':');
+    if (s <> '') and (s <> SMTPHost) then
+      SMTP.SMTPPort := s;
     SMTP.Username := Username;
     SMTP.Password := Password;
     if SMTP.Login then
     begin
-      if SMTP.MailFrom(MailFrom, Length(MailData.Text)) then
-        if SMTP.MailTo(MailTo) then
-          if SMTP.MailData(MailData) then
-            Result := True;
+      if SMTP.MailFrom(GetEmailAddr(MailFrom), Length(MailData.Text)) then
+      begin
+        s := MailTo;
+        repeat
+          t := GetEmailAddr(fetch(s, ','));
+          if t <> '' then
+            Result := SMTP.MailTo(t);
+          if not Result then
+            Break;
+        until s = '';
+        if Result then
+          Result := SMTP.MailData(MailData);
+      end;
       SMTP.Logout;
     end;
   finally
@@ -484,7 +497,7 @@ begin
   try
     t.Assign(MailData);
     t.Insert(0, '');
-    t.Insert(0, 'x-mailer: Synapse - Delphi TCP/IP library by Lukas Gebauer');
+    t.Insert(0, 'x-mailer: Synapse - Delphi & Kylix TCP/IP library by Lukas Gebauer');
     t.Insert(0, 'subject: ' + Subject);
     t.Insert(0, 'date: ' + Rfc822DateTime(now));
     t.Insert(0, 'to: ' + MailTo);

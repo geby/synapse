@@ -1,5 +1,5 @@
 {==============================================================================|
-| Project : Delphree - Synapse                                   | 002.003.000 |
+| Project : Delphree - Synapse                                   | 003.000.000 |
 |==============================================================================|
 | Content: HTTP client                                                         |
 |==============================================================================|
@@ -157,6 +157,7 @@ var
   Prot, User, Pass, Host, Port, Path, Para, URI: string;
   n: Integer;
   s, su: string;
+  HttpTunnel: Boolean;
 begin
   {initial values}
   Result := False;
@@ -164,6 +165,26 @@ begin
   FResultString := '';
 
   URI := ParseURL(URL, Prot, User, Pass, Host, Port, Path, Para);
+
+  if UpperCase(Prot) = 'HTTPS' then
+  begin
+    FSock.SSLEnabled := True;
+    HttpTunnel := FProxyHost <> '';
+    FSock.HTTPTunnelIP := FProxyHost;
+    FSock.HTTPTunnelPort := FProxyPort;
+    FSock.HTTPTunnelUser := FProxyUser;
+    FSock.HTTPTunnelPass := FProxyPass;
+  end
+  else
+  begin
+    FSock.SSLEnabled := False;
+    HttpTunnel := False;
+    FSock.HTTPTunnelIP := '';
+    FSock.HTTPTunnelPort := '';
+    FSock.HTTPTunnelUser := '';
+    FSock.HTTPTunnelPass := '';
+  end;
+
   Sending := Document.Size > 0;
   {Headers for Sending data}
   status100 := Sending and (FProtocol = '1.1');
@@ -178,17 +199,17 @@ begin
   { setting KeepAlives }
   if not FKeepAlive then
     FHeaders.Insert(0, 'Connection: close');
-  { set target servers/proxy, authorisations, etc... }
+  { set target servers/proxy, authorizations, etc... }
   if User <> '' then
     FHeaders.Insert(0, 'Authorization: Basic ' + EncodeBase64(user + ':' + pass));
-  if (FProxyHost <> '') and (FProxyUser <> '') then
+  if (FProxyHost <> '') and (FProxyUser <> '') and not(HttpTunnel) then
     FHeaders.Insert(0, 'Proxy-Authorization: Basic ' +
       EncodeBase64(FProxyUser + ':' + FProxyPass));
   if Port<>'80' then
      FHeaders.Insert(0, 'Host: ' + Host + ':' + Port)
   else
      FHeaders.Insert(0, 'Host: ' + Host);
-  if FProxyHost <> '' then
+  if (FProxyHost <> '') and not(HttpTunnel)then
     URI := Prot + '://' + Host + ':' + Port + URI;
   if URI = '/*' then
     URI := '*';
@@ -196,15 +217,15 @@ begin
     FHeaders.Insert(0, UpperCase(Method) + ' ' + URI)
   else
     FHeaders.Insert(0, UpperCase(Method) + ' ' + URI + ' HTTP/' + FProtocol);
-  if FProxyHost = '' then
-  begin
-    FHTTPHost := Host;
-    FHTTPPort := Port;
-  end
-  else
+  if (FProxyHost <> '') and not(HttpTunnel) then
   begin
     FHTTPHost := FProxyHost;
     FHTTPPort := FProxyPort;
+  end
+  else
+  begin
+    FHTTPHost := Host;
+    FHTTPPort := Port;
   end;
   if FHeaders[FHeaders.Count - 1] <> '' then
     FHeaders.Add('');

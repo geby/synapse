@@ -1,5 +1,5 @@
 {==============================================================================|
-| Project : Delphree - Synapse                                   | 001.005.002 |
+| Project : Delphree - Synapse                                   | 001.005.003 |
 |==============================================================================|
 | Content: Coding and decoding support                                         |
 |==============================================================================|
@@ -240,7 +240,9 @@ begin
         s := Copy(Value, x, 2);
         Inc(x, 2);
         if pos(#13, s) + pos(#10, s) = 0 then
-          Result[l] := Char(StrToIntDef('$' + s, 32));
+          Result[l] := Char(StrToIntDef('$' + s, 32))
+        else
+          Result[l] := ' ';
       end;
     Inc(l);
   end;

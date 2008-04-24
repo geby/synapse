@@ -1,5 +1,5 @@
 {==============================================================================|
-| Project : Delphree - Synapse                                   | 002.007.001 |
+| Project : Delphree - Synapse                                   | 002.008.001 |
 |==============================================================================|
 | Content: support procedures and functions                                    |
 |==============================================================================|
@@ -462,23 +462,34 @@ end;
 
 function IsIP(const Value: string): Boolean;
 var
-  n, x: Integer;
+  n, x, i: Integer;
 begin
   Result := true;
-  x := 0;
-  for n := 1 to Length(Value) do
-    if not (Value[n] in ['0'..'9', '.']) then
+  if Pos('..',Value) > 0 then
+    Result := False
+  else
+  begin
+    i := 0;
+    x := 0;
+    for n := 1 to Length(Value) do
     begin
-      Result := False;
-      Break;
-    end
-    else
-    begin
-      if Value[n] = '.' then
-        Inc(x);
+      if (Value[n] in ['0'..'9']) then
+        i := i +1
+      else
+        if (Value[n] in ['.']) then
+          i := 0
+        else
+          Result := False;
+      if Value[n] = '.'
+        then Inc(x);
+      if i > 3 then
+        result := False;
+      if result = false then
+        Break;
     end;
-  if x <> 3 then
-    Result := False;
+    if x <> 3 then
+      Result := False;
+  end;
 end;
 
 {==============================================================================}
@@ -742,6 +753,10 @@ begin
   end
   else
     sURL := URL;
+  if UpperCase(Prot) = 'HTTPS' then
+    Port := '443';
+  if UpperCase(Prot) = 'FTP' then
+    Port := '21';
   x := Pos('@', sURL);
   if (x > 0) and (x < Pos('/', sURL)) then
   begin
