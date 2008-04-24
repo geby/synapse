@@ -1,5 +1,5 @@
 {==============================================================================|
-| Project : Ararat Synapse                                       | 003.009.003 |
+| Project : Ararat Synapse                                       | 003.009.005 |
 |==============================================================================|
 | Content: HTTP client                                                         |
 |==============================================================================|
@@ -379,8 +379,13 @@ begin
   if FUserAgent <> '' then
     FHeaders.Insert(0, 'User-Agent: ' + FUserAgent);
   { setting Ranges }
-  if FRangeEnd > 0 then
-    FHeaders.Insert(0, 'Range: bytes=' + IntToStr(FRangeStart) + '-' + IntToStr(FRangeEnd));
+  if FRangeStart > 0 then
+  begin
+    if FRangeEnd >= FRangeStart then
+      FHeaders.Insert(0, 'Range: bytes=' + IntToStr(FRangeStart) + '-' + IntToStr(FRangeEnd))
+    else
+      FHeaders.Insert(0, 'Range: bytes=' + IntToStr(FRangeStart) + '-');
+  end;
   { setting Cookies }
   s := '';
   for n := 0 to FCookies.Count - 1 do
@@ -476,7 +481,12 @@ begin
         Exit;
       FSock.Connect(FTargetHost, FTargetPort);
       if FSock.LastError <> 0 then
+      begin
+        FSock.CloseSocket;
+        FAliveHost := '';
+        FAlivePort := '';
         Exit;
+      end;
     end;
   end;
 

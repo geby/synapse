@@ -1,5 +1,5 @@
 {==============================================================================|
-| Project : Ararat Synapse                                       | 001.002.001 |
+| Project : Ararat Synapse                                       | 001.003.000 |
 |==============================================================================|
 | Content: LDAP client                                                         |
 |==============================================================================|
@@ -123,6 +123,8 @@ type
     function Count: integer;
     {:Add new TLDAPAttribute object to list.}
     function Add: TLDAPAttribute;
+    {:Delete one TLDAPAttribute object from list.}
+    procedure Del(Index: integer);
     {:List of TLDAPAttribute objects.}
     property Items[Index: Integer]: TLDAPAttribute read GetAttribute; default;
   end;
@@ -408,6 +410,16 @@ function TLDAPAttributeList.Add: TLDAPAttribute;
 begin
   Result := TLDAPAttribute.Create;
   FAttributeList.Add(Result);
+end;
+
+procedure TLDAPAttributeList.Del(Index: integer);
+var
+  x: TLDAPAttribute;
+begin
+  x := GetAttribute(Index);
+  if Assigned(x) then
+    x.free;
+  FAttributeList.Delete(Index);
 end;
 
 {==============================================================================}

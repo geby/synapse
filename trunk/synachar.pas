@@ -1,5 +1,5 @@
 {==============================================================================|
-| Project : Ararat Synapse                                       | 005.000.001 |
+| Project : Ararat Synapse                                       | 005.001.000 |
 |==============================================================================|
 | Content: Charset conversion support                                          |
 |==============================================================================|
@@ -183,6 +183,12 @@ function IdealCharsetCoding(const Value: AnsiString; CharFrom: TMimeChar;
 
 {:Return BOM (Byte Order Mark) for given unicode charset.}
 function GetBOM(Value: TMimeChar): AnsiString;
+
+{:Convert binary string with unicode content to WideString.}
+function StringToWide(const Value: AnsiString): WideString;
+
+{:Convert WideString to binary string with unicode content.}
+function WideToString(const Value: WideString): AnsiString;
 
 {==============================================================================}
 implementation
@@ -1725,6 +1731,36 @@ begin
       Result := 'mUTF-7';
   else
     Result := GetIconvIDFromCP(Value);
+  end;
+end;
+
+{==============================================================================}
+function StringToWide(const Value: AnsiString): WideString;
+var
+  n: integer;
+  x, y: integer;
+begin
+  SetLength(Result, Length(Value) div 2);
+  for n := 1 to Length(Value) div 2 do
+  begin
+    x := Ord(Value[((n-1) * 2) + 1]);
+    y := Ord(Value[((n-1) * 2) + 2]);
+    Result[n] := WideChar(x * 256 + y);
+  end;
+end;
+
+{==============================================================================}
+function WideToString(const Value: WideString): AnsiString;
+var
+  n: integer;
+  x: integer;
+begin
+  SetLength(Result, Length(Value) * 2);
+  for n := 1 to Length(Value) do
+  begin
+    x := Ord(Value[n]);
+    Result[((n-1) * 2) + 1] := AnsiChar(x div 256);
+    Result[((n-1) * 2) + 2] := AnsiChar(x mod 256);
   end;
 end;
 

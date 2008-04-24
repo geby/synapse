@@ -1,5 +1,5 @@
 {==============================================================================|
-| Project : Ararat Synapse                                       | 002.001.002 |
+| Project : Ararat Synapse                                       | 002.001.003 |
 |==============================================================================|
 | Content: Coding and decoding support                                         |
 |==============================================================================|
@@ -1048,27 +1048,26 @@ begin
     BufAnsiChar[P] := $80;
     Inc(P);
     Cnt := 64 - 1 - Cnt;
-    if Cnt >= 0 then
-      if Cnt < 8 then
-      begin
-        for n := 0 to cnt - 1 do
-          BufAnsiChar[P + n] := 0;
-        ArrByteToLong(BufAnsiChar, BufLong);
-//        FillChar(BufAnsiChar[P], Cnt, #0);
-        MD5Transform(State, BufLong);
-        ArrLongToByte(BufLong, BufAnsiChar);
-        for n := 0 to 55 do
-          BufAnsiChar[n] := 0;
-        ArrByteToLong(BufAnsiChar, BufLong);
-//        FillChar(BufAnsiChar, 56, #0);
-      end
-      else
-      begin
-        for n := 0 to Cnt - 8 - 1 do
-          BufAnsiChar[p + n] := 0;
-        ArrByteToLong(BufAnsiChar, BufLong);
-//        FillChar(BufAnsiChar[P], Cnt - 8, #0);
-      end;
+    if Cnt < 8 then
+    begin
+      for n := 0 to cnt - 1 do
+        BufAnsiChar[P + n] := 0;
+      ArrByteToLong(BufAnsiChar, BufLong);
+//      FillChar(BufAnsiChar[P], Cnt, #0);
+      MD5Transform(State, BufLong);
+      ArrLongToByte(BufLong, BufAnsiChar);
+      for n := 0 to 55 do
+        BufAnsiChar[n] := 0;
+      ArrByteToLong(BufAnsiChar, BufLong);
+//      FillChar(BufAnsiChar, 56, #0);
+    end
+    else
+    begin
+      for n := 0 to Cnt - 8 - 1 do
+        BufAnsiChar[p + n] := 0;
+      ArrByteToLong(BufAnsiChar, BufLong);
+//      FillChar(BufAnsiChar[P], Cnt - 8, #0);
+    end;
     BufLong[14] := Count[0];
     BufLong[15] := Count[1];
     MD5Transform(State, BufLong);

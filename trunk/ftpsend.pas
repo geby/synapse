@@ -1,5 +1,5 @@
 {==============================================================================|
-| Project : Ararat Synapse                                       | 003.001.000 |
+| Project : Ararat Synapse                                       | 003.001.002 |
 |==============================================================================|
 | Content: FTP client                                                          |
 |==============================================================================|
@@ -1396,6 +1396,8 @@ begin
       Exit;
     end;
     MaskC := Mask[Imask];
+    if Ivalue > Length(Value) then
+      Exit;
     c := Value[Ivalue];
     case MaskC of
       'n':
@@ -1731,6 +1733,7 @@ begin
   begin
     if pos(':', YearTime) > 0 then
     begin
+      YearTime := TrimSP(YearTime);
       mhours := StrToIntDef(Separateleft(YearTime, ':'), 0);
       mminutes := StrToIntDef(SeparateRight(YearTime, ':'), 0);
       if (Encodedate(myear, mmonth, mday)
