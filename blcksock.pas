@@ -1,9 +1,9 @@
 {==============================================================================|
-| Project : Ararat Synapse                                       | 009.001.003 |
+| Project : Ararat Synapse                                       | 009.004.001 |
 |==============================================================================|
 | Content: Library base                                                        |
 |==============================================================================|
-| Copyright (c)1999-2006, Lukas Gebauer                                        |
+| Copyright (c)1999-2007, Lukas Gebauer                                        |
 | All rights reserved.                                                         |
 |                                                                              |
 | Redistribution and use in source and binary forms, with or without           |
@@ -33,7 +33,7 @@
 | DAMAGE.                                                                      |
 |==============================================================================|
 | The Initial Developer of the Original Code is Lukas Gebauer (Czech Republic).|
-| Portions created by Lukas Gebauer are Copyright (c)1999-2006.                |
+| Portions created by Lukas Gebauer are Copyright (c)1999-2007.                |
 | All Rights Reserved.                                                         |
 |==============================================================================|
 | Contributor(s):                                                              |
@@ -99,7 +99,7 @@ uses
 
 const
 
-  SynapseRelease = '37';
+  SynapseRelease = '38';
 
   cLocalhost = '127.0.0.1';
   cAnyHost = '0.0.0.0';
@@ -188,6 +188,15 @@ type
   THookMonitor = procedure(Sender: TObject; Writing: Boolean;
     const Buffer: TMemory; Len: Integer) of object;
 
+  {:This procedural type is used for hook OnAfterConnect. By this hook you can
+   insert your code after TCP socket has been sucessfully connected.}
+  THookAfterConnect = procedure(Sender: TObject) of object;
+
+  {:This procedural type is used for hook OnHeartbeat. By this hook you can
+   call your code repeately during long socket operations.
+   You must enable heartbeats by @Link(HeartbeatRate) property!}
+  THookHeartbeat = procedure(Sender: TObject) of object;
+
   {:Specify family of socket.}
   TSocketFamily = (
     {:Default mode. Socket family is defined by target address for connection.
@@ -254,6 +263,7 @@ type
     FOnReadFilter: THookDataFilter;
     FOnCreateSocket: THookCreateSocket;
     FOnMonitor: THookMonitor;
+    FOnHeartbeat: THookHeartbeat;
     FLocalSin: TVarSin;
     FRemoteSin: TVarSin;
     FTag: integer;
@@ -282,6 +292,8 @@ type
     FSendCounter: Integer;
     FSendMaxChunk: Integer;
     FStopFlag: Boolean;
+    FNonblockSendTimeout: Integer;
+    FHeartbeatRate: integer;
     function GetSizeRecvBuffer: Integer;
     procedure SetSizeRecvBuffer(Size: Integer);
     function GetSizeSendBuffer: Integer;
@@ -308,10 +320,12 @@ type
     procedure DoReadFilter(Buffer: TMemory; var Len: Integer);
     procedure DoMonitor(Writing: Boolean; const Buffer: TMemory; Len: Integer);
     procedure DoCreateSocket;
+    procedure DoHeartbeat;
     procedure LimitBandwidth(Length: Integer; MaxB: integer; var Next: LongWord);
     procedure SetBandwidth(Value: Integer);
     function TestStopFlag: Boolean;
     procedure InternalSendStream(const Stream: TStream; WithSize, Indy: boolean); virtual;
+    function InternalCanRead(Timeout: Integer): Boolean; virtual;
   public
     constructor Create;
 
@@ -537,10 +551,13 @@ type
     {:Actualize values in @link(LocalSin) and @link(RemoteSin).}
     procedure GetSins;
 
+    {:Reset @link(LastError) and @link(LastErrorDesc) to non-error state.}
+    procedure ResetLastError;
+
     {:If you "manually" call Socket API functions, forward their return code as
      parameter to this function, which evaluates it, eventually calls
      GetLastError and found error code returns and stores to @link(LastError).}
-    function SockCheck(SockResult: Integer): Integer;
+    function SockCheck(SockResult: Integer): Integer; virtual;
 
     {:If @link(LastError) contains some error code and @link(RaiseExcept)
      property is @true, raise adequate exception.}
@@ -590,7 +607,8 @@ type
      data maybe forever.
 
      This function is need only on special cases, when you need use
-     @link(RecvBuffer) function directly!}
+     @link(RecvBuffer) function directly! read functioms what have timeout as
+     calling parameter, calling this function internally.}
     function CanRead(Timeout: Integer): Boolean; virtual;
 
     {:Same as @link(CanRead), but additionally return @TRUE if is some data in
@@ -714,6 +732,9 @@ type
      You may call it without created object!}
     class function GetErrorDesc(ErrorCode: Integer): string;
 
+    {:Return descriptive string for @link(LastError).}
+    function GetErrorDescEx: string; virtual;
+
     {:this value is for free use.}
     property Tag: Integer read FTag write FTag;
 
@@ -770,6 +791,9 @@ type
      use this property for soft abort of communication.}
     property StopFlag: Boolean read FStopFlag Write FStopFlag;
 
+    {:Timeout for data sending by non-blocking socket mode.}
+    property NonblockSendTimeout: Integer read FNonblockSendTimeout Write FNonblockSendTimeout;
+
     {:This event is called by various reasons. It is good for monitoring socket,
      create gauges for data transfers, etc.}
     property OnStatus: THookSocketStatus read FOnStatus write FOnStatus;
@@ -785,6 +809,18 @@ type
 
     {:This event is good for monitoring content of readed or writed datas.}
     property OnMonitor: THookMonitor read FOnMonitor write FOnMonitor;
+
+    {:This event is good for calling your code during long socket operations.
+      (Example, for refresing UI if class in not called within the thread.)
+      Rate of heartbeats can be modified by @link(HeartbeatRate) property.}
+    property OnHeartbeat: THookHeartbeat read FOnHeartbeat write FOnHeartbeat;
+
+    {:Specify typical rate of @link(OnHeartbeat) event and @link(StopFlag) testing.
+      Default value 0 disabling heartbeats! Value is in milliseconds.
+      Real rate can be higher or smaller then this value, because it depending
+      on real socket operations too!
+      Note: Each heartbeat slowing socket processing.}
+    property HeartbeatRate: integer read FHeartbeatRate Write FHeartbeatRate;
   end;
 
   {:@abstract(Support for SOCKS4 and SOCKS5 proxy)
@@ -865,6 +901,7 @@ type
    (outgoing connections and limited incomming), TCP through HTTP proxy tunnel.}
   TTCPBlockSocket = class(TSocksBlockSocket)
   protected
+    FOnAfterConnect: THookAfterConnect;
     FSSL: TCustomSSL;
     FHTTPTunnelIP: string;
     FHTTPTunnelPort: string;
@@ -876,6 +913,7 @@ type
     FHTTPTunnelTimeout: integer;
     procedure SocksDoConnect(IP, Port: string);
     procedure HTTPTunnelDoConnect(IP, Port: string);
+    procedure DoAfterConnect;
   public
     {:Create TCP socket class with default plugin for SSL/TSL/SSH implementation
     (see @link(SSLImplementation))}
@@ -884,6 +922,10 @@ type
     {:Create TCP socket class with desired plugin for SSL/TSL/SSH implementation}
     constructor CreateWithSSL(SSLPlugin: TSSLClass);
     destructor Destroy; override;
+
+    {:Return descriptive string for @link(LastError). On case of error
+     in SSL/TLS subsystem, it returns right error description.}
+    function GetErrorDescEx: string; override;
 
     {:See @link(TBlockSocket.CloseSocket)}
     procedure CloseSocket; override;
@@ -994,6 +1036,9 @@ type
 
     {:Specify timeout for communication with HTTP proxy in HTTPtunnel mode.}
     property HTTPTunnelTimeout: integer read FHTTPTunnelTimeout Write FHTTPTunnelTimeout;
+
+    {:This event is called after sucessful TCP socket connection.}
+    property OnAfterConnect: THookAfterConnect read FOnAfterConnect write FOnAfterConnect;
   end;
 
   {:@abstract(Datagram based communication)
@@ -1410,6 +1455,8 @@ begin
   FSendCounter := 0;
   FSendMaxChunk := c64k;
   FStopFlag := False;
+  FNonblockSendTimeout := 15000;
+  FHeartbeatRate := 0;
 {$IFNDEF ONCEWINSOCK}
   if Stub = '' then
     Stub := DLLStackName;
@@ -1615,7 +1662,7 @@ var
   f: TSocketFamily;
 begin
   DoStatus(HR_ResolvingBegin, IP + ':' + Port);
-  FLastError := 0;
+  ResetLastError;
   //if socket exists, then use their type, else use users selection
   f := SF_Any;
   if (FSocket = INVALID_SOCKET) and (FFamily = SF_any) then
@@ -1648,7 +1695,7 @@ var
   sin: TVarSin;
 begin
   //dummy for SF_Any Family mode
-  FLastError := 0;
+  ResetLastError;
   if (FFamily <> SF_Any) and (FSocket = INVALID_SOCKET) then
   begin
     {$IFDEF CIL}
@@ -1671,7 +1718,7 @@ procedure TBlockSocket.CreateSocketByName(const Value: String);
 var
   sin: TVarSin;
 begin
-  FLastError := 0;
+  ResetLastError;
   if FSocket = INVALID_SOCKET then
   begin
     SetSin(sin, value, '0');
@@ -1685,7 +1732,7 @@ begin
   FStopFlag := False;
   FRecvCounter := 0;
   FSendCounter := 0;
-  FLastError := 0;
+  ResetLastError;
   if FSocket = INVALID_SOCKET then
   begin
     FBuffer := '';
@@ -1728,7 +1775,6 @@ begin
     end;
   FDelayedOptions.Clear;
   FFamily := FFamilySave;
-  FLastError := 0;
   DoStatus(HR_SocketClose, '');
 end;
 
@@ -1736,7 +1782,7 @@ procedure TBlockSocket.Bind(IP, Port: string);
 var
   Sin: TVarSin;
 begin
-  FLastError := 0;
+  ResetLastError;
   if (FSocket <> INVALID_SOCKET)
     or not((FFamily = SF_ANY) and (IP = cAnyHost) and (Port = cAnyPort)) then
   begin
@@ -1801,7 +1847,10 @@ procedure TBlockSocket.LimitBandwidth(Length: Integer; MaxB: integer; var Next: 
 var
   x: LongWord;
   y: LongWord;
+  n: integer;
 begin
+  if FStopFlag then
+    exit;
   if MaxB > 0 then
   begin
     y := GetTick;
@@ -1811,7 +1860,12 @@ begin
       if x > 0 then
       begin
         DoStatus(HR_Wait, IntToStr(x));
-        sleep(x);
+        sleep(x mod 250);
+        for n := 1 to x div 250 do
+          if FStopFlag then
+            Break
+          else
+            sleep(250);
       end;
     end;
     Next := GetTick + Trunc((Length / MaxB) * 1000);
@@ -1820,6 +1874,7 @@ end;
 
 function TBlockSocket.TestStopFlag: Boolean;
 begin
+  DoHeartbeat;
   Result := FStopFlag;
   if Result then
   begin
@@ -1856,10 +1911,19 @@ begin
     begin
       LimitBandwidth(y, FMaxSendBandwidth, FNextsend);
       p := IncPoint(Buffer, x);
-//      r := synsock.Send(FSocket, p^, y, MSG_NOSIGNAL);
       r := synsock.Send(FSocket, p, y, MSG_NOSIGNAL);
       SockCheck(r);
-      if Flasterror <> 0 then
+      if FLastError = WSAEWOULDBLOCK then
+      begin
+        if CanWrite(FNonblockSendTimeout) then
+        begin
+          r := synsock.Send(FSocket, p, y, MSG_NOSIGNAL);
+          SockCheck(r);
+        end
+        else
+          FLastError := WSAETIMEDOUT;
+      end;
+      if FLastError <> 0 then
         Break;
       Inc(x, r);
       Inc(Result, r);
@@ -2031,7 +2095,7 @@ var
   b: TMemory;
 {$ENDIF}
 begin
-  FLastError := 0;
+  ResetLastError;
   Result := 0;
   if Len > 0 then
   begin
@@ -2109,7 +2173,7 @@ var
 {$ENDIF}
 begin
   Result := '';
-  FLastError := 0;
+  ResetLastError;
   if FBuffer <> '' then
   begin
     Result := FBuffer;
@@ -2184,7 +2248,7 @@ end;
 function TBlockSocket.RecvByte(Timeout: Integer): Byte;
 begin
   Result := 0;
-  FLastError := 0;
+  ResetLastError;
   if FBuffer = '' then
     FBuffer := RecvPacket(Timeout);
   if (FLastError = 0) and (FBuffer <> '') then
@@ -2215,7 +2279,7 @@ var
   tl: integer;
   ti: LongWord;
 begin
-  FLastError := 0;
+  ResetLastError;
   Result := '';
   l := Length(Terminator);
   if l = 0 then
@@ -2393,24 +2457,28 @@ begin
   {$ENDIF}
 end;
 
+procedure TBlockSocket.ResetLastError;
+begin
+  FLastError := 0;
+  FLastErrorDesc := '';
+end;
+
 function TBlockSocket.SockCheck(SockResult: Integer): Integer;
 begin
-  FLastErrorDesc := '';
+  ResetLastError;
   if SockResult = integer(SOCKET_ERROR) then
   begin
-    Result := synsock.WSAGetLastError;
-    FLastErrorDesc := GetErrorDesc(Result);
-  end
-  else
-    Result := 0;
-  FLastError := Result;
+    FLastError := synsock.WSAGetLastError;
+    FLastErrorDesc := GetErrorDescEx;
+  end;
+  Result := FLastError;
 end;
 
 procedure TBlockSocket.ExceptCheck;
 var
   e: ESynapseError;
 begin
-  FLastErrorDesc := GetErrorDesc(FLastError);
+  FLastErrorDesc := GetErrorDescEx;
   if (LastError <> 0) and (LastError <> WSAEINPROGRESS)
     and (LastError <> WSAEWOULDBLOCK) then
   begin
@@ -2419,8 +2487,6 @@ begin
     begin
       e := ESynapseError.Create(Format('Synapse TCP/IP Socket error %d: %s',
         [FLastError, FLastErrorDesc]));
-//      e := ESynapseError.CreateFmt('Synapse TCP/IP Socket error %d: %s',
-//        [FLastError, FLastErrorDesc]);
       e.ErrorCode := FLastError;
       e.ErrorMessage := FLastErrorDesc;
       raise e;
@@ -2460,7 +2526,7 @@ begin
   except
     on exception do;
   end;
-  FLastError := 0;
+  ResetLastError;
 end;
 
 procedure TBlockSocket.SetLinger(Enable: Boolean; Linger: Integer);
@@ -2539,7 +2605,7 @@ begin
   Result := GetSinPort(FRemoteSin);
 end;
 
-function TBlockSocket.CanRead(Timeout: Integer): Boolean;
+function TBlockSocket.InternalCanRead(Timeout: Integer): Boolean;
 {$IFDEF CIL}
 begin
   Result := FSocket.Poll(Timeout * 1000, SelectMode.SelectRead);
@@ -2562,6 +2628,38 @@ begin
     x := 0;
   Result := x > 0;
 {$ENDIF}
+end;
+
+function TBlockSocket.CanRead(Timeout: Integer): Boolean;
+var
+  ti, tr: Integer;
+  n: integer;
+begin
+  if (FHeartbeatRate <> 0) and (Timeout <> -1) then
+  begin
+    ti := Timeout div FHeartbeatRate;
+    tr := Timeout mod FHeartbeatRate;
+  end
+  else
+  begin
+    ti := 0;
+    tr := Timeout;
+  end;
+  Result := InternalCanRead(tr);
+  if not Result then
+    for n := 0 to ti do
+    begin
+      DoHeartbeat;
+      if FStopFlag then
+      begin
+        Result := False;
+        FStopFlag := False;
+        Break;
+      end;
+      Result := InternalCanRead(FHeartbeatRate);
+      if Result then
+        break;
+    end;
   ExceptCheck;
   if Result then
     DoStatus(HR_CanRead, '');
@@ -2876,6 +2974,19 @@ begin
   begin
     OnMonitor(Self, Writing, Buffer, Len);
   end;
+end;
+
+procedure TBlockSocket.DoHeartbeat;
+begin
+  if assigned(OnHeartbeat) and (FHeartbeatRate <> 0) then
+  begin
+    OnHeartbeat(Self);
+  end;
+end;
+
+function TBlockSocket.GetErrorDescEx: string;
+begin
+  Result := GetErrorDesc(FLastError);
 end;
 
 class function TBlockSocket.GetErrorDesc(ErrorCode: Integer): string;
@@ -3399,7 +3510,7 @@ begin
   end
   else
   begin
-    Multicast.imr_multiaddr.S_addr := strtoip(MCastIP);
+    Multicast.imr_multiaddr.S_addr := swapbytes(strtoip(MCastIP));
     Multicast.imr_interface.S_addr := INADDR_ANY;
     SockCheck(synsock.SetSockOpt(FSocket, IPPROTO_IP, IP_ADD_MEMBERSHIP,
       pchar(@Multicast), SizeOf(Multicast)));
@@ -3425,7 +3536,7 @@ begin
   end
   else
   begin
-    Multicast.imr_multiaddr.S_addr := strtoip(MCastIP);
+    Multicast.imr_multiaddr.S_addr := swapbytes(strtoip(MCastIP));
     Multicast.imr_interface.S_addr := INADDR_ANY;
     SockCheck(synsock.SetSockOpt(FSocket, IPPROTO_IP, IP_DROP_MEMBERSHIP,
       pchar(@Multicast), SizeOf(Multicast)));
@@ -3503,16 +3614,33 @@ begin
   FSSL.Free;
 end;
 
+function TTCPBlockSocket.GetErrorDescEx: string;
+begin
+  Result := inherited GetErrorDescEx;
+  if (FLastError = WSASYSNOTREADY) and (self.SSL.LastError <> 0) then
+  begin
+    Result := self.SSL.LastErrorDesc;
+  end;
+end;
+
 procedure TTCPBlockSocket.CloseSocket;
 begin
   if FSSL.SSLEnabled then
     FSSL.Shutdown;
-  if FSocket <> INVALID_SOCKET then
+  if (FSocket <> INVALID_SOCKET) and (FLastError = 0) then
   begin
     Synsock.Shutdown(FSocket, 1);
     Purge;
   end;
   inherited CloseSocket;
+end;
+
+procedure TTCPBlockSocket.DoAfterConnect;
+begin
+  if assigned(OnAfterConnect) then
+  begin
+    OnAfterConnect(Self);
+  end;
 end;
 
 function TTCPBlockSocket.WaitingData: Integer;
@@ -3587,6 +3715,8 @@ begin
       HTTPTunnelDoConnect(IP, Port)
     else
       inherited Connect(IP, Port);
+  if FLasterror = 0 then
+    DoAfterConnect;
 end;
 
 procedure TTCPBlockSocket.SocksDoConnect(IP, Port: string);
@@ -3645,7 +3775,7 @@ end;
 
 procedure TTCPBlockSocket.SSLDoConnect;
 begin
-  FLastError := 0;
+  ResetLastError;
   if not FSSL.Connect then
     FLastError := WSASYSNOTREADY;
   ExceptCheck;
@@ -3653,7 +3783,7 @@ end;
 
 procedure TTCPBlockSocket.SSLDoShutdown;
 begin
-  FLastError := 0;
+  ResetLastError;
   FSSL.BiShutdown;
 end;
 
@@ -3702,7 +3832,8 @@ begin
     Result := 0;
     if TestStopFlag then
       Exit;
-    FLastError := 0;
+    ResetLastError;
+    LimitBandwidth(Len, FMaxRecvBandwidth, FNextRecv);
     Result := FSSL.RecvBuffer(Buffer, Len);
     if FSSL.LastError <> 0 then
       FLastError := WSASYSNOTREADY;
@@ -3729,7 +3860,7 @@ begin
     Result := 0;
     if TestStopFlag then
       Exit;
-    FLastError := 0;
+    ResetLastError;
     DoMonitor(True, Buffer, Length);
 {$IFDEF CIL}
     Result := FSSL.SendBuffer(Buffer, Length);
@@ -3771,7 +3902,7 @@ end;
 
 function TTCPBlockSocket.SSLAcceptConnection: Boolean;
 begin
-  FLastError := 0;
+  ResetLastError;
   if not FSSL.Accept then
     FLastError := WSASYSNOTREADY;
   ExceptCheck;
@@ -3881,7 +4012,7 @@ end;
 procedure TCustomSSL.ReturnError;
 begin
   FLastError := -1;
-  FLastErrorDesc := 'SLL is not implemented!';
+  FLastErrorDesc := 'SSL/TLS support is not compiled!';
 end;
 
 function TCustomSSL.LibVersion: String;

@@ -1,5 +1,5 @@
 {==============================================================================|
-| Project : Ararat Synapse                                       | 002.000.001 |
+| Project : Ararat Synapse                                       | 002.000.002 |
 |==============================================================================|
 | Content: Socket Independent Platform Layer - Win32 definition include        |
 |==============================================================================|
@@ -347,7 +347,7 @@ type
       0: (S6_addr: packed array [0..15] of byte);
       1: (u6_addr8: packed array [0..15] of byte);
       2: (u6_addr16: packed array [0..7] of word);
-      3: (u6_addr32: packed array [0..7] of integer);
+      3: (u6_addr32: packed array [0..3] of integer);
   end;
 
   PSockAddrIn6 = ^TSockAddrIn6;

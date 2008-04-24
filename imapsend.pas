@@ -177,8 +177,8 @@ type
     {:Append given message to specified folder.}
     function AppendMess(ToFolder: string; const Mess: TStrings): Boolean;
 
-    {:'Delete' message from currect selected folder. It mark message as Deleted.
-     Real deleting waill be done after sucessfull @link(CloseFolder) or
+    {:'Delete' message from current selected folder. It mark message as Deleted.
+     Real deleting will be done after sucessfull @link(CloseFolder) or
      @link(ExpungeFolder)}
     function DeleteMess(MessID: integer): boolean;
 

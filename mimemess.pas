@@ -1,9 +1,9 @@
 {==============================================================================|
-| Project : Ararat Synapse                                       | 002.005.000 |
+| Project : Ararat Synapse                                       | 002.005.002 |
 |==============================================================================|
 | Content: MIME message object                                                 |
 |==============================================================================|
-| Copyright (c)1999-2005, Lukas Gebauer                                        |
+| Copyright (c)1999-2006, Lukas Gebauer                                        |
 | All rights reserved.                                                         |
 |                                                                              |
 | Redistribution and use in source and binary forms, with or without           |
@@ -33,7 +33,7 @@
 | DAMAGE.                                                                      |
 |==============================================================================|
 | The Initial Developer of the Original Code is Lukas Gebauer (Czech Republic).|
-| Portions created by Lukas Gebauer are Copyright (c)2000-2005.                |
+| Portions created by Lukas Gebauer are Copyright (c)2000-2006.                |
 | All Rights Reserved.                                                         |
 |==============================================================================|
 | Contributor(s):                                                              |
@@ -90,7 +90,7 @@ type
     destructor Destroy; override;
 
     {:Clears all data fields.}
-    procedure Clear;
+    procedure Clear; virtual;
 
     {Add headers from from this object to Value.}
     procedure EncodeHeaders(const Value: TStrings); virtual;
@@ -171,7 +171,7 @@ type
     destructor Destroy; override;
 
     {:Reset component to default state.}
-    procedure Clear;
+    procedure Clear; virtual;
 
     {:Add MIME part as subpart of PartParent. If you need set root MIME part,
      then set as PartParent @NIL value. If you need set more then one subpart,
@@ -362,7 +362,7 @@ begin
     if s = '' then
       s := InlineEmailEx(FCCList[n], FCharsetCode)
     else
-      s := s + ' , ' + InlineEmailEx(FCCList[n], FCharsetCode);
+      s := s + ', ' + InlineEmailEx(FCCList[n], FCharsetCode);
   if s <> '' then
     Value.Insert(0, 'CC: ' + s);
   Value.Insert(0, 'Date: ' + Rfc822DateTime(FDate));
@@ -373,7 +373,7 @@ begin
     if s = '' then
       s := InlineEmailEx(FToList[n], FCharsetCode)
     else
-      s := s + ' , ' + InlineEmailEx(FToList[n], FCharsetCode);
+      s := s + ', ' + InlineEmailEx(FToList[n], FCharsetCode);
   if s <> '' then
     Value.Insert(0, 'To: ' + s);
   Value.Insert(0, 'From: ' + InlineEmailEx(FFrom, FCharsetCode));
@@ -624,14 +624,7 @@ begin
     Secondary := 'plain';
     Description := 'Message text';
     Disposition := 'inline';
-    CharsetCode := IdealCharsetCoding(Value.Text, TargetCharset,
-      [ISO_8859_1, ISO_8859_2, ISO_8859_3, ISO_8859_4, ISO_8859_5,
-      ISO_8859_6, ISO_8859_7, ISO_8859_8, ISO_8859_9, ISO_8859_10,
-      KOI8_R, KOI8_U
-      {$IFNDEF CIL} //error URW778 ??? :-O
-      , GB2312, EUC_KR, ISO_2022_JP, EUC_TW
-      {$ENDIF}
-      ]);
+    CharsetCode := IdealCharsetCoding(Value.Text, TargetCharset, IdealCharsets);
     EncodingCode := ME_QUOTED_PRINTABLE;
     EncodePart;
     EncodePartHeader;

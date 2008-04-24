@@ -1,5 +1,5 @@
 {==============================================================================|
-| Project : Ararat Synapse                                       | 001.000.001 |
+| Project : Ararat Synapse                                       | 001.000.003 |
 |==============================================================================|
 | Content: SSL support for SecureBlackBox                                     |
 |==============================================================================|
@@ -69,7 +69,7 @@ uses
   SBUtils, SBConstants, SBSessionPool;
 
 const
-  DEFAULT_RECV_BUFFER=32768;  
+  DEFAULT_RECV_BUFFER=32768;
 
 type
   {:@abstract(class implementing SecureBlackbox SSL plugin.)
@@ -82,16 +82,19 @@ type
     FElSecureServer:TElSecureServer;
     FElCertStorage:TElMemoryCertStorage;
     FElX509Certificate:TElX509Certificate;
+    FElX509CACertificate:TElX509Certificate;
+    FCipherSuites:TBits;
   private
     FRecvBuffer:String;
     FRecvBuffers:String;
+    FRecvBuffersLock:TRTLCriticalSection;
     FRecvDecodedBuffers:String;
-    function Init(Server:Boolean):Boolean;
-    function DeInit:Boolean;
+    function GetCipherSuite:Integer;
+    procedure Reset;
     function Prepare(Server:Boolean):Boolean;
     procedure OnError(Sender:TObject; ErrorCode:Integer; Fatal:Boolean; Remote:Boolean);
     procedure OnSend(Sender:TObject;Buffer:Pointer;Size:LongInt);
-    procedure OnReceive(Sender:TObject;Buffer:Pointer;MaxSize:LongInt;out Written:LongInt);
+    procedure OnReceive(Sender:TObject;Buffer:Pointer;MaxSize:LongInt;var Written:LongInt);
     procedure OnData(Sender:TObject;Buffer:Pointer;Size:LongInt);
   public
     constructor Create(const Value: TTCPBlockSocket); override;
@@ -127,11 +130,16 @@ type
     {:See @inherited}
     function GetCertInfo: string; override;
   published
-    property ELSecureClient:TElSecureClient read FElSecureClient write FElSecureClient;
-    property ELSecureServer:TElSecureServer read FElSecureServer write FElSecureServer;
+    property ElSecureClient:TElSecureClient read FElSecureClient write FElSecureClient;
+    property ElSecureServer:TElSecureServer read FElSecureServer write FElSecureServer;
+    property CipherSuites:TBits read FCipherSuites write FCipherSuites;
+    property CipherSuite:Integer read GetCipherSuite;
   end;
 
 implementation
+
+var
+  FAcceptThread:THandle=0;
 
 // on error
 procedure TSSLSBB.OnError(Sender:TObject; ErrorCode:Integer; Fatal:Boolean; Remote:Boolean);
@@ -148,6 +156,8 @@ var
   lResult:Integer;
 
 begin
+  if FSocket.Socket=INVALID_SOCKET then
+    Exit;
   lResult:=Send(FSocket.Socket,Buffer,Size,0);
   if lResult=SOCKET_ERROR then
     begin
@@ -157,21 +167,26 @@ begin
 end;
 
 // on receive
-procedure TSSLSBB.OnReceive(Sender:TObject;Buffer:Pointer;MaxSize:LongInt;out Written:LongInt);
+procedure TSSLSBB.OnReceive(Sender:TObject;Buffer:Pointer;MaxSize:LongInt;var Written:LongInt);
 
 begin
-  if Length(FRecvBuffers)<=MaxSize then
-    begin
-      Written:=Length(FRecvBuffers);
-      Move(FRecvBuffers[1],Buffer^,Written);
-      FRecvBuffers:='';
-    end
-  else
-    begin
-      Written:=MaxSize;
-      Move(FRecvBuffers[1],Buffer^,Written);
-      Delete(FRecvBuffers,1,Written);
-    end;
+  if GetCurrentThreadId<>FAcceptThread then EnterCriticalSection(FRecvBuffersLock);
+  try
+    if Length(FRecvBuffers)<=MaxSize then
+      begin
+        Written:=Length(FRecvBuffers);
+        Move(FRecvBuffers[1],Buffer^,Written);
+        FRecvBuffers:='';
+      end
+    else
+      begin
+        Written:=MaxSize;
+        Move(FRecvBuffers[1],Buffer^,Written);
+        Delete(FRecvBuffers,1,Written);
+      end;
+  finally
+    if GetCurrentThreadId<>FAcceptThread then LeaveCriticalSection(FRecvBuffersLock);
+  end;
 end;
 
 // on data
@@ -190,6 +205,9 @@ end;
 
 constructor TSSLSBB.Create(const Value: TTCPBlockSocket);
 
+var
+  loop1:Integer;
+
 begin
   inherited Create(Value);
   FServer:=FALSE;
@@ -197,16 +215,28 @@ begin
   FElSecureServer:=NIL;
   FElCertStorage:=NIL;
   FElX509Certificate:=NIL;
+  FElX509CACertificate:=NIL;
   SetLength(FRecvBuffer,DEFAULT_RECV_BUFFER);
   FRecvBuffers:='';
+  InitializeCriticalSection(FRecvBuffersLock);
   FRecvDecodedBuffers:='';
+  FCipherSuites:=TBits.Create;
+  if FCipherSuites<>NIL then
+    begin
+      FCipherSuites.Size:=SB_SUITE_LAST+1;
+      for loop1:=SB_SUITE_FIRST to SB_SUITE_LAST do
+        FCipherSuites[loop1]:=TRUE;
+    end;
 end;
 
 destructor TSSLSBB.Destroy;
 
 begin
-  DeInit;
+  Reset;
   inherited Destroy;
+  if FCipherSuites<>NIL then
+    FreeAndNIL(FCipherSuites);
+  DeleteCriticalSection(FRecvBuffersLock);
 end;
 
 function TSSLSBB.LibVersion: String;
@@ -242,16 +272,44 @@ begin
     end;
 end;
 
-function TSSLSBB.Init(Server:Boolean):Boolean;
+function TSSLSBB.GetCipherSuite:Integer;
+
+begin
+  if FServer then
+    Result:=FElSecureServer.CipherSuite
+  else
+    Result:=FElSecureClient.CipherSuite;
+end;
+
+procedure TSSLSBB.Reset;
+
+begin
+  if FElSecureServer<>NIL then
+    FreeAndNIL(FElSecureServer);
+  if FElSecureClient<>NIL then
+    FreeAndNIL(FElSecureClient);
+  if FElX509Certificate<>NIL then
+    FreeAndNIL(FElX509Certificate);
+  if FElX509CACertificate<>NIL then
+    FreeAndNIL(FElX509CACertificate);
+  if FElCertStorage<>NIL then
+    FreeAndNIL(FElCertStorage);
+  FSSLEnabled:=FALSE;
+end;
+
+function TSSLSBB.Prepare(Server:Boolean): Boolean;
 
 var
   loop1:Integer;
   lStream:TMemoryStream;
-  lCertificate,lPrivateKey:String;
+  lCertificate,lPrivateKey,lCertCA:String;
 
 begin
   Result:=FALSE;
   FServer:=Server;
+
+  // reset, if necessary
+  Reset;
 
   // init, certificate
   if FCertificateFile<>'' then
@@ -262,8 +320,39 @@ begin
     lPrivateKey:=FileToString(FPrivateKeyFile)
   else
     lPrivateKey:=FPrivateKey;
+  if FCertCAFile<>'' then
+    lCertCA:=FileToString(FCertCAFile)
+  else
+    lCertCA:=FCertCA;
   if (lCertificate<>'') and (lPrivateKey<>'') then
     begin
+      FElCertStorage:=TElMemoryCertStorage.Create(NIL);
+      if FElCertStorage<>NIL then
+        FElCertStorage.Clear;
+
+      // apply ca certificate
+      if lCertCA<>'' then
+        begin
+          FElX509CACertificate:=TElX509Certificate.Create(NIL);
+          if FElX509CACertificate<>NIL then
+            begin
+              with FElX509CACertificate do
+                begin
+                  lStream:=TMemoryStream.Create;
+                  try
+                    WriteStrToStream(lStream,lCertCA);
+                    lStream.Seek(0,soFromBeginning);
+                    LoadFromStream(lStream);
+                  finally
+                    lStream.Free;
+                  end;
+                end;
+              if FElCertStorage<>NIL then
+                FElCertStorage.Add(FElX509CACertificate);
+            end;
+        end;
+
+      // apply certificate
       FElX509Certificate:=TElX509Certificate.Create(NIL);
       if FElX509Certificate<>NIL then
         begin
@@ -285,12 +374,8 @@ begin
               finally
                 lStream.Free;
               end;
-              FElCertStorage:=TElMemoryCertStorage.Create(NIL);
               if FElCertStorage<>NIL then
-                begin
-                  FElCertStorage.Clear;
-                  FElCertStorage.Add(FElX509Certificate);
-                end;
+                FElCertStorage.Add(FElX509Certificate);
             end;
         end;
     end;
@@ -303,7 +388,7 @@ begin
         begin
           // init, ciphers
           for loop1:=SB_SUITE_FIRST to SB_SUITE_LAST do
-            FElSecureServer.CipherSuites[loop1]:=TRUE;
+            FElSecureServer.CipherSuites[loop1]:=FCipherSuites[loop1];
           FElSecureServer.Versions:=[sbSSL2,sbSSL3,sbTLS1];
           FElSecureServer.ClientAuthentication:=FALSE;
           FElSecureServer.OnError:=OnError;
@@ -322,7 +407,7 @@ begin
         begin
           // init, ciphers
           for loop1:=SB_SUITE_FIRST to SB_SUITE_LAST do
-            FElSecureClient.CipherSuites[loop1]:=TRUE;
+            FElSecureClient.CipherSuites[loop1]:=FCipherSuites[loop1];
           FElSecureClient.Versions:=[sbSSL3,sbTLS1];
           FElSecureClient.OnError:=OnError;
           FElSecureClient.OnSend:=OnSend;
@@ -334,33 +419,7 @@ begin
     end;
 end;
 
-function TSSLSBB.DeInit:Boolean;
-
-begin
-  Result:=TRUE;
-  if FElSecureServer<>NIL then
-    FreeAndNIL(FElSecureServer);
-  if FElSecureClient<>NIL then
-    FreeAndNIL(FElSecureClient);
-  if FElX509Certificate<>NIL then
-    FreeAndNIL(FElX509Certificate);
-  if FElCertStorage<>NIL then
-    FreeAndNIL(FElCertStorage);
-  FSSLEnabled:=FALSE;
-end;
-
-function TSSLSBB.Prepare(Server:Boolean): Boolean;
-
-begin
-  Result:=FALSE;
-  DeInit;
-  if Init(Server) then
-    Result:=TRUE
-  else
-    DeInit;
-end;
-
-function TSSLSBB.Connect: boolean;
+function TSSLSBB.Connect:Boolean;
 
 var
   lResult:Integer;
@@ -372,6 +431,10 @@ begin
   if Prepare(FALSE) then
     begin
       FElSecureClient.Open;
+
+      // reset
+      FRecvBuffers:='';
+      FRecvDecodedBuffers:='';
 
       // wait for open or error
       while (not FElSecureClient.Active) and
@@ -405,7 +468,7 @@ begin
     end;
 end;
 
-function TSSLSBB.Accept: boolean;
+function TSSLSBB.Accept:Boolean;
 
 var
   lResult:Integer;
@@ -416,7 +479,12 @@ begin
     Exit;
   if Prepare(TRUE) then
     begin
+      FAcceptThread:=GetCurrentThreadId;
       FElSecureServer.Open;
+
+      // reset
+      FRecvBuffers:='';
+      FRecvDecodedBuffers:='';
 
       // wait for open or error
       while (not FElSecureServer.Active) and
@@ -450,7 +518,7 @@ begin
     end;
 end;
 
-function TSSLSBB.Shutdown: boolean;
+function TSSLSBB.Shutdown:Boolean;
 
 begin
   Result:=BiShutdown;
@@ -459,7 +527,7 @@ end;
 function TSSLSBB.BiShutdown: boolean;
 
 begin
-  DeInit;
+  Reset;
   Result:=TRUE;
 end;
 
@@ -476,28 +544,48 @@ end;
 function TSSLSBB.RecvBuffer(Buffer: TMemory; Len: Integer): Integer;
 
 begin
-  if Length(FRecvDecodedBuffers)<Len then
-    begin
-      Result:=Length(FRecvDecodedBuffers);
-      Move(FRecvDecodedBuffers[1],Buffer^,Result);
-      FRecvDecodedBuffers:='';
-    end
-  else
-    begin
-      Result:=Len;
-      Move(FRecvDecodedBuffers[1],Buffer^,Result);
-      Delete(FRecvDecodedBuffers,1,Result);
-    end;
+  Result:=0;
+  try
+    // recv waiting, if necessary
+    if FRecvDecodedBuffers='' then
+      WaitingData;
+
+    // received
+    if Length(FRecvDecodedBuffers)<Len then
+      begin
+        Result:=Length(FRecvDecodedBuffers);
+        Move(FRecvDecodedBuffers[1],Buffer^,Result);
+        FRecvDecodedBuffers:='';
+      end
+    else
+      begin
+        Result:=Len;
+        Move(FRecvDecodedBuffers[1],Buffer^,Result);
+        Delete(FRecvDecodedBuffers,1,Result);
+      end;
+  except
+    // ignore
+  end;
 end;
 
 function TSSLSBB.WaitingData: Integer;
 
 var
   lResult:Integer;
+  lRecvBuffers:Boolean;
 
 begin
+  Result:=0;
+  if FSocket.Socket=INVALID_SOCKET then
+    Exit;
   // data available?
-  if FRecvBuffers<>'' then
+  if GetCurrentThreadId<>FAcceptThread then EnterCriticalSection(FRecvBuffersLock);
+  try
+    lRecvBuffers:=FRecvBuffers<>'';
+  finally
+    if GetCurrentThreadId<>FAcceptThread then LeaveCriticalSection(FRecvBuffersLock);
+  end;
+  if lRecvBuffers then
     begin
       if FServer then
         FElSecureServer.DataAvailable
@@ -514,17 +602,32 @@ begin
           FLastError:=WSAGetLastError;
         end
       else
-        FRecvBuffers:=FRecvBuffers+Copy(FRecvBuffer,1,lResult);
-
-      // data available?
-      if FRecvBuffers<>'' then
         begin
-          if FServer then
-            FElSecureServer.DataAvailable
-          else
-            FElSecureClient.DataAvailable;
+          if GetCurrentThreadId<>FAcceptThread then EnterCriticalSection(FRecvBuffersLock);
+          try
+            FRecvBuffers:=FRecvBuffers+Copy(FRecvBuffer,1,lResult);
+          finally
+            if GetCurrentThreadId<>FAcceptThread then LeaveCriticalSection(FRecvBuffersLock);
+          end;
+
+          // data available?
+          if GetCurrentThreadId<>FAcceptThread then EnterCriticalSection(FRecvBuffersLock);
+          try
+            lRecvBuffers:=FRecvBuffers<>'';
+          finally
+            if GetCurrentThreadId<>FAcceptThread then LeaveCriticalSection(FRecvBuffersLock);
+          end;
+          if lRecvBuffers then
+            begin
+              if FServer then
+                FElSecureServer.DataAvailable
+              else
+                FElSecureClient.DataAvailable;
+            end;
         end;
     end;
+
+  // decoded buffers result
   Result:=Length(FRecvDecodedBuffers);
 end;
 

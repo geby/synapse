@@ -1,5 +1,5 @@
 {==============================================================================|
-| Project : Ararat Synapse                                       | 005.001.003 |
+| Project : Ararat Synapse                                       | 005.002.002 |
 |==============================================================================|
 | Content: Charset conversion support                                          |
 |==============================================================================|
@@ -66,7 +66,13 @@ interface
 
 uses
 {$IFNDEF WIN32}
+  {$IFNDEF FPC}
   Libc,
+  {$ELSE}
+    {$IFDEF FPC_USE_LIBC}
+  Libc,
+    {$ENDIF}
+  {$ENDIF}
 {$ELSE}
   Windows,
 {$ENDIF}
@@ -152,6 +158,16 @@ const
 var
   {:By this you can generally disable/enable Iconv support.}
   DisableIconv: Boolean = False;
+
+  {:Default set of charsets for @link(IdealCharsetCoding) function.}
+  IdealCharsets: TMimeSetChar =
+    [ISO_8859_1, ISO_8859_2, ISO_8859_3, ISO_8859_4, ISO_8859_5,
+    ISO_8859_6, ISO_8859_7, ISO_8859_8, ISO_8859_9, ISO_8859_10,
+    KOI8_R, KOI8_U
+    {$IFNDEF CIL} //error URW778 ??? :-O
+    , GB2312, EUC_KR, ISO_2022_JP, EUC_TW
+    {$ENDIF}
+    ];
 
 {==============================================================================}
 {:Convert Value from one charset to another. See: @link(CharsetConversionEx)}
@@ -1473,7 +1489,16 @@ end;
 
 function GetCurCP: TMimeChar;
 begin
+  {$IFNDEF FPC}
   Result := GetCPFromID(nl_langinfo(_NL_CTYPE_CODESET_NAME));
+  {$ELSE}
+    {$IFDEF FPC_USE_LIBC}
+  Result := GetCPFromID(nl_langinfo(_NL_CTYPE_CODESET_NAME));
+    {$ELSE}
+  //How to get system codepage without LIBC?
+  Result := UTF_8;
+    {$ENDIF}
+  {$ENDIF}
 end;
 
 function GetCurOEMCP: TMimeChar;
@@ -1823,7 +1848,7 @@ begin
   IconvArr[23].Charset := ISO_8859_7;
   IconvArr[23].Charname := 'ISO-8859-7 ECMA-118 ELOT_928 GREEK GREEK8 ISO-IR-126 ISO8859-7 ISO_8859-7 ISO_8859-7:1987 CSISOLATINGREEK';
   IconvArr[24].Charset := ISO_8859_8;
-  IconvArr[24].Charname := 'ISO_8859-8 HEBREW ISO-8859-8 ISO-IR-138 ISO8859-8 ISO_8859-8:1988 CSISOLATINHEBREW';
+  IconvArr[24].Charname := 'ISO-8859-8 HEBREW ISO_8859-8 ISO-IR-138 ISO8859-8 ISO_8859-8:1988 CSISOLATINHEBREW ISO-8859-8-I';
   IconvArr[25].Charset := ISO_8859_9;
   IconvArr[25].Charname := 'ISO-8859-9 ISO-IR-148 ISO8859-9 ISO_8859-9 ISO_8859-9:1989 L5 LATIN5 CSISOLATIN5';
   IconvArr[26].Charset := ISO_8859_10;

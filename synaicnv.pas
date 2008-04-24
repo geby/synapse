@@ -1,5 +1,5 @@
 {==============================================================================|
-| Project : Ararat Synapse                                       | 001.000.001 |
+| Project : Ararat Synapse                                       | 001.000.002 |
 |==============================================================================|
 | Content: ICONV support for Win32, Linux and .NET                             |
 |==============================================================================|
@@ -64,7 +64,10 @@ uses
 {$ENDIF}
   synafpc,
 {$IFNDEF WIN32}
-  Libc, SysUtils;
+  {$IFNDEF FPC}
+  Libc,
+  {$ENDIF}
+  SysUtils;
 {$ELSE}
   Windows;
 {$ENDIF}

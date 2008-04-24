@@ -1,5 +1,5 @@
 {==============================================================================|
-| Project : Ararat Synapse                                       | 001.000.003 |
+| Project : Ararat Synapse                                       | 001.000.005 |
 |==============================================================================|
 | Content: Socket Independent Platform Layer - FreePascal definition include   |
 |==============================================================================|
@@ -83,6 +83,8 @@ const
   cLocalHost = '127.0.0.1';
   cAnyHost = '0.0.0.0';
   c6AnyHost = '::0';
+  c6Localhost = '::1';
+  cLocalHostStr = 'localhost';
 
 type
   TSocket = longint;
@@ -675,11 +677,16 @@ var
           end
           else
           begin
-            a4[1].s_addr := 0;
-            Result := WSAHOST_NOT_FOUND;
-            a4[1] := StrTonetAddr(IP);
-            if a4[1].s_addr = INADDR_ANY then
-              Resolvename(ip, a4);
+            if lowercase(IP) = cLocalHostStr then
+              a4[1].s_addr := htonl(INADDR_LOOPBACK)
+            else
+            begin
+              a4[1].s_addr := 0;
+              Result := WSAHOST_NOT_FOUND;
+              a4[1] := StrTonetAddr(IP);
+              if a4[1].s_addr = INADDR_ANY then
+                Resolvename(ip, a4);
+            end;
             if a4[1].s_addr <> INADDR_ANY then
             begin
               Sin.sin_family := AF_INET;
@@ -697,11 +704,16 @@ var
           end
           else
           begin
-            Result := WSAHOST_NOT_FOUND;
-            SET_IN6_IF_ADDR_ANY(@a6[1]);
-            a6[1] := StrTonetAddr6(IP);
-            if IN6_IS_ADDR_UNSPECIFIED(@a6[1]) then
-              Resolvename6(ip, a6);
+            if lowercase(IP) = cLocalHostStr then
+              SET_LOOPBACK_ADDR6(@a6[1])
+            else
+            begin
+              Result := WSAHOST_NOT_FOUND;
+              SET_IN6_IF_ADDR_ANY(@a6[1]);
+              a6[1] := StrTonetAddr6(IP);
+              if IN6_IS_ADDR_UNSPECIFIED(@a6[1]) then
+                Resolvename6(ip, a6);
+            end;
             if IN6_IS_ADDR_UNSPECIFIED(@a6[1]) then
             begin
               Sin.sin_family := AF_INET6;
@@ -772,26 +784,36 @@ begin
   IPList.Clear;
   if (family = AF_INET) or (family = AF_UNSPEC) then
   begin
-    a4[1] := StrTonetAddr(name);
-    if a4[1].s_addr = INADDR_ANY then
-      x := Resolvename(name, a4)
+    if lowercase(name) = cLocalHostStr then
+      IpList.Add(cLocalHost)
     else
-      x := 1;
-    for n := 1  to x do
-      IpList.Add(netaddrToStr(a4[n]));
+    begin
+      a4[1] := StrTonetAddr(name);
+      if a4[1].s_addr = INADDR_ANY then
+        x := Resolvename(name, a4)
+      else
+        x := 1;
+      for n := 1  to x do
+        IpList.Add(netaddrToStr(a4[n]));
+    end;
   end;
 
   if (family = AF_INET6) or (family = AF_UNSPEC) then
   begin
-    a6[1] := StrTonetAddr6(name);
-    if IN6_IS_ADDR_UNSPECIFIED(@a6[1]) then
-      x := Resolvename6(name, a6)
+    if lowercase(name) = cLocalHostStr then
+      IpList.Add(c6LocalHost)
     else
-      x := 1;
-    for n := 1  to x do
-      IpList.Add(netaddrToStr6(a6[n]));
+    begin
+      a6[1] := StrTonetAddr6(name);
+      if IN6_IS_ADDR_UNSPECIFIED(@a6[1]) then
+        x := Resolvename6(name, a6)
+      else
+        x := 1;
+      for n := 1  to x do
+        IpList.Add(netaddrToStr6(a6[n]));
+    end;
   end;
-  
+
   if IPList.Count = 0 then
     IPList.Add(cLocalHost);
 end;

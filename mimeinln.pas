@@ -1,9 +1,9 @@
 {==============================================================================|
-| Project : Ararat Synapse                                       | 001.001.009 |
+| Project : Ararat Synapse                                       | 001.001.011 |
 |==============================================================================|
 | Content: Inline MIME support procedures and functions                        |
 |==============================================================================|
-| Copyright (c)1999-2003, Lukas Gebauer                                        |
+| Copyright (c)1999-2006, Lukas Gebauer                                        |
 | All rights reserved.                                                         |
 |                                                                              |
 | Redistribution and use in source and binary forms, with or without           |
@@ -33,7 +33,7 @@
 | DAMAGE.                                                                      |
 |==============================================================================|
 | The Initial Developer of the Original Code is Lukas Gebauer (Czech Republic).|
-| Portions created by Lukas Gebauer are Copyright (c)2000-2003.                |
+| Portions created by Lukas Gebauer are Copyright (c)2000-2006.                |
 | All Rights Reserved.                                                         |
 |==============================================================================|
 | Contributor(s):                                                              |
@@ -220,14 +220,7 @@ var
 begin
   if NeedInline(Value) then
   begin
-    c := IdealCharsetCoding(Value, FromCP,
-      [ISO_8859_1, ISO_8859_2, ISO_8859_3, ISO_8859_4, ISO_8859_5,
-      ISO_8859_6, ISO_8859_7, ISO_8859_8, ISO_8859_9, ISO_8859_10,
-      KOI8_R, KOI8_U
-      {$IFNDEF CIL} //error URW778 ??? :-O
-      , GB2312, EUC_KR, ISO_2022_JP, EUC_TW
-      {$ENDIF}
-      ]);
+    c := IdealCharsetCoding(Value, FromCP, IdealCharsets);
     Result := InlineEncode(Value, FromCP, c);
   end
   else
@@ -252,7 +245,7 @@ begin
   if sd = '' then
     Result := se
   else
-    Result := '"' + InlineCodeEx(sd, FromCP) + '"<' + se + '>';
+    Result := '"' + InlineCodeEx(sd, FromCP) + '" <' + se + '>';
 end;
 
 {==============================================================================}

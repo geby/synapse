@@ -1,9 +1,9 @@
 {==============================================================================|
-| Project : Ararat Synapse                                       | 001.001.000 |
+| Project : Ararat Synapse                                       | 001.001.001 |
 |==============================================================================|
 | Content: Utils for FreePascal compatibility                                  |
 |==============================================================================|
-| Copyright (c)1999-2006, Lukas Gebauer                                        |
+| Copyright (c)1999-2007, Lukas Gebauer                                        |
 | All rights reserved.                                                         |
 |                                                                              |
 | Redistribution and use in source and binary forms, with or without           |
@@ -33,7 +33,7 @@
 | DAMAGE.                                                                      |
 |==============================================================================|
 | The Initial Developer of the Original Code is Lukas Gebauer (Czech Republic).|
-| Portions created by Lukas Gebauer are Copyright (c)2003-2006.                |
+| Portions created by Lukas Gebauer are Copyright (c)2003-2007.                |
 | All Rights Reserved.                                                         |
 |==============================================================================|
 | Contributor(s):                                                              |
@@ -60,7 +60,7 @@ uses
   {$IFDEF WIN32}
   Windows;
   {$ELSE}
-  Sysutils;
+  SysUtils;
   {$ENDIF}
 {$ENDIF}
 

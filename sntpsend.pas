@@ -1,9 +1,9 @@
 {==============================================================================|
-| Project : Ararat Synapse                                       | 003.000.001|
+| Project : Ararat Synapse                                       | 003.000.002 |
 |==============================================================================|
 | Content: SNTP client                                                         |
 |==============================================================================|
-| Copyright (c)1999-2003, Lukas Gebauer                                        |
+| Copyright (c)1999-2007, Lukas Gebauer                                        |
 | All rights reserved.                                                         |
 |                                                                              |
 | Redistribution and use in source and binary forms, with or without           |
@@ -33,7 +33,7 @@
 | DAMAGE.                                                                      |
 |==============================================================================|
 | The Initial Developer of the Original Code is Lukas Gebauer (Czech Republic).|
-| Portions created by Lukas Gebauer are Copyright (c)2000-2003.                |
+| Portions created by Lukas Gebauer are Copyright (c)2000-2007.                |
 | All Rights Reserved.                                                         |
 |==============================================================================|
 | Contributor(s):                                                              |
@@ -63,7 +63,7 @@ uses
   synsock, blcksock, synautil;
 
 const
-  cNtpProtocol = 'ntp';
+  cNtpProtocol = '123';
 
 type
 
