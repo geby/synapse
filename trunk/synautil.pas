@@ -1,5 +1,5 @@
 {==============================================================================|
-| Project : Delphree - Synapse                                   | 001.005.000 |
+| Project : Delphree - Synapse                                   | 001.006.000 |
 |==============================================================================|
 | Content: support procedures and functions                                    |
 |==============================================================================|
@@ -45,6 +45,8 @@ function getparameter(value,parameter:string):string;
 function GetEmailAddr(value:string):string;
 function GetEmailDesc(value:string):string;
 function StrToHex(value:string):string;
+function IntToBin(value:integer;digits:byte):string;
+function BinToInt(value:string):integer;
 
 implementation
 
@@ -296,6 +298,43 @@ begin
     Result:=Result+IntToHex(Byte(value[n]),2);
   result:=lowercase(result);
 end;
+
+{==============================================================================}
+{IntToBin}
+function IntToBin(value:integer;digits:byte):string;
+var
+  x,y,n:integer;
+begin
+  result:='';
+  x:=value;
+  repeat
+    y:=x mod 2;
+    x:=x div 2;
+    if y>0
+      then result:='1'+result
+      else result:='0'+result;
+  until x=0;
+  x:=length(result);
+  for n:=x to digits-1 do
+    result:='0'+result;
+end;
+
+{==============================================================================}
+{BinToInt}
+function BinToInt(value:string):integer;
+var
+  x,n:integer;
+begin
+  result:=0;
+  for n:=1 to length(value) do
+    begin
+      if value[n]='0'
+        then x:=0
+        else x:=1;
+      result:=result*2+x;
+    end;
+end;
+
 {==============================================================================}
 
 end.
