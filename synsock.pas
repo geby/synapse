@@ -1,9 +1,9 @@
 {==============================================================================|
-| Project : Delphree - Synapse                                   | 002.001.000 |
+| Project : Delphree - Synapse                                   | 002.002.000 |
 |==============================================================================|
 | Content: Socket Independent Platform Layer                                   |
 |==============================================================================|
-| Copyright (c)1999-2002, Lukas Gebauer                                        |
+| Copyright (c)1999-2003, Lukas Gebauer                                        |
 | All rights reserved.                                                         |
 |                                                                              |
 | Redistribution and use in source and binary forms, with or without           |
@@ -33,7 +33,7 @@
 | DAMAGE.                                                                      |
 |==============================================================================|
 | The Initial Developer of the Original Code is Lukas Gebauer (Czech Republic).|
-| Portions created by Lukas Gebauer are Copyright (c)2001.                     |
+| Portions created by Lukas Gebauer are Copyright (c)2001-2003.                |
 | All Rights Reserved.                                                         |
 |==============================================================================|
 | Contributor(s):                                                              |
@@ -53,6 +53,7 @@ unit synsock;
 interface
 
 uses
+  SyncObjs,
 {$IFDEF LINUX}
   Libc, KernelIoctl;
 {$ELSE}
@@ -273,14 +274,14 @@ function LSSelect(nfds: Integer; readfds, writefds, exceptfds: PFDSet;
   timeout: PTimeVal): Longint; stdcall;
 {$ENDIF}
 
+var
+  SynSockCS: TCriticalSection;
+
 implementation
 
 {$IFNDEF LINUX}
 {$IFNDEF STATICWINSOCK}
-uses syncobjs;
-
 var
-  SynSockCS: TCriticalSection;
   SynSockCount: Integer = 0;
 {$ENDIF}
 {$ENDIF}
@@ -622,8 +623,6 @@ begin
   Result := True;
 end;
 
-{$IFNDEF LINUX}
-{$IFNDEF STATICWINSOCK}
 initialization
 begin
   SynSockCS:= TCriticalSection.Create;
@@ -633,7 +632,5 @@ finalization
 begin
   SynSockCS.Free;
 end;
-{$ENDIF}
-{$ENDIF}
 
 end.

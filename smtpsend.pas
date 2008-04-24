@@ -1,9 +1,9 @@
 {==============================================================================|
-| Project : Delphree - Synapse                                   | 003.002.001 |
+| Project : Delphree - Synapse                                   | 003.002.004 |
 |==============================================================================|
 | Content: SMTP client                                                         |
 |==============================================================================|
-| Copyright (c)1999-2002, Lukas Gebauer                                        |
+| Copyright (c)1999-2003, Lukas Gebauer                                        |
 | All rights reserved.                                                         |
 |                                                                              |
 | Redistribution and use in source and binary forms, with or without           |
@@ -33,7 +33,7 @@
 | DAMAGE.                                                                      |
 |==============================================================================|
 | The Initial Developer of the Original Code is Lukas Gebauer (Czech Republic).|
-| Portions created by Lukas Gebauer are Copyright (c) 1999-2002.          |
+| Portions created by Lukas Gebauer are Copyright (c) 1999-2003.          |
 | All Rights Reserved.                                                         |
 |==============================================================================|
 | Contributor(s):                                                              |
@@ -126,9 +126,6 @@ function SendToEx(const MailFrom, MailTo, Subject, SMTPHost: string;
 
 implementation
 
-const
-  CRLF = #13#10;
-
 constructor TSMTPSend.Create;
 begin
   inherited Create;
@@ -136,7 +133,7 @@ begin
   FESMTPcap := TStringList.Create;
   FSock := TTCPBlockSocket.Create;
   FSock.CreateSocket;
-  FSock.ConvertLineEnd := True;
+  FSock.ConvertLineEnd := true;
   FTimeout := 300000;
   FTargetPort := cSmtpProtocol;
   FUsername := '';
@@ -547,11 +544,11 @@ begin
   try
     t.Assign(MailData);
     t.Insert(0, '');
-    t.Insert(0, 'x-mailer: Synapse - Delphi & Kylix TCP/IP library by Lukas Gebauer');
-    t.Insert(0, 'subject: ' + Subject);
-    t.Insert(0, 'date: ' + Rfc822DateTime(now));
-    t.Insert(0, 'to: ' + MailTo);
-    t.Insert(0, 'from: ' + MailFrom);
+    t.Insert(0, 'X-mailer: Synapse - Delphi & Kylix TCP/IP library by Lukas Gebauer');
+    t.Insert(0, 'Subject: ' + Subject);
+    t.Insert(0, 'Date: ' + Rfc822DateTime(now));
+    t.Insert(0, 'To: ' + MailTo);
+    t.Insert(0, 'From: ' + MailFrom);
     Result := SendToRaw(MailFrom, MailTo, SMTPHost, t, Username, Password);
   finally
     t.Free;

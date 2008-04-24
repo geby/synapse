@@ -1,9 +1,9 @@
 {==============================================================================|
-| Project : Delphree - Synapse                                   | 002.003.001 |
+| Project : Delphree - Synapse                                   | 002.005.004 |
 |==============================================================================|
 | Content: FTP client                                                          |
 |==============================================================================|
-| Copyright (c)1999-2002, Lukas Gebauer                                        |
+| Copyright (c)1999-2003, Lukas Gebauer                                        |
 | All rights reserved.                                                         |
 |                                                                              |
 | Redistribution and use in source and binary forms, with or without           |
@@ -33,7 +33,7 @@
 | DAMAGE.                                                                      |
 |==============================================================================|
 | The Initial Developer of the Original Code is Lukas Gebauer (Czech Republic).|
-| Portions created by Lukas Gebauer are Copyright (c) 1999-2002.               |
+| Portions created by Lukas Gebauer are Copyright (c) 1999-2003.               |
 | All Rights Reserved.                                                         |
 |==============================================================================|
 | Contributor(s):                                                              |
@@ -112,6 +112,10 @@ type
     FPassiveMode: Boolean;
     FForceDefaultPort: Boolean;
     FFtpList: TFTPList;
+    FBinaryMode: Boolean;
+    FAutoTLS: Boolean;
+    FIsTLS: Boolean;
+    FFullSSL: Boolean;
     function Auth(Mode: integer): Boolean;
     function Connect: Boolean;
     function InternalStor(const Command: string; RestoreAt: integer): Boolean;
@@ -169,6 +173,10 @@ type
     property ForceDefaultPort: Boolean read FForceDefaultPort Write FForceDefaultPort;
     property OnStatus: TFTPStatus read FOnStatus write FOnStatus;
     property FtpList: TFTPList read FFtpList;
+    property BinaryMode: Boolean read FBinaryMode Write FBinaryMode;
+    property AutoTLS: Boolean read FAutoTLS Write FAutoTLS;
+    property FullSSL: Boolean read FFullSSL Write FFullSSL;
+    property IsTLS: Boolean read FIsTLS;
   end;
 
 function FtpGetFile(const IP, Port, FileName, LocalFile,
@@ -181,15 +189,13 @@ function FtpInterServerTransfer(
 
 implementation
 
-const
-  CRLF = #13#10;
-
 constructor TFTPSend.Create;
 begin
   inherited Create;
   FFullResult := TStringList.Create;
   FDataStream := TMemoryStream.Create;
   FSock := TTCPBlockSocket.Create;
+  FSock.ConvertLineEnd := True;
   FDSock := TTCPBlockSocket.Create;
   FFtpList := TFTPList.Create;
   FTimeout := 300000;
@@ -205,6 +211,10 @@ begin
   FFWUsername := '';
   FFWPassword := '';
   FFWMode := 0;
+  FBinaryMode := True;
+  FAutoTLS := False;
+  FFullSSL := False;
+  FIsTLS := False;
 end;
 
 destructor TFTPSend.Destroy;
@@ -256,38 +266,114 @@ end;
 // based on idea by Petr Esner <petr.esner@atlas.cz>
 function TFTPSend.Auth(Mode: integer): Boolean;
 const
-  // Direct connection USER[+PASS[+ACCT]]
+  //if not USER <username> then
+  //  if not PASS <password> then
+  //    if not ACCT <account> then ERROR!
+  //OK!
   Action0: TLogonActions =
-    (0, FTP_OK, 3, 1, FTP_OK, 6, 2, FTP_OK, FTP_ERR, 0, 0, 0, 0, 0, 0, 0, 0, 0);
-  // SITE <hostname>
+    (0, FTP_OK, 3,
+     1, FTP_OK, 6,
+     2, FTP_OK, FTP_ERR,
+     0, 0, 0, 0, 0, 0, 0, 0, 0);
+
+  //if not USER <FWusername> then
+  //  if not PASS <FWPassword> then ERROR!
+  //if SITE <FTPServer> then ERROR!
+  //if not USER <username> then
+  //  if not PASS <password> then
+  //    if not ACCT <account> then ERROR!
+  //OK!
   Action1: TLogonActions =
-    (3, 6, 3, 4, 6, FTP_ERR, 5, FTP_ERR, 9, 0, FTP_OK, 12, 1, FTP_OK, 15, 2,
-    FTP_OK, FTP_ERR);
-  // USER after logon
+    (3, 6, 3,
+     4, 6, FTP_ERR,
+     5, FTP_ERR, 9,
+     0, FTP_OK, 12,
+     1, FTP_OK, 15,
+     2, FTP_OK, FTP_ERR);
+
+  //if not USER <FWusername> then
+  //  if not PASS <FWPassword> then ERROR!
+  //if USER <UserName>'@'<FTPServer> then OK!
+  //if not PASS <password> then
+  //  if not ACCT <account> then ERROR!
+  //OK!
   Action2: TLogonActions =
-    (3, 6, 3, 4, 6, FTP_ERR, 6, FTP_OK, 9, 1, FTP_OK, 12, 2, FTP_OK, FTP_ERR,
+    (3, 6, 3,
+     4, 6, FTP_ERR,
+     6, FTP_OK, 9,
+     1, FTP_OK, 12,
+     2, FTP_OK, FTP_ERR,
      0, 0, 0);
-  // Transparent
+
+  //if not USER <FWusername> then
+  //  if not PASS <FWPassword> then ERROR!
+  //if not USER <username> then
+  //  if not PASS <password> then
+  //    if not ACCT <account> then ERROR!
+  //OK!
   Action3: TLogonActions =
-    (3, 6, 3, 4, 6, FTP_ERR, 0, FTP_OK, 9, 1, FTP_OK, 12, 2, FTP_OK, FTP_ERR,
+    (3, 6, 3,
+     4, 6, FTP_ERR,
+     0, FTP_OK, 9,
+     1, FTP_OK, 12,
+     2, FTP_OK, FTP_ERR,
      0, 0, 0);
-  // proxy OPEN
+
+  //OPEN <FTPserver>
+  //if not USER <username> then
+  //  if not PASS <password> then
+  //    if not ACCT <account> then ERROR!
+  //OK!
   Action4: TLogonActions =
-    (7, 3, 3, 0, FTP_OK, 6, 1, FTP_OK, 9, 2, FTP_OK, FTP_ERR,
+    (7, 3, 3,
+     0, FTP_OK, 6,
+     1, FTP_OK, 9,
+     2, FTP_OK, FTP_ERR,
      0, 0, 0, 0, 0, 0);
-  // USER with no logon
+
+  //if USER <UserName>'@'<FTPServer> then OK!
+  //if not PASS <password> then
+  //  if not ACCT <account> then ERROR!
+  //OK!
   Action5: TLogonActions =
-    (6, FTP_OK, 3, 1, FTP_OK, 6, 2, FTP_OK, FTP_ERR, 0, 0, 0, 0, 0, 0, 0, 0, 0);
-  // USER fireID@remotehost
+    (6, FTP_OK, 3,
+     1, FTP_OK, 6,
+     2, FTP_OK, FTP_ERR,
+     0, 0, 0, 0, 0, 0, 0, 0, 0);
+
+  //if not USER <FWUserName>@<FTPServer> then
+  //  if not PASS <FWPassword> then ERROR!
+  //if not USER <username> then
+  //  if not PASS <password> then
+  //    if not ACCT <account> then ERROR!
+  //OK!
   Action6: TLogonActions =
-    (8, 6, 3, 4, 6, FTP_ERR, 0, FTP_OK, 9, 1, FTP_OK, 12, 2, FTP_OK, FTP_ERR,
+    (8, 6, 3,
+     4, 6, FTP_ERR,
+     0, FTP_OK, 9,
+     1, FTP_OK, 12,
+     2, FTP_OK, FTP_ERR,
      0, 0, 0);
-  // USER remoteID@remotehost fireID
+
+  //if USER <UserName>@<FTPServer> <FWUserName> then ERROR!
+  //if not PASS <password> then
+  //  if not ACCT <account> then ERROR!
+  //OK!
   Action7: TLogonActions =
-    (9, FTP_ERR, 3, 1, FTP_OK, 6, 2, FTP_OK, FTP_ERR, 0, 0, 0, 0, 0, 0, 0, 0, 0);
-  // USER remoteID@fireID@remotehost
+    (9, FTP_ERR, 3,
+     1, FTP_OK, 6,
+     2, FTP_OK, FTP_ERR,
+     0, 0, 0, 0, 0, 0, 0, 0, 0);
+
+  //if not USER <UserName>@<FWUserName>@<FTPServer> then
+  //  if not PASS <Password>@<FWPassword> then
+  //    if not ACCT <account> then ERROR!
+  //OK!
   Action8: TLogonActions =
-    (10, FTP_OK, 3, 11, FTP_OK, 6, 2, FTP_OK, FTP_ERR, 0, 0, 0, 0, 0, 0, 0, 0, 0);
+    (10, FTP_OK, 3,
+     11, FTP_OK, 6,
+     2, FTP_OK, FTP_ERR,
+     0, 0, 0, 0, 0, 0, 0, 0, 0);
 var
   FTPServer: string;
   LogonActions: TLogonActions;
@@ -362,6 +448,8 @@ function TFTPSend.Connect: Boolean;
 begin
   FSock.CloseSocket;
   FSock.CreateSocket;
+  if FFullSSL then
+    FSock.SSLEnabled := True;
   FSock.Bind(FIPInterface, cAnyPort);
   if FFWHost = '' then
     FSock.Connect(FTargetHost, FTargetPort)
@@ -376,10 +464,22 @@ begin
   FCanResume := False;
   if not Connect then
     Exit;
+  FIsTLS := FFullSSL;
   if (ReadResult div 100) <> 2 then
     Exit;
+  if FAutoTLS and not(FIsTLS) then
+    if (FTPCommand('AUTH TLS') div 100) = 2 then
+    begin
+      FSock.SSLDoConnect;
+      FIsTLS := True;
+    end;
   if not Auth(FFWMode) then
     Exit;
+  if FIsTLS then
+  begin
+    FTPCommand('PROT P');
+    FTPCommand('PBSZ 0');
+  end;
   FTPCommand('TYPE I');
   FTPCommand('STRU F');
   FTPCommand('MODE S');
@@ -458,12 +558,13 @@ begin
       FSock.Bind(FIPInterface, s);
     if FDSock.LastError <> 0 then
       Exit;
+    FDSock.SetLinger(True, 10);
     FDSock.Listen;
     FDSock.GetSins;
     FDataIP := FDSock.GetLocalSinIP;
     FDataIP := FDSock.ResolveName(FDataIP);
     FDataPort := IntToStr(FDSock.GetLocalSinPort);
-    s := StringReplace(FDataIP, '.', ',');
+    s := ReplaceString(FDataIP, '.', ',');
     s := 'PORT ' + s + ',' + IntToStr(FDSock.GetLocalSinPort div 256)
       + ',' + IntToStr(FDSock.GetLocalSinPort mod 256);
     Result := (FTPCommand(s) div 100) = 2;
@@ -488,6 +589,8 @@ begin
       Result := True;
     end;
   end;
+  if FIsTLS then
+    FDSock.SSLDoConnect;
 end;
 
 function TFTPSend.DataRead(const DestStream: TStream): Boolean;
@@ -604,7 +707,10 @@ begin
   try
     if not DataSocket then
       Exit;
-    FTPCommand('TYPE I');
+    if FBinaryMode then
+      FTPCommand('TYPE I')
+    else
+      FTPCommand('TYPE A');
     if Restore then
     begin
       RetrStream.Seek(0, soFromEnd);
@@ -642,7 +748,10 @@ begin
   try
     if not DataSocket then
       Exit;
-    FTPCommand('TYPE I');
+    if FBinaryMode then
+      FTPCommand('TYPE I')
+    else
+      FTPCommand('TYPE A');
     StorSize := SendStream.Size;
     if not FCanResume then
       RestoreAt := 0;
@@ -757,6 +866,11 @@ begin
     Result := SeparateRight(FResultString, '"');
     Result := Separateleft(Result, '"');
   end;
+end;
+
+procedure TFTPSend.Abort;
+begin
+  FDSock.CloseSocket;
 end;
 
 {==============================================================================}
@@ -965,11 +1079,11 @@ begin
       else
       begin
         flr.Readable := true;
-        flr.Filesize := StrToIntDef(s, 0);
+        flr.FileSize := StrToIntDef(s, 0);
       end;
       if Value = '' then
         Exit;
-      flr.FileName := Trim(s);
+      flr.FileName := Trim(Value);
       Result := True;
       Exit;
     end;
@@ -1103,38 +1217,33 @@ begin
       Exit;
     if not ToFTP.Login then
       Exit;
-    if FromFTP.FTPCommand('PASV') <> 227 then
+    if (FromFTP.FTPCommand('PASV') div 100) <> 2 then
       Exit;
     FromFTP.ParseRemote(FromFTP.ResultString);
-    s := StringReplace(FromFTP.DataIP, '.', ',');
+    s := ReplaceString(FromFTP.DataIP, '.', ',');
     s := 'PORT ' + s + ',' + IntToStr(StrToIntDef(FromFTP.DataPort, 0) div 256)
       + ',' + IntToStr(StrToIntDef(FromFTP.DataPort, 0) mod 256);
-    if ToFTP.FTPCommand(s) <> 200 then
+    if (ToFTP.FTPCommand(s) div 100) <> 2 then
       Exit;
-    x := FromFTP.FTPCommand('STOR ' + FromFile);
-    if (x <> 125) and (x <> 150) then
+    x := ToFTP.FTPCommand('RETR ' + FromFile);
+    if (x div 100) <> 1 then
       Exit;
-    x := ToFTP.FTPCommand('RETR ' + ToFile);
-    if (x <> 125) and (x <> 150) then
+    x := FromFTP.FTPCommand('STOR ' + ToFile);
+    if (x div 100) <> 1 then
       Exit;
     FromFTP.Timeout := 21600000;
     x := FromFTP.ReadResult;
-    if (x <> 226) and (x <> 250) then
+    if (x  div 100) <> 2 then
       Exit;
     ToFTP.Timeout := 21600000;
     x := ToFTP.ReadResult;
-    if (x <> 226) and (x <> 250) then
+    if (x div 100) <> 2 then
       Exit;
     Result := True;
   finally
     ToFTP.Free;
     FromFTP.Free;
   end;
-end;
-
-procedure TFTPSend.Abort;
-begin
-  FDSock.CloseSocket;
 end;
 
 end.

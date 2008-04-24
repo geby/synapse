@@ -1,9 +1,9 @@
 {==============================================================================|
-| Project : Delphree - Synapse                                   | 002.001.002 |
+| Project : Delphree - Synapse                                   | 002.003.002 |
 |==============================================================================|
 | Content: MIME support procedures and functions                               |
 |==============================================================================|
-| Copyright (c)1999-2002, Lukas Gebauer                                        |
+| Copyright (c)1999-2003, Lukas Gebauer                                        |
 | All rights reserved.                                                         |
 |                                                                              |
 | Redistribution and use in source and binary forms, with or without           |
@@ -33,7 +33,7 @@
 | DAMAGE.                                                                      |
 |==============================================================================|
 | The Initial Developer of the Original Code is Lukas Gebauer (Czech Republic).|
-| Portions created by Lukas Gebauer are Copyright (c)2000-2002.                |
+| Portions created by Lukas Gebauer are Copyright (c)2000-2003.                |
 | All Rights Reserved.                                                         |
 |==============================================================================|
 | Contributor(s):                                                              |
@@ -95,6 +95,8 @@ type
   public
     constructor Create;
     destructor Destroy; override;
+    procedure Assign(Value: TMimePart);
+    procedure AssignSubParts(Value: TMimePart);
     procedure Clear;
     procedure DecodePart;
     procedure DecodePartHeader;
@@ -103,6 +105,7 @@ type
     procedure MimeTypeFromExt(Value: string);
     function GetSubPartCount: integer;
     function GetSubPart(index: integer): TMimePart;
+    procedure DeleteSubPart(index: integer);
     procedure ClearSubParts;
     function AddSubPart: TMimePart;
     procedure DecomposeParts;
@@ -255,6 +258,47 @@ end;
 
 {==============================================================================}
 
+procedure TMIMEPart.Assign(Value: TMimePart);
+begin
+  Primary := Value.Primary;
+  Encoding := Value.Encoding;
+  Charset := Value.Charset;
+  DefaultCharset := Value.DefaultCharset;
+  PrimaryCode := Value.PrimaryCode;
+  EncodingCode := Value.EncodingCode;
+  CharsetCode := Value.CharsetCode;
+  TargetCharset := Value.TargetCharset;
+  Secondary := Value.Secondary;
+  Description := Value.Description;
+  Disposition := Value.Disposition;
+  ContentID := Value.ContentID;
+  Boundary := Value.Boundary;
+  FileName := Value.FileName;
+  Lines.Assign(Value.Lines);
+  PartBody.Assign(Value.PartBody);
+  Headers.Assign(Value.Headers);
+  PrePart.Assign(Value.PrePart);
+  PostPart.Assign(Value.PostPart);
+  MaxLineLength := Value.MaxLineLength;
+end;
+
+{==============================================================================}
+
+procedure TMIMEPart.AssignSubParts(Value: TMimePart);
+var
+  n: integer;
+  p: TMimePart;
+begin
+  Assign(Value);
+  for n := 0 to Value.GetSubPartCount - 1 do
+  begin
+    p := AddSubPart;
+    p.AssignSubParts(Value.GetSubPart(n));
+  end;
+end;
+
+{==============================================================================}
+
 function TMIMEPart.GetSubPartCount: integer;
 begin
   Result :=  FSubParts.Count;
@@ -267,6 +311,17 @@ begin
   Result := nil;
   if Index < GetSubPartCount then
     Result := TMimePart(FSubParts[Index]);
+end;
+
+{==============================================================================}
+
+procedure TMIMEPart.DeleteSubPart(index: integer);
+begin
+  if Index < GetSubPartCount then
+  begin
+    GetSubPart(Index).Free;
+    FSubParts.Delete(Index);
+  end;
 end;
 
 {==============================================================================}
@@ -342,7 +397,7 @@ begin
       Mime := AddSubPart;
       while FLines.Count > x do
       begin
-        s := TrimRight(FLines[x]);
+        s := FLines[x];
         Inc(x);
         if Pos('--' + FBoundary, s) = 1 then
           Break;
@@ -702,7 +757,7 @@ begin
   begin
     s := '';
     if FFileName <> '' then
-      s := '; FileName="' + FFileName + '"';
+      s := '; FileName="' + InlineCode(FFileName) + '"';
     FHeaders.Insert(0, 'Content-Disposition: ' + LowerCase(FDisposition) + s);
   end;
   if FContentID <> '' then

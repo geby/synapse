@@ -1,9 +1,9 @@
 {==============================================================================|
-| Project : Delphree - Synapse                                   | 002.001.001 |
+| Project : Delphree - Synapse                                   | 002.001.002 |
 |==============================================================================|
 | Content: MIME message object                                                 |
 |==============================================================================|
-| Copyright (c)1999-2002, Lukas Gebauer                                        |
+| Copyright (c)1999-2003, Lukas Gebauer                                        |
 | All rights reserved.                                                         |
 |                                                                              |
 | Redistribution and use in source and binary forms, with or without           |
@@ -33,7 +33,7 @@
 | DAMAGE.                                                                      |
 |==============================================================================|
 | The Initial Developer of the Original Code is Lukas Gebauer (Czech Republic).|
-| Portions created by Lukas Gebauer are Copyright (c)2000-2002.                |
+| Portions created by Lukas Gebauer are Copyright (c)2000-2003.                |
 | All Rights Reserved.                                                         |
 |==============================================================================|
 | Contributor(s):                                                              |
@@ -154,9 +154,9 @@ begin
     if FCustomHeaders[n] <> '' then
       Value.Insert(0, FCustomHeaders[n]);
   if FXMailer = '' then
-    Value.Insert(0, 'x-mailer: Synapse - Delphi & Kylix TCP/IP library by Lukas Gebauer')
+    Value.Insert(0, 'X-mailer: Synapse - Delphi & Kylix TCP/IP library by Lukas Gebauer')
   else
-    Value.Insert(0, 'x-mailer: ' + FXMailer);
+    Value.Insert(0, 'X-mailer: ' + FXMailer);
   Value.Insert(0, 'MIME-Version: 1.0 (produced by Synapse)');
   if FOrganization <> '' then
     Value.Insert(0, 'Organization: ' + InlineCode(FOrganization));

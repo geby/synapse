@@ -1,9 +1,9 @@
 {==============================================================================|
-| Project : Delphree - Synapse                                   | 002.001.000 |
+| Project : Delphree - Synapse                                   | 002.002.002 |
 |==============================================================================|
 | Content: IMAP4rev1 client                                                    |
 |==============================================================================|
-| Copyright (c)1999-2002, Lukas Gebauer                                        |
+| Copyright (c)1999-2003, Lukas Gebauer                                        |
 | All rights reserved.                                                         |
 |                                                                              |
 | Redistribution and use in source and binary forms, with or without           |
@@ -33,7 +33,7 @@
 | DAMAGE.                                                                      |
 |==============================================================================|
 | The Initial Developer of the Original Code is Lukas Gebauer (Czech Republic).|
-| Portions created by Lukas Gebauer are Copyright (c)2001-2002.                |
+| Portions created by Lukas Gebauer are Copyright (c)2001-2003.                |
 | All Rights Reserved.                                                         |
 |==============================================================================|
 | Contributor(s):                                                              |
@@ -115,6 +115,7 @@ type
     function SetFlagsMess(MessID: integer; Flags: string): Boolean;
     function GetFlagsMess(MessID: integer; var Flags: string): Boolean;
     function StartTLS: Boolean;
+    function GetUID(MessID: integer; var UID : Integer): Boolean;
     function FindCap(const Value: string): string;
   published
     property ResultString: string read FResultString;
@@ -135,19 +136,16 @@ type
 
 implementation
 
-const
-  CRLF = #13#10;
-
 constructor TIMAPSend.Create;
 begin
   inherited Create;
   FFullResult := TStringList.Create;
   FIMAPcap := TStringList.Create;
   FSock := TTCPBlockSocket.Create;
+  FSock.ConvertLineEnd := True;
   FSock.CreateSocket;
   FSock.SizeRecvBuffer := 32768;
   FSock.SizeSendBuffer := 32768;
-  FSock.ConvertLineEnd := True;
   FTimeout := 300000;
   FTargetPort := cIMAPProtocol;
   FUsername := '';
@@ -196,9 +194,7 @@ begin
       l := StrToIntDef(s, -1);
       if l <> -1 then
       begin
-        setlength(s, l);
-        x := FSock.recvbufferex(PChar(s), l, FTimeout);
-        SetLength(s, x);
+        s := FSock.RecvBufferStr(l, FTimeout);
         FFullResult.Add(s);
       end;
     end;
@@ -220,7 +216,8 @@ var
 begin
   Inc(FTagCommand);
   l := Length(Data.Text);
-  FSock.SendString(IntToStr(FTagCommand) + ' ' + Value + ' {'+ IntToStr(l) + '}' + CRLF);
+  FSock.SendString('S' + IntToStr(FTagCommand) + ' ' + Value + ' {'+ IntToStr(l) + '}' + CRLF);
+  FSock.RecvString(FTimeout);
   FSock.SendString(Data.Text + CRLF);
   Result := ReadResult;
 end;
@@ -247,9 +244,18 @@ begin
   for n := 0 to FFullResult.Count - 1 do
   begin
     s := FFullResult[n];
-    x := RPos(' ', s);
-    if (x > 0) and (Pos('NOSELECT', UpperCase(s)) = 0) then
-      Value.Add(Copy(s, x + 1, Length(s) - x));
+    if (s <> '') and (Pos('\NOSELECT', UpperCase(s)) = 0) then
+    begin
+      if s[Length(s)] = '"' then
+      begin
+        Delete(s, Length(s), 1);
+        x := RPos('"', s);
+      end
+      else
+        x := RPos(' ', s);
+      if (x > 0) then
+        Value.Add(Copy(s, x + 1, Length(s) - x));
+    end;
   end;
 end;
 
@@ -472,7 +478,7 @@ begin
     for n := 0 to FFullResult.Count - 1 do
     begin
       s := UpperCase(FFullResult[n]);
-      if (Pos('* STATUS ', s) = 1) and (Pos(Value, s) > 0 ) then
+      if (Pos(FolderName, s) >= 1) and (Pos(Value, s) > 0 ) then
       begin
         t := SeparateRight(s, Value);
         t := SeparateLeft(t, ')');
@@ -598,7 +604,7 @@ begin
   for n := 0 to FFullResult.Count - 1 do
   begin
     s := uppercase(FFullResult[n]);
-    if Pos('* FETCH (FLAGS', s) = 1 then
+    if (Pos('* ', s) = 1) and (Pos('FLAGS', s) > 0 ) then
     begin
       s := SeparateRight(s, 'FLAGS');
       s := Separateright(s, '(');
@@ -618,6 +624,27 @@ begin
       Result := FSock.LastError = 0;
     end;
   end;
+end;
+
+//Paul Buskermolen <p.buskermolen@pinkroccade.com>
+function TIMAPSend.GetUID(MessID: integer; var UID : Integer): boolean;
+var
+  s, sUid: string;
+  n: integer;
+begin
+  sUID := '';
+  s := 'FETCH ' + IntToStr(MessID) + ' UID';
+  Result := IMAPcommand(s) = 'OK';
+  for n := 0 to FFullResult.Count - 1 do
+  begin
+    s := uppercase(FFullResult[n]);
+    if Pos('FETCH (UID', s) >= 1 then
+    begin
+      s := Separateright(s, '(UID ');
+      sUID := SeparateLeft(s, ')');
+    end;
+  end;
+  UID := StrToIntDef(sUID, 0);
 end;
 
 {==============================================================================}

@@ -1,9 +1,9 @@
 {==============================================================================|
-| Project : Delphree - Synapse                                   | 003.002.000 |
+| Project : Delphree - Synapse                                   | 003.004.004 |
 |==============================================================================|
 | Content: HTTP client                                                         |
 |==============================================================================|
-| Copyright (c)1999-2002, Lukas Gebauer                                        |
+| Copyright (c)1999-2003, Lukas Gebauer                                        |
 | All rights reserved.                                                         |
 |                                                                              |
 | Redistribution and use in source and binary forms, with or without           |
@@ -33,7 +33,7 @@
 | DAMAGE.                                                                      |
 |==============================================================================|
 | The Initial Developer of the Original Code is Lukas Gebauer (Czech Republic).|
-| Portions created by Lukas Gebauer are Copyright (c) 1999-2002.               |
+| Portions created by Lukas Gebauer are Copyright (c) 1999-2003.               |
 | All Rights Reserved.                                                         |
 |==============================================================================|
 | Contributor(s):                                                              |
@@ -75,18 +75,29 @@ type
     FProxyPass: string;
     FResultCode: Integer;
     FResultString: string;
+    FUserAgent: string;
+    FCookies: TStringList;
+    FDownloadSize: integer;
+    FUploadSize: integer;
+    FRangeStart: integer;
+    FRangeEnd: integer;
     function ReadUnknown: Boolean;
     function ReadIdentity(Size: Integer): Boolean;
     function ReadChunked: Boolean;
+    procedure ParseCookies;
   public
     constructor Create;
     destructor Destroy; override;
     procedure Clear;
     procedure DecodeStatus(const Value: string);
     function HTTPMethod(const Method, URL: string): Boolean;
+    procedure Abort;
   published
-    property Headers: TStringList read FHeaders Write FHeaders;
-    property Document: TMemoryStream read FDocument Write FDocument;
+    property Headers: TStringList read FHeaders;
+    property Cookies: TStringList read FCookies;
+    property Document: TMemoryStream read FDocument;
+    property RangeStart: integer read FRangeStart Write FRangeStart;
+    property RangeEnd: integer read FRangeEnd Write FRangeEnd;
     property MimeType: string read FMimeType Write FMimeType;
     property Protocol: string read FProtocol Write FProtocol;
     property KeepAlive: Boolean read FKeepAlive Write FKeepAlive;
@@ -94,8 +105,11 @@ type
     property ProxyPort: string read FProxyPort Write FProxyPort;
     property ProxyUser: string read FProxyUser Write FProxyUser;
     property ProxyPass: string read FProxyPass Write FProxyPass;
+    property UserAgent: string read FUserAgent Write FUserAgent;
     property ResultCode: Integer read FResultCode;
     property ResultString: string read FResultString;
+    property DownloadSize: integer read FDownloadSize;
+    property UploadSize: integer read FUploadSize;
     property Sock: TTCPBlockSocket read FSock;
   end;
 
@@ -108,18 +122,16 @@ function HttpPostFile(const URL, FieldName, FileName: string;
 
 implementation
 
-const
-  CRLF = #13#10;
-
 constructor THTTPSend.Create;
 begin
   inherited Create;
   FHeaders := TStringList.Create;
+  FCookies := TStringList.Create;
   FDocument := TMemoryStream.Create;
   FSock := TTCPBlockSocket.Create;
+  FSock.ConvertLineEnd := True;
   FSock.SizeRecvBuffer := 65536;
   FSock.SizeSendBuffer := 65536;
-  FSock.ConvertLineEnd := True;
   FTimeout := 300000;
   FTargetPort := cHttpProtocol;
   FProxyHost := '';
@@ -130,6 +142,9 @@ begin
   FAlivePort := '';
   FProtocol := '1.0';
   FKeepAlive := True;
+  FUserAgent := 'Mozilla/4.0 (compatible; Synapse)';
+  FDownloadSize := 0;
+  FUploadSize := 0;
   Clear;
 end;
 
@@ -137,12 +152,15 @@ destructor THTTPSend.Destroy;
 begin
   FSock.Free;
   FDocument.Free;
+  FCookies.Free;
   FHeaders.Free;
   inherited Destroy;
 end;
 
 procedure THTTPSend.Clear;
 begin
+  FRangeStart := 0;
+  FRangeEnd := 0;
   FDocument.Clear;
   FHeaders.Clear;
   FMimeType := 'text/html';
@@ -170,11 +188,14 @@ var
   Prot, User, Pass, Host, Port, Path, Para, URI: string;
   s, su: string;
   HttpTunnel: Boolean;
+  n: integer;
 begin
   {initial values}
   Result := False;
   FResultCode := 500;
   FResultString := '';
+  FDownloadSize := 0;
+  FUploadSize := 0;
 
   URI := ParseURL(URL, Prot, User, Pass, Host, Port, Path, Para);
 
@@ -208,6 +229,15 @@ begin
     if FMimeType <> '' then
       FHeaders.Insert(0, 'Content-Type: ' + FMimeType);
   end;
+  { setting User-agent }
+  if FUserAgent <> '' then
+    FHeaders.Insert(0, 'User-Agent: ' + FUserAgent);
+  { setting Ranges }
+  if FRangeEnd > 0 then
+    FHeaders.Insert(0, 'Range: bytes=' + IntToStr(FRangeStart) + '-' + IntToStr(FRangeEnd));
+  { setting Cookies }
+  for n := 0 to FCookies.Count - 1 do
+    FHeaders.Insert(0, 'Cookie: ' + FCookies[n]);
   { setting KeepAlives }
   if not FKeepAlive then
     FHeaders.Insert(0, 'Connection: close');
@@ -309,6 +339,7 @@ begin
   { send document }
   if Sending then
   begin
+    FUploadSize := FDocument.Size;
     FSock.SendBuffer(FDocument.Memory, FDocument.Size);
     if FSock.LastError <> 0 then
       Exit;
@@ -382,15 +413,16 @@ begin
       TE_CHUNKED:
         ReadChunked;
     end;
+  Result := True;
 
   FDocument.Seek(0, soFromBeginning);
-  Result := True;
   if ToClose then
   begin
     FSock.CloseSocket;
     FAliveHost := '';
     FAlivePort := '';
   end;
+  ParseCookies;
 end;
 
 function THTTPSend.ReadUnknown: Boolean;
@@ -407,17 +439,13 @@ end;
 
 function THTTPSend.ReadIdentity(Size: Integer): Boolean;
 var
-  mem: TMemoryStream;
+  x: integer;
 begin
-  mem := TMemoryStream.Create;
-  try
-    mem.SetSize(Size);
-    FSock.RecvBufferEx(mem.Memory, Size, FTimeout);
-    Result := FSock.LastError = 0;
-    FDocument.CopyFrom(mem, 0);
-  finally
-    mem.Free;
-  end;
+  FDownloadSize := Size;
+  FDocument.SetSize(FDocument.Position + Size);
+  x := FSock.RecvBufferEx(IncPoint(FDocument.Memory, FDocument.Position), Size, FTimeout);
+  FDocument.SetSize(FDocument.Position + x);
+  Result := FSock.LastError = 0;
 end;
 
 function THTTPSend.ReadChunked: Boolean;
@@ -438,6 +466,28 @@ begin
     ReadIdentity(Size);
   until False;
   Result := FSock.LastError = 0;
+end;
+
+procedure THTTPSend.ParseCookies;
+var
+  n: integer;
+  s: string;
+  sn, sv: string;
+begin
+  for n := 0 to FHeaders.Count - 1 do
+    if Pos('set-cookie:', lowercase(FHeaders[n])) = 1 then
+    begin
+      s := SeparateRight(FHeaders[n], ':');
+      s := trim(SeparateLeft(s, ';'));
+      sn := trim(SeparateLeft(s, '='));
+      sv := trim(SeparateRight(s, '='));
+      FCookies.Values[sn] := sv;
+    end;
+end;
+
+procedure THTTPSend.Abort;
+begin
+  FSock.CloseSocket;
 end;
 
 {==============================================================================}
@@ -502,8 +552,6 @@ end;
 
 function HttpPostFile(const URL, FieldName, FileName: string;
   const Data: TStream; const ResultData: TStrings): Boolean;
-const
-  CRLF = #$0D + #$0A;
 var
   HTTP: THTTPSend;
   Bound, s: string;
@@ -519,7 +567,7 @@ begin
     HTTP.Document.CopyFrom(Data, 0);
     s := CRLF + '--' + Bound + '--' + CRLF;
     HTTP.Document.Write(Pointer(s)^, Length(s));
-    HTTP.MimeType := 'multipart/form-data, boundary=' + Bound;
+    HTTP.MimeType := 'multipart/form-data; boundary=' + Bound;
     Result := HTTP.HTTPMethod('POST', URL);
     ResultData.LoadFromStream(HTTP.Document);
   finally

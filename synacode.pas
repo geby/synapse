@@ -1,9 +1,9 @@
 {==============================================================================|
-| Project : Delphree - Synapse                                   | 001.005.005 |
+| Project : Delphree - Synapse                                   | 001.006.001 |
 |==============================================================================|
 | Content: Coding and decoding support                                         |
 |==============================================================================|
-| Copyright (c)1999-2002, Lukas Gebauer                                        |
+| Copyright (c)1999-2003, Lukas Gebauer                                        |
 | All rights reserved.                                                         |
 |                                                                              |
 | Redistribution and use in source and binary forms, with or without           |
@@ -33,7 +33,7 @@
 | DAMAGE.                                                                      |
 |==============================================================================|
 | The Initial Developer of the Original Code is Lukas Gebauer (Czech Republic).|
-| Portions created by Lukas Gebauer are Copyright (c)2000-2002.                |
+| Portions created by Lukas Gebauer are Copyright (c)2000-2003.                |
 | All Rights Reserved.                                                         |
 |==============================================================================|
 | Contributor(s):                                                              |
@@ -113,6 +113,7 @@ function Encode3to4(const Value, Table: string): string;
 function DecodeBase64(const Value: string): string;
 function EncodeBase64(const Value: string): string;
 function DecodeUU(const Value: string): string;
+function EncodeUU(const Value: string): string;
 function DecodeXX(const Value: string): string;
 function UpdateCrc32(Value: Byte; Crc32: Integer): Integer;
 function Crc32(const Value: string): Integer;
@@ -506,12 +507,25 @@ begin
     Exit; //ignore Table yet (set custom UUT)
   //begin decoding
   x := Pos(Value[1], uut) - 1;
-  x := Round((x / 3) * 4);
+  case (x mod 3) of
+    0: x :=(x div 3)* 4;
+    1: x :=((x div 3) * 4) + 2;
+    2: x :=((x  div 3) * 4) + 3;
+  end;
   //x - lenght UU line
   s := Copy(Value, 2, x);
   if s = '' then
     Exit;
   Result := Decode4to3(s, uut);
+end;
+
+{==============================================================================}
+
+function EncodeUU(const Value: string): string;
+begin
+  Result := '';
+  if Length(Value) < Length(TableUU) then
+    Result := TableUU[Length(Value) + 1] + Encode3to4(Value, TableUU);
 end;
 
 {==============================================================================}
@@ -531,7 +545,11 @@ begin
     Exit;
   //begin decoding
   x := Pos(Value[1], TableXX) - 1;
-  x := Round((x / 3) * 4);
+  case (x mod 3) of
+    0: x :=(x div 3)* 4;
+    1: x :=((x div 3) * 4) + 2;
+    2: x :=((x  div 3) * 4) + 3;
+  end;
   //x - lenght XX line
   s := Copy(Value, 2, x);
   if s = '' then

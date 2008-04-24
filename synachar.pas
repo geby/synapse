@@ -1,9 +1,9 @@
 {==============================================================================|
-| Project : Delphree - Synapse                                   | 004.000.001 |
+| Project : Delphree - Synapse                                   | 004.000.003 |
 |==============================================================================|
 | Content: Charset conversion support                                          |
 |==============================================================================|
-| Copyright (c)1999-2002, Lukas Gebauer                                        |
+| Copyright (c)1999-2003, Lukas Gebauer                                        |
 | All rights reserved.                                                         |
 |                                                                              |
 | Redistribution and use in source and binary forms, with or without           |
@@ -33,7 +33,7 @@
 | DAMAGE.                                                                      |
 |==============================================================================|
 | The Initial Developer of the Original Code is Lukas Gebauer (Czech Republic).|
-| Portions created by Lukas Gebauer are Copyright (c)2000,2001.                |
+| Portions created by Lukas Gebauer are Copyright (c)2000-2003.                |
 | All Rights Reserved.                                                         |
 |==============================================================================|
 | Contributor(s):                                                              |
@@ -671,7 +671,7 @@ const
       $0158, $0052,
       $0160, $0053,
       $0164, $0053,
-      $00DA, $0054,
+      $00DA, $0055,
       $016E, $0055,
       $00DD, $0059,
       $017D, $005A
@@ -806,8 +806,15 @@ begin
   b[1] := 0;
   b[2] := 0;
   b[3] := 0;
-  if (Length(Value) + 1) < Index + mb then
+  b1 := 0;
+  b2 := 0;
+  b3 := 0;
+  b4 := 0;
+  if length(Value) < (Index + mb - 1) then
+  begin
+    Inc(index, mb);
     Exit;
+  end;
   s := '';
   for n := 1 to mb do
   begin
@@ -937,9 +944,9 @@ end;
 {==============================================================================}
 function UTF7toUCS2(const Value: string): string;
 var
-  n: Integer;
+  n, i: Integer;
   c: Char;
-  s: string;
+  s, t: string;
 begin
   Result := '';
   n := 1;
@@ -968,7 +975,18 @@ begin
       if s = '' then
         s := WriteMulti(Ord('+'), 0, 0, 0, 2)
       else
-        s := DecodeBase64(s);
+      begin
+        t := DecodeBase64(s);
+        if not odd(length(t)) then
+          s := t
+        else
+        begin //ill-formed sequence
+          t := s;
+          s := WriteMulti(Ord('+'), 0, 0, 0, 2);
+          for i := 1 to length(t) do
+            s := s + WriteMulti(Ord(t[i]), 0, 0, 0, 2);
+        end;
+      end;
       Result := Result + s;
     end;
   end;
