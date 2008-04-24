@@ -1,5 +1,5 @@
 {==============================================================================|
-| Project : Delphree - Synapse                                   | 002.001.001 |
+| Project : Delphree - Synapse                                   | 003.001.000 |
 |==============================================================================|
 | Content: Library base                                                        |
 |==============================================================================|
@@ -28,7 +28,12 @@ unit blcksock;
 interface
 
 uses
-  winsock, SysUtils, windows;
+  synsock, SysUtils, classes,
+{$IFDEF LINUX}
+  libc, kernelioctl;
+{$ELSE}
+  winsock, windows;
+{$ENDIF}
 
 type
 
@@ -60,6 +65,7 @@ public
   FWsaData : TWSADATA;
 
   constructor Create;
+  constructor CreateAlternate(stub:string);
   destructor Destroy; override;
 
   Procedure CreateSocket; virtual;
@@ -81,6 +87,7 @@ public
   function SockCheck(SockResult:integer):integer;
   procedure ExceptCheck;
   function LocalName:string;
+  procedure ResolveNameToIP(Name:string;IPlist:TStringlist);
   function GetLocalSinIP:string;
   function GetRemoteSinIP:string;
   function GetLocalSinPort:integer;
@@ -123,13 +130,45 @@ implementation
 
 {TBlockSocket.Create}
 constructor TBlockSocket.Create;
+var
+  e:ESynapseError;
 begin
   inherited create;
   FRaiseExcept:=false;
   FSocket:=INVALID_SOCKET;
   FProtocol:=IPPROTO_IP;
   Fbuffer:='';
-  SockCheck(winsock.WSAStartup($101, FWsaData));
+  if not InitSocketInterface('')
+    then
+      begin
+        e:=ESynapseError.Create('Error loading Winsock DLL!');
+        e.ErrorCode:=0;
+        e.ErrorMessage:='Error loading Winsock DLL!';
+        raise e;
+      end;
+  SockCheck(synsock.WSAStartup($101, FWsaData));
+  ExceptCheck;
+end;
+
+{TBlockSocket.CreateAlternate}
+constructor TBlockSocket.CreateAlternate(stub:string);
+var
+  e:ESynapseError;
+begin
+  inherited create;
+  FRaiseExcept:=false;
+  FSocket:=INVALID_SOCKET;
+  FProtocol:=IPPROTO_IP;
+  Fbuffer:='';
+  if not InitSocketInterface(stub)
+    then
+      begin
+        e:=ESynapseError.Create('Error loading alternate Winsock DLL ('+stub+')!');
+        e.ErrorCode:=0;
+        e.ErrorMessage:='Error loading Winsock DLL ('+stub+')!';
+        raise e;
+      end;
+  SockCheck(synsock.WSAStartup($101, FWsaData));
   ExceptCheck;
 end;
 
@@ -137,6 +176,7 @@ end;
 destructor TBlockSocket.Destroy;
 begin
   CloseSocket;
+  DestroySocketInterface;
   inherited destroy;
 end;
 
@@ -149,22 +189,22 @@ var
 begin
   FillChar(sin,Sizeof(sin),0);
   sin.sin_family := AF_INET;
-  ProtoEnt:= getprotobynumber(FProtocol);
+  ProtoEnt:= synsock.getprotobynumber(FProtocol);
   ServEnt:=nil;
   If ProtoEnt <> nil then
-    ServEnt:= getservbyname(PChar(port), ProtoEnt^.p_name);
+    ServEnt:= synsock.getservbyname(PChar(port), ProtoEnt^.p_name);
   if ServEnt = nil then
-    Sin.sin_port:= htons(StrToIntDef(Port,0))
+    Sin.sin_port:= synsock.htons(StrToIntDef(Port,0))
   else
     Sin.sin_port:= ServEnt^.s_port;
   if ip='255.255.255.255'
     then Sin.sin_addr.s_addr:=u_long(INADDR_BROADCAST)
     else
       begin
-        Sin.sin_addr.s_addr:= inet_addr(PChar(ip));
+        Sin.sin_addr.s_addr:= synsock.inet_addr(PChar(ip));
         if SIn.sin_addr.s_addr = u_long(INADDR_NONE) then
           begin
-            HostEnt:= gethostbyname(PChar(ip));
+            HostEnt:= synsock.gethostbyname(PChar(ip));
             if HostEnt <> nil then
               SIn.sin_addr.S_addr:= longint(plongint(HostEnt^.h_addr_list^)^);
           end;
@@ -176,7 +216,7 @@ function TBlockSocket.GetSinIP (sin:TSockAddrIn):string;
 var
   p:pchar;
 begin
-  p:=inet_ntoa(Sin.sin_addr);
+  p:=synsock.inet_ntoa(Sin.sin_addr);
   if p=nil then result:=''
     else result:=p;
 end;
@@ -184,14 +224,14 @@ end;
 {TBlockSocket.GetSinPort}
 function TBlockSocket.GetSinPort (sin:TSockAddrIn):integer;
 begin
-  result:=ntohs(Sin.sin_port);
+  result:=synsock.ntohs(Sin.sin_port);
 end;
 
 {TBlockSocket.CreateSocket}
 Procedure TBlockSocket.CreateSocket;
 begin
   Fbuffer:='';
-  if FSocket=INVALID_SOCKET then FLastError:=winsock.WSAGetLastError
+  if FSocket=INVALID_SOCKET then FLastError:=synsock.WSAGetLastError
     else FLastError:=0;
   ExceptCheck;
 end;
@@ -200,7 +240,7 @@ end;
 {TBlockSocket.CloseSocket}
 Procedure TBlockSocket.CloseSocket;
 begin
-  winsock.CloseSocket(FSocket);
+  synsock.CloseSocket(FSocket);
 end;
 
 {TBlockSocket.Bind}
@@ -210,9 +250,9 @@ var
   len:integer;
 begin
   SetSin(sin,ip,port);
-  SockCheck(winsock.bind(FSocket,sin,sizeof(sin)));
+  SockCheck(synsock.bind(FSocket,sin,sizeof(sin)));
   len:=sizeof(FLocalSin);
-  Winsock.GetSockName(FSocket,FLocalSin,Len);
+  synsock.GetSockName(FSocket,FLocalSin,Len);
   Fbuffer:='';
   ExceptCheck;
 end;
@@ -223,7 +263,7 @@ var
   sin:TSockAddrIn;
 begin
   SetSin(sin,ip,port);
-  SockCheck(winsock.connect(FSocket,sin,sizeof(sin)));
+  SockCheck(synsock.connect(FSocket,sin,sizeof(sin)));
   GetSins;
   Fbuffer:='';
   ExceptCheck;
@@ -235,15 +275,15 @@ var
   len:integer;
 begin
   len:=sizeof(FLocalSin);
-  Winsock.GetSockName(FSocket,FLocalSin,Len);
+  synsock.GetSockName(FSocket,FLocalSin,Len);
   len:=sizeof(FRemoteSin);
-  Winsock.GetPeerName(FSocket,FremoteSin,Len);
+  synsock.GetPeerName(FSocket,FremoteSin,Len);
 end;
 
 {TBlockSocket.SendBuffer}
 function TBlockSocket.SendBuffer(buffer:pointer;length:integer):integer;
 begin
-  result:=winsock.send(FSocket,buffer^,length,0);
+  result:=synsock.send(FSocket,buffer^,length,0);
   sockcheck(result);
   ExceptCheck;
 end;
@@ -251,21 +291,21 @@ end;
 {TBlockSocket.SendByte}
 procedure TBlockSocket.SendByte(data:byte);
 begin
-  sockcheck(winsock.send(FSocket,data,1,0));
+  sockcheck(synsock.send(FSocket,data,1,0));
   ExceptCheck;
 end;
 
 {TBlockSocket.SendString}
 procedure TBlockSocket.SendString(data:string);
 begin
-  sockcheck(winsock.send(FSocket,pchar(data)^,length(data),0));
+  sockcheck(synsock.send(FSocket,pchar(data)^,length(data),0));
   ExceptCheck;
 end;
 
 {TBlockSocket.RecvBuffer}
 function TBlockSocket.RecvBuffer(buffer:pointer;length:integer):integer;
 begin
-  result:=winsock.recv(FSocket,buffer^,length,0);
+  result:=synsock.recv(FSocket,buffer^,length,0);
   if result=0
     then FLastError:=WSAENOTCONN
     else sockcheck(result);
@@ -313,7 +353,7 @@ begin
               if (system.length(ss)+l)>fs
                 then l:=fs-system.length(ss);
               setlength(st,l);
-              x:=winsock.recv(FSocket,pointer(st)^,l,0);
+              x:=synsock.recv(FSocket,pointer(st)^,l,0);
               if x=0
                 then FLastError:=WSAENOTCONN
                 else sockcheck(x);
@@ -347,7 +387,7 @@ begin
   result:=0;
   if CanRead(timeout) then
     begin
-      y:=winsock.recv(FSocket,data,1,0);
+      y:=synsock.recv(FSocket,data,1,0);
       if y=0 then FLastError:=WSAENOTCONN
         else sockcheck(y);
       result:=data;
@@ -384,14 +424,16 @@ begin
         else
           begin
             setlength(Fbuffer,x);
-            r:=Winsock.recv(FSocket,pointer(FBuffer)^,x,0);
+            r:=synsock.recv(FSocket,pointer(FBuffer)^,x,0);
             SockCheck(r);
             if r=0 then FLastError:=WSAENOTCONN;
             if FLastError<>0 then break;
+            if r<x
+              then setlength(FBuffer,r);
           end;
       end;
     x:=pos(#10,Fbuffer);
-    if x<=0 then x:=length(Fbuffer);
+    if x<1 then x:=length(Fbuffer);
     s:=s+copy(Fbuffer,1,x-1);
     c:=Fbuffer[x];
     delete(Fbuffer,1,x);
@@ -400,7 +442,11 @@ begin
 
   if FLastError=0 then
     begin
+{$IFDEF LINUX}
+      s:=AdjustLineBreaks(s,tlbsCRLF);
+{$ELSE}
       s:=AdjustLineBreaks(s);
+{$ENDIF}
       x:=pos(#13+#10,s);
       if x>0 then s:=copy(s,1,x-1);
       result:=s;
@@ -412,7 +458,7 @@ end;
 {TBlockSocket.PeekBuffer}
 function TBlockSocket.PeekBuffer(buffer:pointer;length:integer):integer;
 begin
-  result:=winsock.recv(FSocket,buffer^,length,MSG_PEEK);
+  result:=synsock.recv(FSocket,buffer^,length,MSG_PEEK);
   sockcheck(result);
   ExceptCheck;
 end;
@@ -427,7 +473,7 @@ begin
   result:=0;
   if CanRead(timeout) then
     begin
-      y:=winsock.recv(FSocket,data,1,MSG_PEEK);
+      y:=synsock.recv(FSocket,data,1,MSG_PEEK);
       if y=0 then FLastError:=WSAENOTCONN;
       sockcheck(y);
       result:=data;
@@ -439,7 +485,7 @@ end;
 {TBlockSocket.SockCheck}
 function TBlockSocket.SockCheck(SockResult:integer):integer;
 begin
-  if SockResult=SOCKET_ERROR then result:=winsock.WSAGetLastError
+  if SockResult=SOCKET_ERROR then result:=synsock.WSAGetLastError
     else result:=0;
   FLastError:=result;
 end;
@@ -465,7 +511,7 @@ function TBlockSocket.WaitingData:integer;
 var
   x:integer;
 begin
-  winsock.ioctlsocket(FSocket,FIONREAD,x);
+  synsock.ioctlsocket(FSocket,FIONREAD,u_long(x));
   result:=x;
 end;
 
@@ -476,28 +522,66 @@ var
 begin
   li.l_onoff  := ord(enable);
   li.l_linger := Linger div 1000;
-  SockCheck(winsock.SetSockOpt(FSocket, SOL_SOCKET, SO_LINGER, @li, SizeOf(li)));
+  SockCheck(synsock.SetSockOpt(FSocket, SOL_SOCKET, SO_LINGER, @li, SizeOf(li)));
   ExceptCheck;
 end;
 
 {TBlockSocket.LocalName}
 function TBlockSocket.LocalName:string;
 var
-  buf: array[0..255] of char;
+  buf:array[0..255] of char;
   Pbuf:pchar;
-  RemoteHost : PHostEnt;
+  RemoteHost:PHostEnt;
 begin
   pbuf:=buf;
   result:='';
-  winsock.gethostname(pbuf,255);
+  synsock.gethostname(pbuf,255);
   if pbuf<>'' then
     begin
-      RemoteHost:=Winsock.GetHostByName(pbuf);
-      if remoteHost<>nil then result:=pchar(RemoteHost^.h_name);
+      //try get Fully Qualified Domain Name
+      RemoteHost:=synsock.GetHostByName(pbuf);
+      if remoteHost<>nil then
+         result:=pchar(RemoteHost^.h_name);
     end;
   if result='' then result:='127.0.0.1';
 end;
 
+{TBlockSocket.ResolveNameToIP}
+procedure TBlockSocket.ResolveNameToIP(Name:string;IPlist:TStringlist);
+type
+  TaPInAddr = Array[0..250] of PInAddr;
+  PaPInAddr = ^TaPInAddr;
+var
+  RemoteHost:PHostEnt;
+  IP:u_long;
+  PAdrPtr:PaPInAddr;
+  i:integer;
+  s:string;
+  InAddr:TInAddr;
+begin
+  IPList.Clear;
+  IP := synsock.inet_addr(PChar(name));
+  if IP = u_long(INADDR_NONE)
+    then
+      begin
+        RemoteHost:=synsock.gethostbyname(PChar(name));
+        if RemoteHost <> nil then
+          begin
+            PAdrPtr:=PAPInAddr(remoteHost^.h_addr_list);
+            i:=0;
+            while PAdrPtr^[i]<>nil do
+              begin
+                InAddr:=PAdrPtr^[i]^;
+                with InAddr.S_un_b do
+                  s:=IntToStr(Ord(s_b1))+'.'+IntToStr(Ord(s_b2))+'.'
+                      +IntToStr(Ord(s_b3))+'.'+IntToStr(Ord(s_b4));
+                IPList.Add(s);
+                Inc(i);
+              end;
+          end;
+      end
+    else IPList.Add(name);
+end;
 
 {TBlockSocket.GetLocalSinIP}
 function TBlockSocket.GetLocalSinIP:string;
@@ -535,9 +619,9 @@ begin
   Timev.tv_sec:=Timeout div 1000;
   TimeVal:=@TimeV;
   if timeout = -1 then Timeval:=nil;
-  Winsock.FD_Zero(FDSet);
-  Winsock.FD_Set(FSocket,FDSet);
-  x:=winsock.Select(0,@FDSet,nil,nil,TimeVal);
+  FD_Zero(FDSet);
+  FD_Set(FSocket,FDSet);
+  x:=synsock.Select(FSocket+1,@FDSet,nil,nil,TimeVal);
   SockCheck(x);
   If FLastError<>0 then x:=0;
   result:=x>0;
@@ -556,9 +640,9 @@ begin
   Timev.tv_sec:=Timeout div 1000;
   TimeVal:=@TimeV;
   if timeout = -1 then Timeval:=nil;
-  Winsock.FD_Zero(FDSet);
-  Winsock.FD_Set(FSocket,FDSet);
-  x:=winsock.Select(0,nil,@FDSet,nil,TimeVal);
+  FD_Zero(FDSet);
+  FD_Set(FSocket,FDSet);
+  x:=synsock.Select(FSocket+1,nil,@FDSet,nil,TimeVal);
   SockCheck(x);
   If FLastError<>0 then x:=0;
   result:=x>0;
@@ -571,7 +655,7 @@ var
   len:integer;
 begin
   len:=sizeof(FRemoteSin);
-  result:=winsock.sendto(FSocket,buffer^,length,0,FRemoteSin,len);
+  result:=synsock.sendto(FSocket,buffer^,length,0,FRemoteSin,len);
   sockcheck(result);
   ExceptCheck;
 end;
@@ -582,7 +666,7 @@ var
   len:integer;
 begin
   len:=sizeof(FRemoteSin);
-  result:=winsock.recvfrom(FSocket,buffer^,length,0,FRemoteSin,len);
+  result:=synsock.recvfrom(FSocket,buffer^,length,0,FRemoteSin,len);
   sockcheck(result);
   ExceptCheck;
 end;
@@ -593,7 +677,7 @@ var
   l:integer;
 begin
   l:=SizeOf(result);
-  SockCheck(winsock.getSockOpt(FSocket, SOL_SOCKET, SO_RCVBUF, @result, l));
+  SockCheck(synsock.getSockOpt(FSocket, SOL_SOCKET, SO_RCVBUF, @result, l));
   if Flasterror<>0
     then result:=1024;
   ExceptCheck;
@@ -602,7 +686,7 @@ end;
 {TBlockSocket.SetSizeRecvBuffer}
 procedure TBlockSocket.SetSizeRecvBuffer(size:integer);
 begin
-  SockCheck(winsock.SetSockOpt(FSocket, SOL_SOCKET, SO_RCVBUF, @size, SizeOf(size)));
+  SockCheck(synsock.SetSockOpt(FSocket, SOL_SOCKET, SO_RCVBUF, @size, SizeOf(size)));
   ExceptCheck;
 end;
 
@@ -612,7 +696,7 @@ var
   l:integer;
 begin
   l:=SizeOf(result);
-  SockCheck(winsock.getSockOpt(FSocket, SOL_SOCKET, SO_SNDBUF, @result, l));
+  SockCheck(synsock.getSockOpt(FSocket, SOL_SOCKET, SO_SNDBUF, @result, l));
   if Flasterror<>0
     then result:=1024;
   ExceptCheck;
@@ -621,7 +705,7 @@ end;
 {TBlockSocket.SetSizeSendBuffer}
 procedure TBlockSocket.SetSizeSendBuffer(size:integer);
 begin
-  SockCheck(winsock.SetSockOpt(FSocket, SOL_SOCKET, SO_SNDBUF, @size, SizeOf(size)));
+  SockCheck(synsock.SetSockOpt(FSocket, SOL_SOCKET, SO_SNDBUF, @size, SizeOf(size)));
   ExceptCheck;
 end;
 
@@ -631,7 +715,7 @@ end;
 {TUDPBlockSocket.CreateSocket}
 Procedure TUDPBlockSocket.CreateSocket;
 begin
-  FSocket:=winsock.socket(PF_INET,SOCK_DGRAM,IPPROTO_UDP);
+  FSocket:=synsock.socket(PF_INET,integer(SOCK_DGRAM),IPPROTO_UDP);
   FProtocol:=IPPROTO_UDP;
   inherited createSocket;
 end;
@@ -643,7 +727,7 @@ var
   Res:integer;
 begin
   opt:=Ord(Value);
-  Res:=winsock.SetSockOpt(FSocket, SOL_SOCKET, SO_BROADCAST, @opt, SizeOf(opt));
+  Res:=synsock.SetSockOpt(FSocket, SOL_SOCKET, SO_BROADCAST, @opt, SizeOf(opt));
   SockCheck(Res);
   Result:=res=0;
   ExceptCheck;
@@ -655,7 +739,7 @@ end;
 {TTCPBlockSocket.CreateSocket}
 Procedure TTCPBlockSocket.CreateSocket;
 begin
-  FSocket:=winsock.socket(PF_INET,SOCK_STREAM,IPPROTO_TCP);
+  FSocket:=synsock.socket(PF_INET,integer(SOCK_STREAM),IPPROTO_TCP);
   FProtocol:=IPPROTO_TCP;
   inherited createSocket;
 end;
@@ -663,7 +747,7 @@ end;
 {TTCPBlockSocket.Listen}
 procedure TTCPBlockSocket.Listen;
 begin
-  SockCheck(winsock.listen(FSocket,SOMAXCONN));
+  SockCheck(synsock.listen(FSocket,SOMAXCONN));
   GetSins;
   ExceptCheck;
 end;
@@ -674,11 +758,7 @@ var
   len:integer;
 begin
   len:=sizeof(FRemoteSin);
-{$IFDEF VER090}
-  result:=winsock.accept(FSocket,TSockAddr(FRemoteSin),len));
-{$ELSE}
-  result:=winsock.accept(FSocket,@FRemoteSin,@len);
-{$ENDIF}
+  result:=synsock.accept(FSocket,@FRemoteSin,@len);
   SockCheck(result);
   ExceptCheck;
 end;

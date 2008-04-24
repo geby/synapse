@@ -1,5 +1,5 @@
 {==============================================================================|
-| Project : Delphree - Synapse                                   | 001.000.000 |
+| Project : Delphree - Synapse                                   | 001.000.001 |
 |==============================================================================|
 | Content: Inline MIME support procedures and functions                        |
 |==============================================================================|
@@ -23,12 +23,12 @@
 |          (Found at URL: http://www.ararat.cz/synapse/)                       |
 |==============================================================================}
 
-unit MIMEinLN;
+unit MIMEinLn;
 
 interface
 
 uses
-  sysutils, classes, windows, MIMEchar, SynaCode, SynaUtil;
+  sysutils, classes, MIMEchar, SynaCode, SynaUtil;
 
 function InlineDecode(value:string;CP:TMimeChar):string;
 function InlineEncode(value:string;CP,MimeP:TMimeChar):string;

@@ -1,5 +1,5 @@
 {==============================================================================|
-| Project : Delphree - Synapse                                   | 001.001.000 |
+| Project : Delphree - Synapse                                   | 002.000.000 |
 |==============================================================================|
 | Content: SNTP client                                                         |
 |==============================================================================|
@@ -29,7 +29,7 @@ unit SNTPsend;
 interface
 
 uses
-  winsock, SysUtils, windows, blcksock;
+  synsock, SysUtils, blcksock;
 
 type
 
@@ -91,8 +91,8 @@ const
 var
   d, d1: double;
 begin
-  nsec:=htonl(nsec);
-  nfrac:=htonl(nfrac);
+  nsec:=synsock.htonl(nsec);
+  nfrac:=synsock.htonl(nfrac);
   d:=nsec;
   if d<0
     then d:=maxi+d-1;

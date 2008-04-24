@@ -1,5 +1,5 @@
 {==============================================================================|
-| Project : Delphree - Synapse                                   | 001.008.000 |
+| Project : Delphree - Synapse                                   | 002.000.000 |
 |==============================================================================|
 | Content: support procedures and functions                                    |
 |==============================================================================|
@@ -30,7 +30,12 @@ unit SynaUtil;
 interface
 
 uses
-  sysutils, classes, windows;
+  sysutils, classes,
+{$IFDEF LINUX}
+  libc;
+{$ELSE}
+  windows;
+{$ENDIF}
 
 function timezone:string;
 function Rfc822DateTime(t:TDateTime):String;
@@ -55,6 +60,19 @@ implementation
 {==============================================================================}
 {timezone}
 function timezone:string;
+{$IFDEF LINUX}
+var
+  t: TTime_T;
+  UT: TUnixTime;
+  bias:integer;
+  h,m:integer;
+begin
+  __time(@T);
+  localtime_r(@T,UT);
+  bias:=ut.__tm_gmtoff div 60;
+  if bias>=0 then result:='+'
+    else result:='-';
+{$ELSE}
 var
   zoneinfo:TTimeZoneInformation;
   bias:integer;
@@ -68,6 +86,7 @@ begin
   end;
   if bias<=0 then result:='+'
     else result:='-';
+{$ENDIF}
   bias:=abs(bias);
   h:=bias div 60;
   m:=bias mod 60;

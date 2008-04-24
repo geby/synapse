@@ -1,5 +1,5 @@
 {==============================================================================|
-| Project : Delphree - Synapse                                   | 001.001.000 |
+| Project : Delphree - Synapse                                   | 002.000.000 |
 |==============================================================================|
 | Content: PING sender                                                         |
 |==============================================================================|
@@ -26,7 +26,8 @@
 {
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 
-Remember, this unit work only with Winsock2! (on Win98 and WinNT 4.0 or higher)
+Remember, this unit work only on Linux or Windows with Winsock2!
+ (on Win98 and WinNT 4.0 or higher)
 If you must use this unit on Win95, download Wínsock2 from Microsoft
 and distribute it with your application!
 
@@ -49,7 +50,12 @@ unit PINGsend;
 interface
 
 uses
-  winsock, SysUtils, windows, blcksck2, Synautil, dialogs;
+{$IFDEF LINUX}
+  libc,
+{$ELSE}
+  windows,
+{$ENDIF}
+  synsock, SysUtils, blcksck2, Synautil;
 
 const
   ICMP_ECHO=8;
@@ -73,6 +79,7 @@ TPINGSend=class(TObject)
     seq:integer;
     id:integer;
     function checksum:integer;
+    function GetTick:cardinal;
   public
     timeout:integer;
     PacketSize:integer;
@@ -124,7 +131,7 @@ begin
     i_CheckSum:=0;
     id:=Random(32767);
     i_Id:=id;
-    TimeStamp:=GetTickcount;
+    TimeStamp:=GetTick;
     Inc(Seq);
     i_Seq:=Seq;
     for n:=Succ(SizeOf(TicmpEchoHeader)) to Length(Buffer) do
@@ -140,10 +147,12 @@ begin
       PIpHeader:=Pointer(Buffer);
       IpHdrLen:=(PIpHeader^.VerLen and $0F)*4;
       PIcmpEchoHeader:=@Buffer[IpHdrLen+1];
-      if (PIcmpEchoHeader^.i_type=ICMP_ECHOREPLY) then
+      if (PIcmpEchoHeader^.i_type=ICMP_ECHOREPLY)
+// Linux return from localhost ECHO instead ECHOREPLY???
+       or (PIcmpEchoHeader^.i_type=ICMP_ECHO) then
         if (PIcmpEchoHeader^.i_id=id) then
           begin
-            PingTime:=GetTickCount-PIcmpEchoHeader^.TimeStamp;
+            PingTime:=GetTick-PIcmpEchoHeader^.TimeStamp;
             Result:=True;
           end;
     end;
@@ -170,6 +179,16 @@ begin
   CkSum:=(CkSum shr 16)+(CkSum and $FFFF);
   CkSum:=CkSum+(CkSum shr 16);
   Result:=Word(not CkSum);
+end;
+
+{TPINGSend.GetTick}
+function TPINGSend.GetTick:cardinal;
+begin
+{$IFDEF LINUX}
+  result:=clock div (CLOCKS_PER_SEC div 1000);
+{$ELSE}
+  result:=windows.GetTickCount;
+{$ENDIF}
 end;
 
 {==============================================================================}

@@ -23,11 +23,11 @@
 |          (Found at URL: http://www.ararat.cz/synapse/)                       |
 |==============================================================================}
 
-unit HTTPsend;
+unit HTTPSend;
 
 interface
 uses
-  Blcksock, sysutils, classes, windows, SynaUtil, SynaCode;
+  Blcksock, sysutils, classes, SynaUtil, SynaCode;
 
 const
   CRLF=#13+#10;

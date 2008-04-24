@@ -1,5 +1,5 @@
 {==============================================================================|
-| Project : Delphree - Synapse                                   | 001.001.000 |
+| Project : Delphree - Synapse                                   | 002.000.000 |
 |==============================================================================|
 | Content: Library base for RAW sockets                                        |
 |==============================================================================|
@@ -26,7 +26,8 @@
 {
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 
-Remember, this unit work only with Winsock2! (on Win98 and WinNT 4.0 or higher)
+Remember, this unit work only on Linux or Windows with Winsock2!
+ (on Win98 and WinNT 4.0 or higher)
 If you must use this unit on Win95, download Wínsock2 from Microsoft
 and distribute it with your application!
 
@@ -49,7 +50,12 @@ unit blcksck2;
 interface
 
 uses
-  winsock, SysUtils, windows, blcksock;
+  synsock, SysUtils, blcksock,
+{$IFDEF LINUX}
+  libc, kernelioctl;
+{$ELSE}
+  winsock, windows;
+{$ENDIF}
 
 type
 
@@ -89,7 +95,7 @@ implementation
 {TICMPBlockSocket.CreateSocket}
 Procedure TICMPBlockSocket.CreateSocket;
 begin
-  FSocket:=winsock.socket(PF_INET,SOCK_RAW,IPPROTO_ICMP);
+  FSocket:=synsock.socket(PF_INET,integer(SOCK_RAW),IPPROTO_ICMP);
   FProtocol:=IPPROTO_ICMP;
   inherited createSocket;
 end;
@@ -100,7 +106,7 @@ end;
 {TRAWBlockSocket.CreateSocket}
 Procedure TRAWBlockSocket.CreateSocket;
 begin
-  FSocket:=winsock.socket(PF_INET,SOCK_RAW,IPPROTO_RAW);
+  FSocket:=synsock.socket(PF_INET,integer(SOCK_RAW),IPPROTO_RAW);
   FProtocol:=IPPROTO_RAW;
   inherited createSocket;
 end;
@@ -118,9 +124,9 @@ begin
   r2:=False;
   Value:=Timeout;
   len:=SizeOf(Value);
-  Res:=Winsock.setsockopt(sock,SOL_SOCKET,SO_RCVTIMEO,@Value,len);
+  Res:=synsock.setsockopt(sock,SOL_SOCKET,SO_RCVTIMEO,@Value,len);
   r1:=res<>SOCKET_ERROR;
-  Res:=Winsock.setsockopt(sock,SOL_SOCKET,SO_SNDTIMEO,@Value,len);
+  Res:=synsock.setsockopt(sock,SOL_SOCKET,SO_SNDTIMEO,@Value,len);
   r2:=res<>SOCKET_ERROR;
   Result:=r1 and r2;
 end;
