@@ -1,5 +1,5 @@
 {==============================================================================|
-| Project : Delphree - Synapse                                   | 002.001.000 |
+| Project : Delphree - Synapse                                   | 002.001.001 |
 |==============================================================================|
 | Content: SMTP client                                                         |
 |==============================================================================|
@@ -76,9 +76,12 @@ type
     function FindCap(value:string):string;
   end;
 
-function SendtoRaw (mailfrom,mailto,SMTPHost:string;maildata:TStrings;Username,Password:string):Boolean;
-function Sendto (mailfrom,mailto,subject,SMTPHost:string;maildata:TStrings):Boolean;
-function SendtoEx (mailfrom,mailto,subject,SMTPHost:string;maildata:TStrings;Username,Password:string):Boolean;
+function SendtoRaw
+(mailfrom,mailto,SMTPHost:string;maildata:TStrings;Username,Password:string):Boolean;
+function Sendto
+(mailfrom,mailto,subject,SMTPHost:string;maildata:TStrings):Boolean;
+function SendtoEx
+(mailfrom,mailto,subject,SMTPHost:string;maildata:TStrings;Username,Password:string):Boolean;
 
 implementation
 
@@ -173,9 +176,7 @@ end;
 {TSMTPSend.AuthCram}
 function TSMTPSend.AuthCram:Boolean;
 var
-  s,sm:string;
-  ipad,opad:string;
-  n,x:integer;
+  s:string;
 begin
   Result:=false;
   Sock.SendString('AUTH CRAM-MD5'+CRLF);
@@ -479,7 +480,7 @@ function SendtoEx (mailfrom,mailto,subject,SMTPHost:string;maildata:TStrings;
 var
   t:TStrings;
 begin
-  Result:=False;
+//  Result:=False;
   t:=TStringList.Create;
   try
     t.assign(Maildata);
@@ -489,15 +490,18 @@ begin
     t.Insert(0,'date: '+Rfc822DateTime(now));
     t.Insert(0,'to: '+mailto);
     t.Insert(0,'from: '+mailfrom);
-    result:=SendToRaw(mailfrom,mailto,SMTPHost,t,Username,Password);
+    Result:=SendToRaw(mailfrom,mailto,SMTPHost,t,Username,Password);
   finally
     t.Free;
   end;
 end;
 
-function Sendto (mailfrom,mailto,subject,SMTPHost:string;maildata:TStrings):Boolean;
+function Sendto 
+(mailfrom,mailto,subject,SMTPHost:string;maildata:TStrings):Boolean;
 begin
   result:=SendToEx(mailfrom,mailto,subject,SMTPHost,maildata,'','');
 end;
 
 end.
+
+
