@@ -1,5 +1,5 @@
 {==============================================================================|
-| Project : Delphree - Synapse                                   | 002.002.000 |
+| Project : Delphree - Synapse                                   | 002.003.000 |
 |==============================================================================|
 | Content: HTTP client                                                         |
 |==============================================================================|
@@ -184,7 +184,10 @@ begin
   if (FProxyHost <> '') and (FProxyUser <> '') then
     FHeaders.Insert(0, 'Proxy-Authorization: Basic ' +
       EncodeBase64(FProxyUser + ':' + FProxyPass));
-  FHeaders.Insert(0, 'Host: ' + Host + ':' + Port);
+  if Port<>'80' then
+     FHeaders.Insert(0, 'Host: ' + Host + ':' + Port)
+  else
+     FHeaders.Insert(0, 'Host: ' + Host);
   if FProxyHost <> '' then
     URI := Prot + '://' + Host + ':' + Port + URI;
   if URI = '/*' then
@@ -308,7 +311,8 @@ begin
       if Pos('CONTENT-LENGTH:', su) = 1 then
       begin
         Size := StrToIntDef(SeparateRight(s, ' '), -1);
-        FTransferEncoding := TE_IDENTITY;
+        if Size <> -1 then
+          FTransferEncoding := TE_IDENTITY;
       end;
       if Pos('CONTENT-TYPE:', su) = 1 then
         FMimeType := SeparateRight(s, ' ');
@@ -351,9 +355,9 @@ var
   s: string;
 begin
   repeat
-    s := FSock.RecvString(FTimeout);
-    s := s + CRLF;
-    FDocument.Write(Pointer(s)^, Length(s));
+    s := FSock.RecvPacket(FTimeout);
+    if FSock.LastError = 0 then
+      FDocument.Write(Pointer(s)^, Length(s));
   until FSock.LastError <> 0;
   Result := True;
 end;

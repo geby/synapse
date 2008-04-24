@@ -1,5 +1,5 @@
 {==============================================================================|
-| Project : Delphree - Synapse                                   | 002.001.001 |
+| Project : Delphree - Synapse                                   | 002.001.002 |
 |==============================================================================|
 | Content: PING sender                                                         |
 |==============================================================================|
@@ -106,16 +106,9 @@ begin
 end;
 
 function TPINGSend.ReadPacket: Boolean;
-var
-  x: Integer;
 begin
-  Result := FSock.CanRead(FTimeout);
-  if Result then
-  begin
-    x := FSock.WaitingData;
-    SetLength(FBuffer, x);
-    FSock.RecvBuffer(Pointer(FBuffer), x);
-  end;
+  FBuffer := FSock.RecvPacket(Ftimeout);
+  Result := FSock.LastError = 0;
 end;
 
 function TPINGSend.Ping(const Host: string): Boolean;

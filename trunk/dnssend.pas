@@ -1,5 +1,5 @@
 {==============================================================================|
-| Project : Delphree - Synapse                                   | 001.001.003 |
+| Project : Delphree - Synapse                                   | 001.001.004 |
 |==============================================================================|
 | Content: DNS client                                                          |
 |==============================================================================|
@@ -37,7 +37,7 @@ uses
   blcksock, SynaUtil;
 
 const
-  cDnsProtocol = 'Domain';
+  cDnsProtocol = 'domain';
 
   QTYPE_A = 1;
   QTYPE_NS = 2;
@@ -281,7 +281,7 @@ end;
 function TDNSSend.DNSQuery(Name: string; QType: Integer;
   const Reply: TStrings): Boolean;
 var
-  x, n, i: Integer;
+  n, i: Integer;
   flag, qdcount, ancount, nscount, arcount: Integer;
   s: string;
 begin
@@ -292,11 +292,9 @@ begin
   FBuffer := CodeHeader + CodeQuery(Name, QType);
   FSock.Connect(FDNSHost, cDnsProtocol);
   FSock.SendString(FBuffer);
-  if FSock.CanRead(FTimeout) then
+  FBuffer := FSock.RecvPacket(FTimeout);
+  if (FSock.LastError = 0) and (Length(FBuffer) > 13) then
   begin
-    x := FSock.WaitingData;
-    SetLength(FBuffer, x);
-    FSock.RecvBuffer(Pointer(FBuffer), x);
     flag := DecodeInt(FBuffer, 3);
     FRCode := Flag and $000F;
     if FRCode = 0 then
