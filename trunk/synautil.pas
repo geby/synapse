@@ -1,5 +1,5 @@
 {==============================================================================|
-| Project : Delphree - Synapse                                   | 001.006.000 |
+| Project : Delphree - Synapse                                   | 001.007.000 |
 |==============================================================================|
 | Content: support procedures and functions                                    |
 |==============================================================================|
@@ -14,7 +14,7 @@
 | The Original Code is Synapse Delphi Library.                                 |
 |==============================================================================|
 | The Initial Developer of the Original Code is Lukas Gebauer (Czech Republic).|
-| Portions created by Lukas Gebauer are Copyright (c) 1999, 2000.              |
+| Portions created by Lukas Gebauer are Copyright (c) 1999,2000,2001.          |
 | Portions created by Hernan Sanchez are Copyright (c) 2000.                   |
 | All Rights Reserved.                                                         |
 |==============================================================================|
@@ -47,6 +47,7 @@ function GetEmailDesc(value:string):string;
 function StrToHex(value:string):string;
 function IntToBin(value:integer;digits:byte):string;
 function BinToInt(value:string):integer;
+procedure ParseURL(URL:string; var Prot,User,Pass,Host,Port,Path,Para:string);
 
 implementation
 
@@ -333,6 +334,70 @@ begin
         else x:=1;
       result:=result*2+x;
     end;
+end;
+
+{==============================================================================}
+{ParseURL}
+procedure ParseURL(URL:string; var Prot,User,Pass,Host,Port,Path,Para:string);
+var
+  x:integer;
+  sURL:string;
+  s:string;
+  s1,s2:string;
+begin
+  prot:='http';
+  user:='';
+  pass:='';
+  port:='80';
+  para:='';
+
+  x:=pos('://',URL);
+  if x>0 then
+    begin
+      prot:=separateleft(URL,'://');
+      sURL:=separateright(URL,'://');
+    end
+    else sURL:=URL;
+  x:=pos('@',sURL);
+  if x>0 then
+    begin
+      s:=separateleft(sURL,'@');
+      sURL:=separateright(sURL,'@');
+      x:=pos(':',s);
+      if x>0 then
+        begin
+          user:=separateleft(s,':');
+          pass:=separateright(s,':');
+        end
+        else user:=s;
+    end;
+  x:=pos('/',sURL);
+  if x>0 then
+    begin
+      s1:=separateleft(sURL,'/');
+      s2:=separateright(sURL,'/');
+    end
+    else
+    begin
+      s1:=sURL;
+      s2:='';
+    end;
+  x:=pos(':',s1);
+  if x>0 then
+    begin
+      host:=separateleft(s1,':');
+      port:=separateright(s1,':');
+    end
+    else host:=s1;
+  x:=pos('?',s2);
+  if x>0 then
+    begin
+      path:='/'+separateleft(s2,'?');
+      para:=separateright(s2,'?');
+    end
+    else path:='/'+s2;
+  if host=''
+    then host:='localhost';
 end;
 
 {==============================================================================}
