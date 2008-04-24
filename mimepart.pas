@@ -1,5 +1,5 @@
 {==============================================================================|
-| Project : Delphree - Synapse                                   | 002.003.002 |
+| Project : Delphree - Synapse                                   | 002.003.004 |
 |==============================================================================|
 | Content: MIME support procedures and functions                               |
 |==============================================================================|
@@ -695,7 +695,8 @@ begin
               s := CharsetConversion(s, FTargetCharset, FCharsetCode);
             if FEncodingCode = ME_QUOTED_PRINTABLE then
             begin
-              s := EncodeQuotedPrintable(s);
+              s := EncodeTriplet(s, '=', [Char(1)..Char(31), '=', Char(128)..Char(255)]);
+//              s := EncodeQuotedPrintable(s);
               repeat
                 if Length(s) < FMaxLineLength then
                 begin
@@ -813,7 +814,7 @@ begin
   if Primary = '' then
     Primary := 'application';
   if FSecondary = '' then
-    FSecondary := 'octet-string';
+    FSecondary := 'octet-stream';
 end;
 
 {==============================================================================}

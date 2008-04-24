@@ -1,5 +1,5 @@
 {==============================================================================|
-| Project : Delphree - Synapse                                   | 002.001.004 |
+| Project : Delphree - Synapse                                   | 002.001.008 |
 |==============================================================================|
 | Content: POP3 client                                                         |
 |==============================================================================|
@@ -42,8 +42,6 @@
 |          (Found at URL: http://www.ararat.cz/synapse/)                       |
 |==============================================================================}
 
-{$WEAKPACKAGEUNIT ON}
-
 //RFC-1734
 //RFC-1939
 //RFC-2195
@@ -56,6 +54,9 @@ interface
 
 uses
   SysUtils, Classes,
+  {$IFDEF STREAMSEC}
+  TlsInternalServer, TlsSynaSock,
+  {$ENDIF}
   blcksock, SynaUtil, SynaCode;
 
 const
@@ -66,7 +67,12 @@ type
 
   TPOP3Send = class(TSynaClient)
   private
+    {$IFDEF STREAMSEC}
+    FSock: TSsTCPBlockSocket;
+    FTLSServer: TCustomTLSInternalServer;
+    {$ELSE}
     FSock: TTCPBlockSocket;
+    {$ENDIF}
     FResultCode: Integer;
     FResultString: string;
     FFullResult: TStringList;
@@ -109,9 +115,14 @@ type
     property StatSize: Integer read  FStatSize;
     property TimeStamp: string read FTimeStamp;
     property AuthType: TPOP3AuthType read FAuthType Write FAuthType;
-    property Sock: TTCPBlockSocket read FSock;
     property AutoTLS: Boolean read FAutoTLS Write FAutoTLS;
     property FullSSL: Boolean read FFullSSL Write FFullSSL;
+{$IFDEF STREAMSEC}
+    property Sock: TSsTCPBlockSocket read FSock;
+    property TLSServer: TCustomTLSInternalServer read FTLSServer write FTLSServer;
+{$ELSE}
+    property Sock: TTCPBlockSocket read FSock;
+{$ENDIF}
   end;
 
 implementation
@@ -121,10 +132,15 @@ begin
   inherited Create;
   FFullResult := TStringList.Create;
   FPOP3cap := TStringList.Create;
+{$IFDEF STREAMSEC}           
+  FTLSServer := GlobalTLSInternalServer;     
+  FSock := TSsTCPBlockSocket.Create;
+  FSock.BlockingRead := True;
+{$ELSE}
   FSock := TTCPBlockSocket.Create;
-  FSock.CreateSocket;
+{$ENDIF}
   FSock.ConvertLineEnd := true;
-  FTimeout := 300000;
+  FTimeout := 60000;
   FTargetPort := cPop3Protocol;
   FUsername := '';
   FPassword := '';
@@ -192,11 +208,26 @@ begin
   FStatSize := 0;
   FSock.CloseSocket;
   FSock.LineBuffer := '';
-  FSock.CreateSocket;
+  FSock.Bind(FIPInterface, cAnyPort);
+{$IFDEF STREAMSEC}
+  if FFullSSL then
+  begin
+    if Assigned(FTLSServer) then
+      FSock.TLSServer := FTLSServer
+    else
+    begin
+      Result := false;
+      Exit;
+    end;
+  end
+  else
+    FSock.TLSServer := nil;
+{$ELSE}
   if FFullSSL then
     FSock.SSLEnabled := True;
-  FSock.Bind(FIPInterface, cAnyPort);
-  FSock.Connect(FTargetHost, FTargetPort);
+{$ENDIF}
+  if FSock.LastError = 0 then
+    FSock.Connect(FTargetHost, FTargetPort);
   Result := FSock.LastError = 0;
 end;
 
@@ -321,8 +352,19 @@ begin
   FSock.SendString('STLS' + CRLF);
   if ReadResult(False) = 1 then
   begin
+{$IFDEF STREAMSEC}
+    if Assigned(FTLSServer) then
+    begin
+      Fsock.TLSServer := FTLSServer;
+      Fsock.Connect('','');
+      Result := FSock.LastError = 0;
+    end
+    else
+      Result := false;
+{$ELSE}
     Fsock.SSLDoConnect;
     Result := FSock.LastError = 0;
+{$ENDIF}
   end;
 end;
 

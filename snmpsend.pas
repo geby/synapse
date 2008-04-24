@@ -1,5 +1,5 @@
 {==============================================================================|
-| Project : Delphree - Synapse                                   | 002.006.000 |
+| Project : Delphree - Synapse                                   | 002.006.002 |
 |==============================================================================|
 | Content: SNMP client                                                         |
 |==============================================================================|
@@ -44,7 +44,6 @@
 |==============================================================================}
 
 {$Q-}
-{$WEAKPACKAGEUNIT ON}
 
 unit SNMPSend;
 
@@ -308,7 +307,6 @@ begin
   FQuery.Clear;
   FReply.Clear;
   FSock := TUDPBlockSocket.Create;
-  FSock.CreateSocket;
   FTimeout := 5000;
   FTargetPort := cSnmpProtocol;
   FHostIP := '';

@@ -1,5 +1,5 @@
 {==============================================================================|
-| Project : Delphree - Synapse                                   | 002.005.004 |
+| Project : Delphree - Synapse                                   | 002.006.006 |
 |==============================================================================|
 | Content: FTP client                                                          |
 |==============================================================================|
@@ -42,8 +42,6 @@
 | History: see HISTORY.HTM from distribution package                           |
 |          (Found at URL: http://www.ararat.cz/synapse/)                       |
 |==============================================================================}
-
-{$WEAKPACKAGEUNIT ON}
 
 unit FTPsend;
 
@@ -121,8 +119,6 @@ type
     function InternalStor(const Command: string; RestoreAt: integer): Boolean;
     function DataSocket: Boolean;
     function AcceptDataSocket: Boolean;
-    function DataRead(const DestStream: TStream): Boolean;
-    function DataWrite(const SourceStream: TStream): Boolean;
   protected
     procedure DoStatus(Response: Boolean; const Value: string);
   public
@@ -131,12 +127,13 @@ type
     destructor Destroy; override;
     function ReadResult: Integer;
     procedure ParseRemote(Value: string);
+    procedure ParseRemoteEPSV(Value: string);
     function FTPCommand(const Value: string): integer;
     function Login: Boolean;
     procedure Logout;
     procedure Abort;
     function List(Directory: string; NameList: Boolean): Boolean;
-    function RetriveFile(const FileName: string; Restore: Boolean): Boolean;
+    function RetrieveFile(const FileName: string; Restore: Boolean): Boolean;
     function StoreFile(const FileName: string; Restore: Boolean): Boolean;
     function StoreUniqueFile: Boolean;
     function AppendFile(const FileName: string): Boolean;
@@ -149,6 +146,8 @@ type
     function DeleteDir(const Directory: string): Boolean;
     function CreateDir(const Directory: string): Boolean;
     function GetCurrentDir: String;
+    function DataRead(const DestStream: TStream): Boolean;
+    function DataWrite(const SourceStream: TStream): Boolean;
   published
     property ResultCode: Integer read FResultCode;
     property ResultString: string read FResultString;
@@ -447,14 +446,14 @@ end;
 function TFTPSend.Connect: Boolean;
 begin
   FSock.CloseSocket;
-  FSock.CreateSocket;
+  FSock.Bind(FIPInterface, cAnyPort);
   if FFullSSL then
     FSock.SSLEnabled := True;
-  FSock.Bind(FIPInterface, cAnyPort);
-  if FFWHost = '' then
-    FSock.Connect(FTargetHost, FTargetPort)
-  else
-    FSock.Connect(FFWHost, FFWPort);
+  if FSock.LastError = 0 then
+    if FFWHost = '' then
+      FSock.Connect(FTargetHost, FTargetPort)
+    else
+      FSock.Connect(FFWHost, FFWPort);
   Result := FSock.LastError = 0;
 end;
 
@@ -527,6 +526,24 @@ begin
   FDataPort := IntToStr(x);
 end;
 
+procedure TFTPSend.ParseRemoteEPSV(Value: string);
+var
+  n: integer;
+  s, v: string;
+begin
+  s := SeparateRight(Value, '(');
+  s := SeparateLeft(s, ')');
+  Delete(s, Length(s), 1);
+  v := '';
+  for n := Length(s) downto 1 do
+    if s[n] in ['0'..'9'] then
+      v := s[n] + v
+    else
+      Break;
+  FDataPort := v;
+  FDataIP := FTargetHost;
+end;
+
 function TFTPSend.DataSocket: boolean;
 var
   s: string;
@@ -534,19 +551,31 @@ begin
   Result := False;
   if FPassiveMode then
   begin
-    if (FTPCommand('PASV') div 100) <> 2 then
-      Exit;
-    ParseRemote(FResultString);
+    if FSock.IP6used then
+      s := '2'
+    else
+      s := '1';
+    if (FTPCommand('EPSV ' + s) div 100) = 2 then
+    begin
+      ParseRemoteEPSV(FResultString);
+    end
+    else
+      if FSock.IP6used then
+        Exit
+      else
+      begin
+        if (FTPCommand('PASV') div 100) <> 2 then
+          Exit;
+        ParseRemote(FResultString);
+      end;
     FDSock.CloseSocket;
-    FDSock.CreateSocket;
-    FSock.Bind(FIPInterface, cAnyPort);
+    FDSock.Bind(FIPInterface, cAnyPort);
     FDSock.Connect(FDataIP, FDataPort);
     Result := FDSock.LastError = 0;
   end
   else
   begin
     FDSock.CloseSocket;
-    FDSock.CreateSocket;
     if FForceDefaultPort then
       s := cFtpDataProtocol
     else
@@ -555,7 +584,7 @@ begin
     if FIPInterface = cAnyHost then
       FDSock.Bind(FDSock.LocalName, s)
     else
-      FSock.Bind(FIPInterface, s);
+      FDSock.Bind(FIPInterface, s);
     if FDSock.LastError <> 0 then
       Exit;
     FDSock.SetLinger(True, 10);
@@ -564,10 +593,19 @@ begin
     FDataIP := FDSock.GetLocalSinIP;
     FDataIP := FDSock.ResolveName(FDataIP);
     FDataPort := IntToStr(FDSock.GetLocalSinPort);
-    s := ReplaceString(FDataIP, '.', ',');
-    s := 'PORT ' + s + ',' + IntToStr(FDSock.GetLocalSinPort div 256)
-      + ',' + IntToStr(FDSock.GetLocalSinPort mod 256);
+    if IsIp6(FDataIP) then
+      s := '2'
+    else
+      s := '1';
+    s := 'EPRT |' + s +'|' + FDataIP + '|' + FDataPort + '|';
     Result := (FTPCommand(s) div 100) = 2;
+    if not Result and IsIP(FDataIP) then
+    begin
+      s := ReplaceString(FDataIP, '.', ',');
+      s := 'PORT ' + s + ',' + IntToStr(FDSock.GetLocalSinPort div 256)
+        + ',' + IntToStr(FDSock.GetLocalSinPort mod 256);
+      Result := (FTPCommand(s) div 100) = 2;
+    end;
   end;
 end;
 
@@ -687,7 +725,7 @@ begin
   FDataStream.Seek(0, soFromBeginning);
 end;
 
-function TFTPSend.RetriveFile(const FileName: string; Restore: Boolean): Boolean;
+function TFTPSend.RetrieveFile(const FileName: string; Restore: Boolean): Boolean;
 var
   RetrStream: TStream;
 begin
@@ -1156,7 +1194,7 @@ begin
       Exit;
     DirectFileName := LocalFile;
     DirectFile:=True;
-    Result := RetriveFile(FileName, False);
+    Result := RetrieveFile(FileName, False);
     Logout;
   finally
     Free;

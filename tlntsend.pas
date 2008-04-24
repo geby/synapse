@@ -1,5 +1,5 @@
 {==============================================================================|
-| Project : Delphree - Synapse                                   | 001.000.002 |
+| Project : Delphree - Synapse                                   | 001.001.001 |
 |==============================================================================|
 | Content: TELNET client                                                       |
 |==============================================================================|
@@ -41,8 +41,6 @@
 | History: see HISTORY.HTM from distribution package                           |
 |          (Found at URL: http://www.ararat.cz/synapse/)                       |
 |==============================================================================}
-
-{$WEAKPACKAGEUNIT ON}
 
 //RFC-854
 
@@ -87,6 +85,7 @@ type
     FSessionLog: string;
     FSubNeg: string;
     FSubType: char;
+    FTermType: string;
     function Connect: Boolean;
     function Negotiate(const Buf: string): string;
     procedure FilterHook(Sender: TObject; var Value: string);
@@ -102,6 +101,7 @@ type
   published
     property Sock: TTCPBlockSocket read FSock;
     property SessionLog: string read FSessionLog write FSessionLog;
+    property TermType: string read FTermType write FTermType;
   end;
 
 implementation
@@ -111,10 +111,11 @@ begin
   inherited Create;
   FSock := TTCPBlockSocket.Create;
   FSock.OnReadFilter := FilterHook;
-  FTimeout := 300000;
+  FTimeout := 60000;
   FTargetPort := cTelnetProtocol;
   FSubNeg := '';
   FSubType := #0;
+  FTermType := 'SYNAPSE';
 end;
 
 destructor TTelnetSend.Destroy;
@@ -265,7 +266,7 @@ begin
                 #24:  //termtype
                   begin
                     if (FSubNeg <> '') and (FSubNeg[1] = #1) then
-                      SubReply := #0 + 'SYNAPSE';
+                      SubReply := #0 + FTermType;
                   end;
               end;
               Sock.SendString(TLNT_IAC + TLNT_SB + FSubType + SubReply + TLNT_IAC + TLNT_SE);

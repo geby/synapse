@@ -1,5 +1,5 @@
 {==============================================================================|
-| Project : Delphree - Synapse                                   | 001.000.005 |
+| Project : Delphree - Synapse                                   | 001.000.007 |
 |==============================================================================|
 | Content: Inline MIME support procedures and functions                        |
 |==============================================================================|
@@ -41,8 +41,6 @@
 | History: see HISTORY.HTM from distribution package                           |
 |          (Found at URL: http://www.ararat.cz/synapse/)                       |
 |==============================================================================}
-
-{$WEAKPACKAGEUNIT ON}
 
 unit MIMEinLn;
 
@@ -92,6 +90,9 @@ begin
   v := Value;
   x := Pos('=?', v);
   y := SearchEndInline(v, x);
+  //fix for broken coding with begin, but not with end.
+  if (x > 0) and (y <= 0) then
+    y := Length(Result);
   while (y > x) and (x > 0) do
   begin
     s := Copy(v, 1, x - 1);

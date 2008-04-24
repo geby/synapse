@@ -1,5 +1,5 @@
 {==============================================================================|
-| Project : Delphree - Synapse                                   | 002.002.001 |
+| Project : Delphree - Synapse                                   | 002.002.003 |
 |==============================================================================|
 | Content: SNTP client                                                         |
 |==============================================================================|
@@ -44,7 +44,6 @@
 |==============================================================================}
 
 {$Q-}
-{$WEAKPACKAGEUNIT ON}
 
 unit SNTPsend;
 
@@ -112,7 +111,6 @@ constructor TSNTPSend.Create;
 begin
   inherited Create;
   FSock := TUDPBlockSocket.Create;
-  FSock.CreateSocket;
   FTimeout := 5000;
   FTargetPort := cNtpProtocol;
   FMaxSyncDiff := 3600;

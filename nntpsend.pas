@@ -1,5 +1,5 @@
 {==============================================================================|
-| Project : Delphree - Synapse                                   | 001.002.003 |
+| Project : Delphree - Synapse                                   | 001.003.001 |
 |==============================================================================|
 | Content: NNTP client                                                         |
 |==============================================================================|
@@ -42,14 +42,15 @@
 |          (Found at URL: http://www.ararat.cz/synapse/)                       |
 |==============================================================================}
 
-{$WEAKPACKAGEUNIT ON}
-
 unit NNTPsend;
 
 interface
 
 uses
   SysUtils, Classes,
+  {$IFDEF STREAMSEC}
+  TlsInternalServer, TlsSynaSock,
+  {$ENDIF}
   blcksock, SynaUtil, SynaCode;
 
 const
@@ -58,13 +59,21 @@ const
 type
   TNNTPSend = class(TSynaClient)
   private
+    {$IFDEF STREAMSEC}
+    FSock: TSsTCPBlockSocket;
+    FTLSServer: TCustomTLSInternalServer;
+    {$ELSE}
     FSock: TTCPBlockSocket;
+    {$ENDIF}
     FResultCode: Integer;
     FResultString: string;
     FData: TStringList;
     FDataToSend: TStringList;
     FUsername: string;
     FPassword: string;
+    FAutoTLS: Boolean;
+    FFullSSL: Boolean;
+    FNNTPcap: TStringList;
     function ReadResult: Integer;
     function ReadData: boolean;
     function SendData: boolean;
@@ -91,13 +100,23 @@ type
     function PostArticle: Boolean;
     function SwitchToSlave: Boolean;
     function Xover(xoStart, xoEnd: string): boolean;
+    function StartTLS: Boolean;
+    function FindCap(const Value: string): string;
+    function ListExtensions: Boolean;
   published
     property Username: string read FUsername write FUsername;
     property Password: string read FPassword write FPassword;
     property ResultCode: Integer read FResultCode;
     property ResultString: string read FResultString;
     property Data: TStringList read FData;
+    property AutoTLS: Boolean read FAutoTLS Write FAutoTLS;
+    property FullSSL: Boolean read FFullSSL Write FFullSSL;
+{$IFDEF STREAMSEC}
+    property Sock: TSsTCPBlockSocket read FSock;
+    property TLSServer: TCustomTLSInternalServer read FTLSServer write FTLSServer;
+{$ELSE}
     property Sock: TTCPBlockSocket read FSock;
+{$ENDIF}
   end;
 
 implementation
@@ -105,14 +124,23 @@ implementation
 constructor TNNTPSend.Create;
 begin
   inherited Create;
+{$IFDEF STREAMSEC}
+  FTLSServer := GlobalTLSInternalServer;
+  FSock := TSsTCPBlockSocket.Create;
+  FSock.BlockingRead := True;
+{$ELSE}
+  FSock := TTCPBlockSocket.Create;
+{$ENDIF}
   FData := TStringList.Create;
   FDataToSend := TStringList.Create;
-  FSock := TTCPBlockSocket.Create;
+  FNNTPcap := TStringList.Create;
   FSock.ConvertLineEnd := True;
-  FTimeout := 300000;
+  FTimeout := 60000;
   FTargetPort := cNNTPProtocol;
   FUsername := '';
   FPassword := '';
+  FAutoTLS := False;
+  FFullSSL := False;
 end;
 
 destructor TNNTPSend.Destroy;
@@ -120,6 +148,7 @@ begin
   FSock.Free;
   FDataToSend.Free;
   FData.Free;
+  FNNTPcap.Free;
   inherited Destroy;
 end;
 
@@ -179,16 +208,40 @@ function TNNTPSend.Connect: Boolean;
 begin
   FSock.CloseSocket;
   FSock.Bind(FIPInterface, cAnyPort);
-  FSock.Connect(FTargetHost, FTargetPort);
+{$IFDEF STREAMSEC}
+  if FFullSSL then
+  begin
+    if assigned(FTLSServer) then
+      FSock.TLSServer := FTLSServer;
+    else
+    begin
+      result := False;
+      Exit;
+    end;
+  end
+  else
+    FSock.TLSServer := nil;
+{$ELSE}
+  if FFullSSL then
+    FSock.SSLEnabled := True;
+{$ENDIF}
+  if FSock.LastError = 0 then
+    FSock.Connect(FTargetHost, FTargetPort);
   Result := FSock.LastError = 0;
 end;
 
 function TNNTPSend.Login: Boolean;
 begin
   Result := False;
+  FNNTPcap.Clear;
   if not Connect then
     Exit;
   Result := (ReadResult div 100) = 2;
+  ListExtensions;
+  FNNTPcap.Assign(Fdata);
+  if result then
+    if (not FullSSL) and FAutoTLS and (FindCap('STARTTLS') <> '') then
+      result := StartTLS;
   if (FUsername <> '') and Result then
   begin
     FSock.SendString('AUTHINFO USER ' + FUsername + CRLF);
@@ -333,6 +386,50 @@ begin
   if xoEnd <> xoStart then
     s := s + '-' + xoEnd;
   Result := DoCommandRead(s);
+end;
+
+function TNNTPSend.StartTLS: Boolean;
+begin
+  Result := False;
+  if FindCap('STARTTLS') <> '' then
+  begin
+    if DoCommand('STARTTLS') then
+    begin
+{$IFDEF STREAMSEC}
+      if (Assigned(FTLSServer) then
+      begin
+        Fsock.TLSServer := FTLSServer;
+        Fsock.Connect('','');
+        Result := FSock.LastError = 0;
+      end
+      else
+        Result := False;
+{$ELSE}
+      Fsock.SSLDoConnect;
+      Result := FSock.LastError = 0;
+{$ENDIF}
+    end;
+  end;
+end;
+
+function TNNTPSend.ListExtensions: Boolean;
+begin
+  Result := DoCommandRead('LIST EXTENSIONS');
+end;
+
+function TNNTPSend.FindCap(const Value: string): string;
+var
+  n: Integer;
+  s: string;
+begin
+  s := UpperCase(Value);
+  Result := '';
+  for n := 0 to FNNTPcap.Count - 1 do
+    if Pos(s, UpperCase(FNNTPcap[n])) = 1 then
+    begin
+      Result := FNNTPcap[n];
+      Break;
+    end;
 end;
 
 {==============================================================================}

@@ -1,5 +1,5 @@
 {==============================================================================|
-| Project : Delphree - Synapse                                   | 002.003.000 |
+| Project : Delphree - Synapse                                   | 002.003.002 |
 |==============================================================================|
 | Content: SNMP traps                                                          |
 |==============================================================================|
@@ -44,7 +44,6 @@
 |==============================================================================}
 
 {$Q-}
-{$WEAKPACKAGEUNIT ON}
 
 unit SNMPTrap;
 
@@ -272,7 +271,6 @@ constructor TTrapSNMP.Create;
 begin
   inherited Create;
   FSock := TUDPBlockSocket.Create;
-  FSock.CreateSocket;
   FTrap := TTrapPDU.Create;
   FTimeout := 5000;
   FTargetPort := cSnmpTrapProtocol;

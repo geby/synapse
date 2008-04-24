@@ -1,5 +1,5 @@
 {==============================================================================|
-| Project : Delphree - Synapse                                   | 001.007.000 |
+| Project : Delphree - Synapse                                   | 001.007.001 |
 |==============================================================================|
 | Content: SSL support                                                         |
 |==============================================================================|
@@ -46,6 +46,14 @@ Special thanks to Gregor Ibic <gregor.ibic@intelicom.si>
  (Intelicom d.o.o., http://www.intelicom.si)
  for good inspiration about SSL programming.
 }
+
+{$IFDEF VER125}
+  {$DEFINE BCB}
+{$ENDIF}
+{$IFDEF BCB}
+  {$ObjExportAll On}
+  (*$HPPEMIT 'namespace Synassl { using System::Shortint; }' *)
+{$ENDIF}
 
 unit SynaSSL;
 
