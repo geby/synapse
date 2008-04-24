@@ -25,6 +25,8 @@
 |          (Found at URL: http://www.ararat.cz/synapse/)                       |
 |==============================================================================}
 
+{$Q-}
+
 unit SynaUtil;
 
 interface

@@ -1,5 +1,5 @@
 {==============================================================================|
-| Project : Delphree - Synapse                                   | 002.002.000 |
+| Project : Delphree - Synapse                                   | 002.002.001 |
 |==============================================================================|
 | Content: SNMP traps                                                          |
 |==============================================================================|
@@ -23,6 +23,8 @@
 | History: see HISTORY.HTM from distribution package                           |
 |          (Found at URL: http://www.ararat.cz/synapse/)                       |
 |==============================================================================}
+
+{$Q-}
 
 unit SNMPTrap;
 
@@ -197,12 +199,12 @@ begin
   Buffer := ASNObject(Buffer, ASN1_SEQ);
   Buffer := ASNObject(ASNEncInt(GenTrap), ASN1_INT)
     + ASNObject(ASNEncInt(SpecTrap), ASN1_INT)
-    + ASNObject(ASNEncInt(TimeTicks), ASN1_TIMETICKS)
+    + ASNObject(ASNEncUInt(TimeTicks), ASN1_TIMETICKS)
     + Buffer;
   Buffer := ASNObject(MibToID(Enterprise), ASN1_OBJID)
     + ASNObject(IPToID(TrapHost), ASN1_IPADDR)
     + Buffer;
-  Buffer := ASNObject(Char(Version), ASN1_INT)
+  Buffer := ASNObject(ASNEncInt(Version), ASN1_INT)
     + ASNObject(Community, ASN1_OCTSTR)
     + ASNObject(Buffer, Self.PDUType);
   Buffer := ASNObject(Buffer, ASN1_SEQ);

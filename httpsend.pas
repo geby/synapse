@@ -1,5 +1,5 @@
 {==============================================================================|
-| Project : Delphree - Synapse                                   | 002.000.000 |
+| Project : Delphree - Synapse                                   | 002.001.000 |
 |==============================================================================|
 | Content: HTTP client                                                         |
 |==============================================================================|
@@ -71,6 +71,7 @@ type
 function HttpGetText(URL:string;Response:TStrings):Boolean;
 function HttpGetBinary(URL:string;Response:TStream):Boolean;
 function HttpPostBinary(URL:string;Data:TStream):Boolean;
+function HttpPostURL(URL:string;URLData:string;Data:TStream):Boolean;
 
 implementation
 
@@ -414,6 +415,24 @@ begin
   try
     HTTP.Document.CopyFrom(data,0);
     HTTP.MimeType:='Application/octet-stream';
+    Result:=HTTP.HTTPmethod('POST',URL);
+    data.Seek(0,soFromBeginning);
+    data.CopyFrom(HTTP.document,0);
+  finally
+    HTTP.Free;
+  end;
+end;
+
+{HttpPostURL}
+function HttpPostURL(URL:string;URLData:string;Data:TStream):Boolean;
+var
+  HTTP:THTTPSend;
+begin
+  Result:=False;
+  HTTP:=THTTPSend.Create;
+  try
+    HTTP.Document.Write(pointer(URLData)^,Length(URLData));
+    HTTP.MimeType:='application/x-url-encoded';
     Result:=HTTP.HTTPmethod('POST',URL);
     data.Seek(0,soFromBeginning);
     data.CopyFrom(HTTP.document,0);

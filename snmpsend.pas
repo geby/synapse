@@ -1,5 +1,5 @@
 {==============================================================================|
-| Project : Delphree - Synapse                                   | 002.003.000 |
+| Project : Delphree - Synapse                                   | 002.003.001 |
 |==============================================================================|
 | Content: SNMP client                                                         |
 |==============================================================================|
@@ -24,12 +24,14 @@
 |          (Found at URL: http://www.ararat.cz/synapse/)                       |
 |==============================================================================}
 
+{$Q-}
+
 unit SNMPSend;
 
 interface
 
 uses
-  BlckSock, synautil, classes, sysutils, ASN1util;
+  BlckSock, synautil, classes, sysutils, ASN1Util;
 
 const
 
@@ -190,11 +192,11 @@ begin
       data := data + ASNObject(s, ASN1_SEQ);
     end;
   data:=ASNObject(data,ASN1_SEQ);
-  data:=ASNObject(char(Self.ID),ASN1_INT)
-    +ASNObject(char(Self.ErrorStatus),ASN1_INT)
-    +ASNObject(char(Self.ErrorIndex),ASN1_INT)
+  data:=ASNObject(ASNEncInt(Self.ID),ASN1_INT)
+    +ASNObject(ASNEncInt(Self.ErrorStatus),ASN1_INT)
+    +ASNObject(ASNEncInt(Self.ErrorIndex),ASN1_INT)
     +data;
-  data:=ASNObject(char(Self.Version),ASN1_INT)
+  data:=ASNObject(ASNEncInt(Self.Version),ASN1_INT)
     +ASNObject(Self.community,ASN1_OCTSTR)
     +ASNObject(data,Self.PDUType);
   data:=ASNObject(data,ASN1_SEQ);

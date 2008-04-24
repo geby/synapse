@@ -25,6 +25,8 @@
 
 //RFC-1035, RFC-1183, RFC1706, RFC1712, RFC2163, RFC2230
 
+{$Q-}
+
 unit DNSsend;
 
 interface
@@ -63,7 +65,7 @@ const
   Qtype_AAAA  =28; //IP6 Address                     [Susan Thomson]
   Qtype_LOC   =29; //RFC-1876
   Qtype_NXT   =30; //RFC-2065
-  
+
   Qtype_SRV   =33; //RFC-2052
   Qtype_NAPTR =35; //RFC-2168
   Qtype_KX    =36;

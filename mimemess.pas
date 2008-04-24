@@ -29,7 +29,7 @@ unit MIMEmess;
 interface
 
 uses
-  classes, Sysutils, MimePart, MimeChar, SynaUtil, MIMEInLn;
+  classes, Sysutils, MIMEpart, MimeChar, SynaUtil, MIMEInLn;
 
 type
 
