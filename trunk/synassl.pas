@@ -1,17 +1,36 @@
 {==============================================================================|
-| Project : Delphree - Synapse                                   | 001.004.000 |
+| Project : Delphree - Synapse                                   | 001.006.000 |
 |==============================================================================|
 | Content: SSL support                                                         |
 |==============================================================================|
-| The contents of this file are subject to the Mozilla Public License Ver. 1.1 |
-| (the "License"); you may not use this file except in compliance with the     |
-| License. You may obtain a copy of the License at http://www.mozilla.org/MPL/ |
+| Copyright (c)1999-2002, Lukas Gebauer                                        |
+| All rights reserved.                                                         |
 |                                                                              |
-| Software distributed under the License is distributed on an "AS IS" basis,   |
-| WITHOUT WARRANTY OF ANY KIND, either express or implied. See the License for |
-| the specific language governing rights and limitations under the License.    |
-|==============================================================================|
-| The Original Code is Synapse Delphi Library.                                 |
+| Redistribution and use in source and binary forms, with or without           |
+| modification, are permitted provided that the following conditions are met:  |
+|                                                                              |
+| Redistributions of source code must retain the above copyright notice, this  |
+| list of conditions and the following disclaimer.                             |
+|                                                                              |
+| Redistributions in binary form must reproduce the above copyright notice,    |
+| this list of conditions and the following disclaimer in the documentation    |
+| and/or other materials provided with the distribution.                       |
+|                                                                              |
+| Neither the name of Lukas Gebauer nor the names of its contributors may      |
+| be used to endorse or promote products derived from this software without    |
+| specific prior written permission.                                           |
+|                                                                              |
+| THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"  |
+| AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE    |
+| IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE   |
+| ARE DISCLAIMED. IN NO EVENT SHALL THE REGENTS OR CONTRIBUTORS BE LIABLE FOR  |
+| ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL       |
+| DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR   |
+| SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER   |
+| CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT           |
+| LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY    |
+| OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH  |
+| DAMAGE.                                                                      |
 |==============================================================================|
 | The Initial Developer of the Original Code is Lukas Gebauer (Czech Republic).|
 | Portions created by Lukas Gebauer are Copyright (c)2002.                     |
@@ -22,6 +41,11 @@
 | History: see HISTORY.HTM from distribution package                           |
 |          (Found at URL: http://www.ararat.cz/synapse/)                       |
 |==============================================================================}
+{
+Special thanks to Gregor Ibic <gregor.ibic@intelicom.si>
+ (Intelicom d.o.o., http://www.intelicom.si)
+ for good inspiration about SSL programming.
+}
 
 unit SynaSSL;
 
@@ -55,6 +79,8 @@ type
 
 const
   EVP_MAX_MD_SIZE = 16+20;
+  SSL_ERROR_NONE = 0;
+  SSL_ERROR_SSL = 1;
   SSL_ERROR_WANT_READ = 2;
   SSL_ERROR_WANT_WRITE = 3;
   SSL_ERROR_ZERO_RETURN = 6;
@@ -62,12 +88,14 @@ const
   SSL_OP_NO_SSLv3 = $02000000;
   SSL_OP_NO_TLSv1 = $04000000;
   SSL_OP_ALL = $000FFFFF;
+  SSL_VERIFY_NONE = $00;
+  SSL_VERIFY_PEER = $01;
 
 var
   SSLLibHandle: Integer = 0;
   SSLUtilHandle: Integer = 0;
 
-// ssleay.dll
+// libssl.dll
   SslGetError : function(s: PSSL; ret_code: Integer):Integer cdecl = nil;
   SslLibraryInit : function:Integer cdecl = nil;
   SslLoadErrorStrings : procedure cdecl = nil;
@@ -90,8 +118,10 @@ var
   SslRead : function(ssl: PSSL; buf: PChar; num: Integer):Integer cdecl = nil;
   SslPeek : function(ssl: PSSL; buf: PChar; num: Integer):Integer cdecl = nil;
   SslWrite : function(ssl: PSSL; const buf: PChar; num: Integer):Integer cdecl = nil;
+  SslPending : function(ssl: PSSL):Integer cdecl = nil;
   SslGetVersion : function(ssl: PSSL):PChar cdecl = nil;
   SslGetPeerCertificate : function(ssl: PSSL):PX509 cdecl = nil;
+  SslCtxSetVerify : procedure(ctx: PSSL_CTX; mode: Integer; arg2: Pointer) cdecl = nil;
 
 // libeay.dll
   SslX509Free : procedure(x: PX509) cdecl = nil;
@@ -101,6 +131,9 @@ var
   SslX509NameHash : function(x: PX509_NAME):Cardinal cdecl = nil;
   SslX509Digest : function(data: PX509; _type: PEVP_MD; md: PChar; len: PInteger):Integer cdecl = nil;
   SslEvpMd5 : function:PEVP_MD cdecl = nil;
+  ErrErrorString : function(e: integer; buf: PChar): PChar cdecl = nil;
+  ErrGetError : function: integer cdecl = nil;
+  ErrClearError : procedure cdecl = nil;
 
 function InitSSLInterface: Boolean;
 function DestroySSLInterface: Boolean;
@@ -153,8 +186,10 @@ begin
         SslRead := GetProcAddress(SSLLibHandle, PChar('SSL_read'));
         SslPeek := GetProcAddress(SSLLibHandle, PChar('SSL_peek'));
         SslWrite := GetProcAddress(SSLLibHandle, PChar('SSL_write'));
+        SslPending := GetProcAddress(SSLLibHandle, PChar('SSL_pending'));
         SslGetPeerCertificate := GetProcAddress(SSLLibHandle, PChar('SSL_get_peer_certificate'));
         SslGetVersion := GetProcAddress(SSLLibHandle, PChar('SSL_get_version'));
+        SslCtxSetVerify := GetProcAddress(SSLLibHandle, PChar('SSL_CTX_set_verify'));
 
         SslX509Free := GetProcAddress(SSLUtilHandle, PChar('X509_free'));
         SslX509NameOneline := GetProcAddress(SSLUtilHandle, PChar('X509_NAME_oneline'));
@@ -163,6 +198,9 @@ begin
         SslX509NameHash := GetProcAddress(SSLUtilHandle, PChar('X509_NAME_hash'));
         SslX509Digest := GetProcAddress(SSLUtilHandle, PChar('X509_digest'));
         SslEvpMd5 := GetProcAddress(SSLUtilHandle, PChar('EVP_md5'));
+        ErrerrorString := GetProcAddress(SSLUtilHandle, PChar('ERR_error_string'));
+        ErrGetError := GetProcAddress(SSLUtilHandle, PChar('ERR_get_error'));
+        ErrClearError := GetProcAddress(SSLUtilHandle, PChar('ERR_clear_error'));
 
         Result := True;
       end;

@@ -1,17 +1,36 @@
 {==============================================================================|
-| Project : Delphree - Synapse                                   | 003.000.003 |
+| Project : Delphree - Synapse                                   | 003.002.000 |
 |==============================================================================|
 | Content: HTTP client                                                         |
 |==============================================================================|
-| The contents of this file are subject to the Mozilla Public License Ver. 1.1 |
-| (the "License"); you may not use this file except in compliance with the     |
-| License. You may obtain a copy of the License at http://www.mozilla.org/MPL/ |
+| Copyright (c)1999-2002, Lukas Gebauer                                        |
+| All rights reserved.                                                         |
 |                                                                              |
-| Software distributed under the License is distributed on an "AS IS" basis,   |
-| WITHOUT WARRANTY OF ANY KIND, either express or implied. See the License for |
-| the specific language governing rights and limitations under the License.    |
-|==============================================================================|
-| The Original Code is Synapse Delphi Library.                                 |
+| Redistribution and use in source and binary forms, with or without           |
+| modification, are permitted provided that the following conditions are met:  |
+|                                                                              |
+| Redistributions of source code must retain the above copyright notice, this  |
+| list of conditions and the following disclaimer.                             |
+|                                                                              |
+| Redistributions in binary form must reproduce the above copyright notice,    |
+| this list of conditions and the following disclaimer in the documentation    |
+| and/or other materials provided with the distribution.                       |
+|                                                                              |
+| Neither the name of Lukas Gebauer nor the names of its contributors may      |
+| be used to endorse or promote products derived from this software without    |
+| specific prior written permission.                                           |
+|                                                                              |
+| THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"  |
+| AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE    |
+| IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE   |
+| ARE DISCLAIMED. IN NO EVENT SHALL THE REGENTS OR CONTRIBUTORS BE LIABLE FOR  |
+| ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL       |
+| DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR   |
+| SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER   |
+| CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT           |
+| LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY    |
+| OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH  |
+| DAMAGE.                                                                      |
 |==============================================================================|
 | The Initial Developer of the Original Code is Lukas Gebauer (Czech Republic).|
 | Portions created by Lukas Gebauer are Copyright (c) 1999-2002.               |
@@ -39,7 +58,7 @@ const
 type
   TTransferEncoding = (TE_UNKNOWN, TE_IDENTITY, TE_CHUNKED);
 
-  THTTPSend = class(TObject)
+  THTTPSend = class(TSynaClient)
   private
     FSock: TTCPBlockSocket;
     FTransferEncoding: TTransferEncoding;
@@ -50,9 +69,6 @@ type
     FMimeType: string;
     FProtocol: string;
     FKeepAlive: Boolean;
-    FTimeout: Integer;
-    FHTTPHost: string;
-    FHTTPPort: string;
     FProxyHost: string;
     FProxyPort: string;
     FProxyUser: string;
@@ -74,9 +90,6 @@ type
     property MimeType: string read FMimeType Write FMimeType;
     property Protocol: string read FProtocol Write FProtocol;
     property KeepAlive: Boolean read FKeepAlive Write FKeepAlive;
-    property Timeout: Integer read FTimeout Write FTimeout;
-    property HTTPHost: string read FHTTPHost;
-    property HTTPPort: string read FHTTPPort;
     property ProxyHost: string read FProxyHost Write FProxyHost;
     property ProxyPort: string read FProxyPort Write FProxyPort;
     property ProxyUser: string read FProxyUser Write FProxyUser;
@@ -91,7 +104,7 @@ function HttpGetBinary(const URL: string; const Response: TStream): Boolean;
 function HttpPostBinary(const URL: string; const Data: TStream): Boolean;
 function HttpPostURL(const URL, URLData: string; const Data: TStream): Boolean;
 function HttpPostFile(const URL, FieldName, FileName: string;
-  const Data: TStream; const ResultData: TStringList): Boolean;
+  const Data: TStream; const ResultData: TStrings): Boolean;
 
 implementation
 
@@ -106,9 +119,9 @@ begin
   FSock := TTCPBlockSocket.Create;
   FSock.SizeRecvBuffer := 65536;
   FSock.SizeSendBuffer := 65536;
+  FSock.ConvertLineEnd := True;
   FTimeout := 300000;
-  FHTTPHost := cLocalhost;
-  FHTTPPort := cHttpProtocol;
+  FTargetPort := cHttpProtocol;
   FProxyHost := '';
   FProxyPort := '8080';
   FProxyUser := '';
@@ -155,7 +168,6 @@ var
   ToClose: Boolean;
   Size: Integer;
   Prot, User, Pass, Host, Port, Path, Para, URI: string;
-  n: Integer;
   s, su: string;
   HttpTunnel: Boolean;
 begin
@@ -219,27 +231,30 @@ begin
     FHeaders.Insert(0, UpperCase(Method) + ' ' + URI + ' HTTP/' + FProtocol);
   if (FProxyHost <> '') and not(HttpTunnel) then
   begin
-    FHTTPHost := FProxyHost;
-    FHTTPPort := FProxyPort;
+    FTargetHost := FProxyHost;
+    FTargetPort := FProxyPort;
   end
   else
   begin
-    FHTTPHost := Host;
-    FHTTPPort := Port;
+    FTargetHost := Host;
+    FTargetPort := Port;
   end;
   if FHeaders[FHeaders.Count - 1] <> '' then
     FHeaders.Add('');
 
   { connect }
-  if (FAliveHost <> FHTTPHost) or (FAlivePort <> FHTTPPort) then
+  if (FAliveHost <> FTargetHost) or (FAlivePort <> FTargetPort) then
   begin
     FSock.CloseSocket;
     FSock.CreateSocket;
-    FSock.Connect(FHTTPHost, FHTTPPort);
+    FSock.Bind(FIPInterface, cAnyPort);
     if FSock.LastError <> 0 then
       Exit;
-    FAliveHost := FHTTPHost;
-    FAlivePort := FHTTPPort;
+    FSock.Connect(FTargetHost, FTargetPort);
+    if FSock.LastError <> 0 then
+      Exit;
+    FAliveHost := FTargetHost;
+    FAlivePort := FTargetPort;
   end
   else
   begin
@@ -247,7 +262,10 @@ begin
     begin
       FSock.CloseSocket;
       FSock.CreateSocket;
-      FSock.Connect(FHTTPHost, FHTTPPort);
+      FSock.Bind(FIPInterface, cAnyPort);
+      if FSock.LastError <> 0 then
+        Exit;
+      FSock.Connect(FTargetHost, FTargetPort);
       if FSock.LastError <> 0 then
         Exit;
     end;
@@ -257,7 +275,11 @@ begin
   if FProtocol = '0.9' then
     FSock.SendString(FHeaders[0] + CRLF)
   else
+{$IFDEF LINUX}
+    FSock.SendString(AdjustLineBreaks(FHeaders.Text, tlbsCRLF));
+{$ELSE}
     FSock.SendString(FHeaders.Text);
+{$ENDIF}
   if FSock.LastError <> 0 then
     Exit;
 
@@ -320,7 +342,7 @@ begin
   else
     FHeaders.Add(Status100Error);
 
-  { if need receive hedaers, receive and parse it }
+  { if need receive headers, receive and parse it }
   ToClose := FProtocol <> '1.1';
   if FHeaders.Count > 0 then
     repeat
@@ -479,7 +501,7 @@ begin
 end;
 
 function HttpPostFile(const URL, FieldName, FileName: string;
-  const Data: TStream; const ResultData: TStringList): Boolean;
+  const Data: TStream; const ResultData: TStrings): Boolean;
 const
   CRLF = #$0D + #$0A;
 var
