@@ -1,5 +1,5 @@
 {==============================================================================|
-| Project : Ararat Synapse                                       | 001.001.008 |
+| Project : Ararat Synapse                                       | 001.001.009 |
 |==============================================================================|
 | Content: Inline MIME support procedures and functions                        |
 |==============================================================================|
@@ -205,7 +205,7 @@ var
 begin
   Result := False;
   for n := 1 to Length(Value) do
-    if Value[n] in (SpecialChar + NonAsciiChar) then
+    if Value[n] in (SpecialChar + NonAsciiChar - ['_']) then
     begin
       Result := True;
       Break;

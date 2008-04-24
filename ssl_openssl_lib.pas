@@ -1,9 +1,9 @@
 {==============================================================================|
-| Project : Ararat Synapse                                       | 003.000.002 |
+| Project : Ararat Synapse                                       | 003.004.000 |
 |==============================================================================|
 | Content: SSL support by OpenSSL                                              |
 |==============================================================================|
-| Copyright (c)1999-2003, Lukas Gebauer                                        |
+| Copyright (c)1999-2005, Lukas Gebauer                                        |
 | All rights reserved.                                                         |
 |                                                                              |
 | Redistribution and use in source and binary forms, with or without           |
@@ -33,7 +33,7 @@
 | DAMAGE.                                                                      |
 |==============================================================================|
 | The Initial Developer of the Original Code is Lukas Gebauer (Czech Republic).|
-| Portions created by Lukas Gebauer are Copyright (c)2002-2003.                |
+| Portions created by Lukas Gebauer are Copyright (c)2002-2005.                |
 | All Rights Reserved.                                                         |
 |==============================================================================|
 | Contributor(s):                                                              |
@@ -57,11 +57,16 @@ Special thanks to Gregor Ibic <gregor.ibic@intelicom.si>
 {$ENDIF}
 {$IFDEF BCB}
   {$ObjExportAll On}
-  (*$HPPEMIT 'namespace Synassl { using System::Shortint; }' *)
+  (*$HPPEMIT 'namespace ssl_openssl_lib { using System::Shortint; }' *)
 {$ENDIF}
 
-{:@exclude}
-unit synassl;
+{:@abstract(OpenSSL support)
+
+This unit is Pascal interface to OpenSSL library (used by @link(ssl_openssl) unit).
+OpenSSL is loaded dynamicly on-demand. If this library is not found in system,
+requested OpenSSL function just return errorcode.
+}
+unit ssl_openssl_lib;
 
 interface
 
@@ -70,6 +75,7 @@ uses
   System.Runtime.InteropServices,
   System.Text,
 {$ENDIF}
+  Classes,
 {$IFDEF LINUX}
   {$IFDEF FPC}
   synafpc,
@@ -107,6 +113,7 @@ type
 {$ELSE}
   SslPtr = Pointer;
 {$ENDIF}
+  PSslPtr = ^SslPtr;
   PSSL_CTX = SslPtr;
   PSSL = SslPtr;
   PSSL_METHOD = SslPtr;
@@ -116,6 +123,10 @@ type
   PInteger = ^Integer;
   PBIO_METHOD = SslPtr;
   PBIO = SslPtr;
+  EVP_PKEY = SslPtr;
+  PRSA = SslPtr;
+  PASN1_UTCTIME = SslPtr;
+  PASN1_INTEGER = SslPtr;
   PPasswdCb = SslPtr;
   PFunction = procedure;
 
@@ -189,6 +200,10 @@ const
   //The application is not happy
   X509_V_ERR_APPLICATION_VERIFICATION = 50;
 
+  SSL_FILETYPE_ASN1	= 2;
+  SSL_FILETYPE_PEM = 1;
+  EVP_PKEY_RSA = 6;
+
 var
   SSLLibHandle: Integer = 0;
   SSLUtilHandle: Integer = 0;
@@ -253,12 +268,37 @@ var
 
   [DllImport(DLLSSLName, CharSet = CharSet.Ansi,
     SetLastError = False, CallingConvention= CallingConvention.cdecl,
-    EntryPoint = 'SSL_CTX_use_PrivateKey_file')]
+    EntryPoint = 'SSL_CTX_use_PrivateKey')]
+    function SslCtxUsePrivateKey(ctx: PSSL_CTX; pkey: SslPtr):Integer;  external;
+
+  [DllImport(DLLSSLName, CharSet = CharSet.Ansi,
+    SetLastError = False, CallingConvention= CallingConvention.cdecl,
+    EntryPoint = 'SSL_CTX_use_PrivateKey_ASN1')]
+    function SslCtxUsePrivateKeyASN1(pk: integer; ctx: PSSL_CTX; d: String; len: integer):Integer;  external;
+
+  [DllImport(DLLSSLName, CharSet = CharSet.Ansi,
+    SetLastError = False, CallingConvention= CallingConvention.cdecl,
+    EntryPoint = 'SSL_CTX_use_RSAPrivateKey_file')]
     function SslCtxUsePrivateKeyFile(ctx: PSSL_CTX; const _file: String; _type: Integer):Integer;  external;
 
   [DllImport(DLLSSLName, CharSet = CharSet.Ansi,
     SetLastError = False, CallingConvention= CallingConvention.cdecl,
-    EntryPoint = 'SSL_CTX_use_certificate_chain_file')]                                             //TODO:  See if this is really correct
+    EntryPoint = 'SSL_CTX_use_certificate')]
+    function SslCtxUseCertificate(ctx: PSSL_CTX; x: SslPtr):Integer; external;
+
+  [DllImport(DLLSSLName, CharSet = CharSet.Ansi,
+    SetLastError = False, CallingConvention= CallingConvention.cdecl,
+    EntryPoint = 'SSL_CTX_use_certificate_ASN1')]
+    function SslCtxUseCertificateASN1(ctx: PSSL_CTX; len: integer; d: String):Integer; external;
+
+  [DllImport(DLLSSLName, CharSet = CharSet.Ansi,
+    SetLastError = False, CallingConvention= CallingConvention.cdecl,
+    EntryPoint = 'SSL_CTX_use_certificate_file')]
+    function SslCtxUseCertificateFile(ctx: PSSL_CTX; const _file: String; _type: Integer):Integer;external;
+
+  [DllImport(DLLSSLName, CharSet = CharSet.Ansi,
+    SetLastError = False, CallingConvention= CallingConvention.cdecl,
+    EntryPoint = 'SSL_CTX_use_certificate_chain_file')]
     function SslCtxUseCertificateChainFile(ctx: PSSL_CTX; const _file: String):Integer;external;
 
   [DllImport(DLLSSLName, CharSet = CharSet.Ansi,
@@ -363,43 +403,124 @@ var
 
   [DllImport(DLLUtilName, CharSet = CharSet.Ansi,
     SetLastError = False, CallingConvention= CallingConvention.cdecl,
+    EntryPoint = 'X509_new')]
+    function X509New: PX509; external;
+
+  [DllImport(DLLUtilName, CharSet = CharSet.Ansi,
+    SetLastError = False, CallingConvention= CallingConvention.cdecl,
     EntryPoint = 'X509_free')]
-    procedure SslX509Free(x: PX509); external;
+    procedure X509Free(x: PX509); external;
 
   [DllImport(DLLUtilName, CharSet = CharSet.Ansi,
     SetLastError = False, CallingConvention= CallingConvention.cdecl,
     EntryPoint = 'X509_NAME_oneline')]
-    function SslX509NameOneline(a: PX509_NAME; buf: StringBuilder; size: Integer): String; external;
+    function X509NameOneline(a: PX509_NAME; buf: StringBuilder; size: Integer): String; external;
 
   [DllImport(DLLUtilName, CharSet = CharSet.Ansi,
     SetLastError = False, CallingConvention= CallingConvention.cdecl,
     EntryPoint = 'X509_get_subject_name')]
-    function SslX509GetSubjectName(a: PX509):PX509_NAME; external;
+    function X509GetSubjectName(a: PX509):PX509_NAME; external;
 
   [DllImport(DLLUtilName, CharSet = CharSet.Ansi,
     SetLastError = False, CallingConvention= CallingConvention.cdecl,
     EntryPoint = 'X509_get_issuer_name')]
-    function SslX509GetIssuerName(a: PX509):PX509_NAME;  external;
+    function X509GetIssuerName(a: PX509):PX509_NAME;  external;
 
   [DllImport(DLLUtilName, CharSet = CharSet.Ansi,
     SetLastError = False, CallingConvention= CallingConvention.cdecl,
     EntryPoint = 'X509_NAME_hash')]
-    function SslX509NameHash(x: PX509_NAME):Cardinal;   external;
+    function X509NameHash(x: PX509_NAME):Cardinal;   external;
 
   [DllImport(DLLUtilName, CharSet = CharSet.Ansi,
     SetLastError = False, CallingConvention= CallingConvention.cdecl,
     EntryPoint = 'X509_digest')]
-    function SslX509Digest (data: PX509; _type: PEVP_MD; md: StringBuilder; var len: Integer):Integer; external;
+    function X509Digest (data: PX509; _type: PEVP_MD; md: StringBuilder; var len: Integer):Integer; external;
 
   [DllImport(DLLUtilName, CharSet = CharSet.Ansi,
     SetLastError = False, CallingConvention= CallingConvention.cdecl,
-    EntryPoint =  'EVP_md5')]
-    function SslEvpMd5:PEVP_MD;   external;
+    EntryPoint =  'X509_set_version')]
+    function X509SetVersion(x: PX509; version: integer): integer; external;
 
   [DllImport(DLLUtilName, CharSet = CharSet.Ansi,
     SetLastError = False, CallingConvention= CallingConvention.cdecl,
-    EntryPoint =  'ERR_error_string')]
-    function ErrErrorString(e: integer; var buf: String): String; external;
+    EntryPoint =  'X509_set_pubkey')]
+    function X509SetPubkey(x: PX509; pkey: EVP_PKEY): integer; external;
+
+  [DllImport(DLLUtilName, CharSet = CharSet.Ansi,
+    SetLastError = False, CallingConvention= CallingConvention.cdecl,
+    EntryPoint =  'X509_set_issuer_name')]
+    function X509SetIssuerName(x: PX509; name: PX509_NAME): integer; external;
+
+  [DllImport(DLLUtilName, CharSet = CharSet.Ansi,
+    SetLastError = False, CallingConvention= CallingConvention.cdecl,
+    EntryPoint =  'X509_NAME_add_entry_by_txt')]
+    function X509NameAddEntryByTxt(name: PX509_NAME; field: string; _type: integer;
+      bytes: string; len, loc, _set: integer): integer; external;
+
+  [DllImport(DLLUtilName, CharSet = CharSet.Ansi,
+    SetLastError = False, CallingConvention= CallingConvention.cdecl,
+    EntryPoint =  'X509_sign')]
+    function X509Sign(x: PX509; pkey: EVP_PKEY; const md: PEVP_MD): integer; external;
+
+  [DllImport(DLLUtilName, CharSet = CharSet.Ansi,
+    SetLastError = False, CallingConvention= CallingConvention.cdecl,
+    EntryPoint =  'X509_print')]
+    function X509print(b: PBIO; a: PX509): integer; external;
+
+  [DllImport(DLLUtilName, CharSet = CharSet.Ansi,
+    SetLastError = False, CallingConvention= CallingConvention.cdecl,
+    EntryPoint =  'X509_gmtime_adj')]
+    function X509GmtimeAdj(s: PASN1_UTCTIME; adj: integer): PASN1_UTCTIME; external;
+
+  [DllImport(DLLUtilName, CharSet = CharSet.Ansi,
+    SetLastError = False, CallingConvention= CallingConvention.cdecl,
+    EntryPoint =  'X509_set_notBefore')]
+    function X509SetNotBefore(x: PX509; tm: PASN1_UTCTIME): integer; external;
+
+  [DllImport(DLLUtilName, CharSet = CharSet.Ansi,
+    SetLastError = False, CallingConvention= CallingConvention.cdecl,
+    EntryPoint =  'X509_set_notAfter')]
+    function X509SetNotAfter(x: PX509; tm: PASN1_UTCTIME): integer; external;
+
+  [DllImport(DLLUtilName, CharSet = CharSet.Ansi,
+    SetLastError = False, CallingConvention= CallingConvention.cdecl,
+    EntryPoint =  'X509_get_serialNumber')]
+    function X509GetSerialNumber(x: PX509): PASN1_INTEGER; external;
+
+  [DllImport(DLLUtilName, CharSet = CharSet.Ansi,
+    SetLastError = False, CallingConvention= CallingConvention.cdecl,
+    EntryPoint =  'EVP_PKEY_new')]
+    function EvpPkeyNew: EVP_PKEY; external;
+
+  [DllImport(DLLUtilName, CharSet = CharSet.Ansi,
+    SetLastError = False, CallingConvention= CallingConvention.cdecl,
+    EntryPoint =  'EVP_PKEY_free')]
+    procedure EvpPkeyFree(pk: EVP_PKEY); external;
+
+  [DllImport(DLLUtilName, CharSet = CharSet.Ansi,
+    SetLastError = False, CallingConvention= CallingConvention.cdecl,
+    EntryPoint =  'EVP_PKEY_assign')]
+    function EvpPkeyAssign(pkey: EVP_PKEY; _type: integer; key: Prsa): integer; external;
+
+  [DllImport(DLLUtilName, CharSet = CharSet.Ansi,
+    SetLastError = False, CallingConvention= CallingConvention.cdecl,
+    EntryPoint =  'EVP_get_digestbyname')]
+    function EvpGetDigestByName(Name: String): PEVP_MD; external;
+
+  [DllImport(DLLUtilName, CharSet = CharSet.Ansi,
+    SetLastError = False, CallingConvention= CallingConvention.cdecl,
+    EntryPoint =  'EVP_cleanup')]
+    procedure EVPcleanup; external;
+
+  [DllImport(DLLUtilName, CharSet = CharSet.Ansi,
+    SetLastError = False, CallingConvention= CallingConvention.cdecl,
+    EntryPoint =  'SSLeay_version')]
+    function SSLeayversion(t: integer): String; external;
+
+  [DllImport(DLLUtilName, CharSet = CharSet.Ansi,
+    SetLastError = False, CallingConvention= CallingConvention.cdecl,
+    EntryPoint =  'ERR_error_string_n')]
+    procedure ErrErrorString(e: integer; buf: StringBuilder; len: integer); external;
 
   [DllImport(DLLUtilName, CharSet = CharSet.Ansi,
     SetLastError = False, CallingConvention= CallingConvention.cdecl,
@@ -408,7 +529,7 @@ var
 
   [DllImport(DLLUtilName, CharSet = CharSet.Ansi,
     SetLastError = False, CallingConvention= CallingConvention.cdecl,
-    EntryPoint =  'ERR_clean_error')]
+    EntryPoint =  'ERR_clear_error')]
     procedure ErrClearError; external;
 
   [DllImport(DLLUtilName, CharSet = CharSet.Ansi,
@@ -423,8 +544,8 @@ var
 
   [DllImport(DLLUtilName, CharSet = CharSet.Ansi,
     SetLastError = False, CallingConvention= CallingConvention.cdecl,
-    EntryPoint =  'EVP_cleanup')]
-    procedure EVPcleanup; external;
+    EntryPoint =  'OPENSSL_add_all_algorithms_noconf')]
+    procedure OPENSSLaddallalgorithms; external;
 
   [DllImport(DLLUtilName, CharSet = CharSet.Ansi,
     SetLastError = False, CallingConvention= CallingConvention.cdecl,
@@ -468,8 +589,48 @@ var
 
   [DllImport(DLLUtilName, CharSet = CharSet.Ansi,
     SetLastError = False, CallingConvention= CallingConvention.cdecl,
-    EntryPoint =  'X509_print')]
-    function X509print(b: PBIO; a: PX509): integer; external;
+    EntryPoint =  'd2i_PKCS12_bio')]
+    function d2iPKCS12bio(b:PBIO; Pkcs12: SslPtr): SslPtr; external;
+
+  [DllImport(DLLUtilName, CharSet = CharSet.Ansi,
+    SetLastError = False, CallingConvention= CallingConvention.cdecl,
+    EntryPoint =  'PKCS12_parse')]
+    function PKCS12parse(p12: SslPtr; pass: string; var pkey, cert, ca: SslPtr): integer; external;
+
+  [DllImport(DLLUtilName, CharSet = CharSet.Ansi,
+    SetLastError = False, CallingConvention= CallingConvention.cdecl,
+    EntryPoint =  'PKCS12_free')]
+    procedure PKCS12free(p12: SslPtr); external;
+
+  [DllImport(DLLUtilName, CharSet = CharSet.Ansi,
+    SetLastError = False, CallingConvention= CallingConvention.cdecl,
+    EntryPoint =  'RSA_generate_key')]
+    function RsaGenerateKey(bits, e: integer; callback: PFunction; cb_arg: SslPtr): PRSA; external;
+
+  [DllImport(DLLUtilName, CharSet = CharSet.Ansi,
+    SetLastError = False, CallingConvention= CallingConvention.cdecl,
+    EntryPoint =  'ASN1_UTCTIME_new')]
+    function Asn1UtctimeNew: PASN1_UTCTIME; external;
+
+  [DllImport(DLLUtilName, CharSet = CharSet.Ansi,
+    SetLastError = False, CallingConvention= CallingConvention.cdecl,
+    EntryPoint =  'ASN1_UTCTIME_free')]
+    procedure Asn1UtctimeFree(a: PASN1_UTCTIME); external;
+
+  [DllImport(DLLUtilName, CharSet = CharSet.Ansi,
+    SetLastError = False, CallingConvention= CallingConvention.cdecl,
+    EntryPoint =  'ASN1_INTEGER_set')]
+    function Asn1IntegerSet(a: PASN1_INTEGER; v: integer): integer; external;
+
+  [DllImport(DLLUtilName, CharSet = CharSet.Ansi,
+    SetLastError = False, CallingConvention= CallingConvention.cdecl,
+    EntryPoint =  'i2d_X509_bio')]
+    function i2dX509bio(b: PBIO; x: PX509): integer; external;
+
+  [DllImport(DLLUtilName, CharSet = CharSet.Ansi,
+    SetLastError = False, CallingConvention= CallingConvention.cdecl,
+    EntryPoint =  'i2d_PrivateKey_bio')]
+    function i2dPrivateKeyBio(b: PBIO; pkey: EVP_PKEY): integer; external;
 
   // 3DES functions
   [DllImport(DLLUtilName, CharSet = CharSet.Ansi,
@@ -487,7 +648,6 @@ var
     EntryPoint = 'DES_ecb_encrypt')]
     procedure DESecbencrypt(Input: des_cblock; output: des_cblock; ks: des_key_schedule; enc: Integer); external;
 
-
 {$ELSE}
 // libssl.dll
   function SslGetError(s: PSSL; ret_code: Integer):Integer;
@@ -502,8 +662,13 @@ var
   function SslMethodV3:PSSL_METHOD;
   function SslMethodTLSV1:PSSL_METHOD;
   function SslMethodV23:PSSL_METHOD;
+  function SslCtxUsePrivateKey(ctx: PSSL_CTX; pkey: SslPtr):Integer;
+  function SslCtxUsePrivateKeyASN1(pk: integer; ctx: PSSL_CTX; d: String; len: integer):Integer;
 //  function SslCtxUsePrivateKeyFile(ctx: PSSL_CTX; const _file: PChar; _type: Integer):Integer;
   function SslCtxUsePrivateKeyFile(ctx: PSSL_CTX; const _file: String; _type: Integer):Integer;
+  function SslCtxUseCertificate(ctx: PSSL_CTX; x: SslPtr):Integer;
+  function SslCtxUseCertificateASN1(ctx: PSSL_CTX; len: integer; d: String):Integer;
+  function SslCtxUseCertificateFile(ctx: PSSL_CTX; const _file: String; _type: Integer):Integer;
 //  function SslCtxUseCertificateChainFile(ctx: PSSL_CTX; const _file: PChar):Integer;
   function SslCtxUseCertificateChainFile(ctx: PSSL_CTX; const _file: String):Integer;
   function SslCtxCheckPrivateKeyFile(ctx: PSSL_CTX):Integer;
@@ -529,21 +694,38 @@ var
   function SSLGetVerifyResult(ssl: PSSL):Integer;
 
 // libeay.dll
-  procedure SslX509Free(x: PX509);
-  function SslX509NameOneline(a: PX509_NAME; var buf: String; size: Integer):String;
-  function SslX509GetSubjectName(a: PX509):PX509_NAME;
-  function SslX509GetIssuerName(a: PX509):PX509_NAME;
-  function SslX509NameHash(x: PX509_NAME):Cardinal;
+  function X509New: PX509;
+  procedure X509Free(x: PX509);
+  function X509NameOneline(a: PX509_NAME; var buf: String; size: Integer):String;
+  function X509GetSubjectName(a: PX509):PX509_NAME;
+  function X509GetIssuerName(a: PX509):PX509_NAME;
+  function X509NameHash(x: PX509_NAME):Cardinal;
 //  function SslX509Digest(data: PX509; _type: PEVP_MD; md: PChar; len: PInteger):Integer;
-  function SslX509Digest(data: PX509; _type: PEVP_MD; md: String; var len: Integer):Integer;
-  function SslEvpMd5:PEVP_MD;
+  function X509Digest(data: PX509; _type: PEVP_MD; md: String; var len: Integer):Integer;
+  function X509print(b: PBIO; a: PX509): integer;
+  function X509SetVersion(x: PX509; version: integer): integer;
+  function X509SetPubkey(x: PX509; pkey: EVP_PKEY): integer;
+  function X509SetIssuerName(x: PX509; name: PX509_NAME): integer;
+  function X509NameAddEntryByTxt(name: PX509_NAME; field: string; _type: integer;
+    bytes: string; len, loc, _set: integer): integer;
+  function X509Sign(x: PX509; pkey: EVP_PKEY; const md: PEVP_MD): integer;
+  function X509GmtimeAdj(s: PASN1_UTCTIME; adj: integer): PASN1_UTCTIME;
+  function X509SetNotBefore(x: PX509; tm: PASN1_UTCTIME): integer;
+  function X509SetNotAfter(x: PX509; tm: PASN1_UTCTIME): integer;
+  function X509GetSerialNumber(x: PX509): PASN1_INTEGER;
+  function EvpPkeyNew: EVP_PKEY;
+  procedure EvpPkeyFree(pk: EVP_PKEY);
+  function EvpPkeyAssign(pkey: EVP_PKEY; _type: integer; key: Prsa): integer;
+  function EvpGetDigestByName(Name: String): PEVP_MD;
+  procedure EVPcleanup;
 //  function ErrErrorString(e: integer; buf: PChar): PChar;
-  function ErrErrorString(e: integer; var buf: String): String;
+  function SSLeayversion(t: integer): string;
+  procedure ErrErrorString(e: integer; var buf: string; len: integer);
   function ErrGetError: integer;
   procedure ErrClearError;
   procedure ErrFreeStrings;
   procedure ErrRemoveState(pid: integer);
-  procedure EVPcleanup;
+  procedure OPENSSLaddallalgorithms;
   procedure CRYPTOcleanupAllExData;
   procedure RandScreen;
   function BioNew(b: PBIO_METHOD): PBIO;
@@ -552,7 +734,16 @@ var
   function BioCtrlPending(b: PBIO): integer;
   function BioRead(b: PBIO; var Buf: String; Len: integer): integer;
   function BioWrite(b: PBIO; Buf: String; Len: integer): integer;
-  function X509print(b: PBIO; a: PX509): integer;
+  function d2iPKCS12bio(b:PBIO; Pkcs12: SslPtr): SslPtr;
+  function PKCS12parse(p12: SslPtr; pass: string; var pkey, cert, ca: SslPtr): integer;
+  procedure PKCS12free(p12: SslPtr);
+  function RsaGenerateKey(bits, e: integer; callback: PFunction; cb_arg: SslPtr): PRSA;
+  function Asn1UtctimeNew: PASN1_UTCTIME;
+  procedure Asn1UtctimeFree(a: PASN1_UTCTIME);
+  function Asn1IntegerSet(a: PASN1_INTEGER; v: integer): integer;
+  function i2dX509bio(b: PBIO; x: PX509): integer;
+  function i2dPrivateKeyBio(b: PBIO; pkey: EVP_PKEY): integer;
+
   // 3DES functions
   procedure DESsetoddparity(Key: des_cblock);
   function DESsetkeychecked(key: des_cblock; schedule: des_key_schedule): Integer;
@@ -582,11 +773,16 @@ type
   TSslMethodV3 = function:PSSL_METHOD; cdecl;
   TSslMethodTLSV1 = function:PSSL_METHOD; cdecl;
   TSslMethodV23 = function:PSSL_METHOD; cdecl;
+  TSslCtxUsePrivateKey = function(ctx: PSSL_CTX; pkey: sslptr):Integer; cdecl;
+  TSslCtxUsePrivateKeyASN1 = function(pk: integer; ctx: PSSL_CTX; d: sslptr; len: integer):Integer; cdecl;
   TSslCtxUsePrivateKeyFile = function(ctx: PSSL_CTX; const _file: PChar; _type: Integer):Integer; cdecl;
+  TSslCtxUseCertificate = function(ctx: PSSL_CTX; x: SslPtr):Integer; cdecl;
+  TSslCtxUseCertificateASN1 = function(ctx: PSSL_CTX; len: Integer; d: SslPtr):Integer; cdecl;
+  TSslCtxUseCertificateFile = function(ctx: PSSL_CTX; const _file: PChar; _type: Integer):Integer; cdecl;
   TSslCtxUseCertificateChainFile = function(ctx: PSSL_CTX; const _file: PChar):Integer; cdecl;
   TSslCtxCheckPrivateKeyFile = function(ctx: PSSL_CTX):Integer; cdecl;
-  TSslCtxSetDefaultPasswdCb = procedure(ctx: PSSL_CTX; cb: Pointer); cdecl;
-  TSslCtxSetDefaultPasswdCbUserdata = procedure(ctx: PSSL_CTX; u: Pointer); cdecl;
+  TSslCtxSetDefaultPasswdCb = procedure(ctx: PSSL_CTX; cb: SslPtr); cdecl;
+  TSslCtxSetDefaultPasswdCbUserdata = procedure(ctx: PSSL_CTX; u: SslPtr); cdecl;
   TSslCtxLoadVerifyLocations = function(ctx: PSSL_CTX; const CAfile: PChar; const CApath: PChar):Integer; cdecl;
   TSslNew = function(ctx: PSSL_CTX):PSSL; cdecl;
   TSslFree = procedure(ssl: PSSL); cdecl;
@@ -599,26 +795,43 @@ type
   TSslPending = function(ssl: PSSL):Integer; cdecl;
   TSslGetVersion = function(ssl: PSSL):PChar; cdecl;
   TSslGetPeerCertificate = function(ssl: PSSL):PX509; cdecl;
-  TSslCtxSetVerify = procedure(ctx: PSSL_CTX; mode: Integer; arg2: Pointer); cdecl;
-  TSSLGetCurrentCipher = function(s: PSSL):pointer; cdecl;
-  TSSLCipherGetName = function(c: pointer):PChar; cdecl;
-  TSSLCipherGetBits = function(c: pointer; alg_bits: PInteger):Integer; cdecl;
+  TSslCtxSetVerify = procedure(ctx: PSSL_CTX; mode: Integer; arg2: SslPtr); cdecl;
+  TSSLGetCurrentCipher = function(s: PSSL):SslPtr; cdecl;
+  TSSLCipherGetName = function(c: Sslptr):PChar; cdecl;
+  TSSLCipherGetBits = function(c: SslPtr; alg_bits: PInteger):Integer; cdecl;
   TSSLGetVerifyResult = function(ssl: PSSL):Integer; cdecl;
 
 // libeay.dll
-  TSslX509Free = procedure(x: PX509); cdecl;
-  TSslX509NameOneline = function(a: PX509_NAME; buf: PChar; size: Integer):PChar; cdecl;
-  TSslX509GetSubjectName = function(a: PX509):PX509_NAME; cdecl;
-  TSslX509GetIssuerName = function(a: PX509):PX509_NAME; cdecl;
-  TSslX509NameHash = function(x: PX509_NAME):Cardinal; cdecl;
-  TSslX509Digest = function(data: PX509; _type: PEVP_MD; md: PChar; len: PInteger):Integer; cdecl;
-  TSslEvpMd5 = function:PEVP_MD; cdecl;
-  TErrErrorString = function(e: integer; buf: PChar): PChar; cdecl;
+  TX509New = function: PX509; cdecl;
+  TX509Free = procedure(x: PX509); cdecl;
+  TX509NameOneline = function(a: PX509_NAME; buf: PChar; size: Integer):PChar; cdecl;
+  TX509GetSubjectName = function(a: PX509):PX509_NAME; cdecl;
+  TX509GetIssuerName = function(a: PX509):PX509_NAME; cdecl;
+  TX509NameHash = function(x: PX509_NAME):Cardinal; cdecl;
+  TX509Digest = function(data: PX509; _type: PEVP_MD; md: PChar; len: PInteger):Integer; cdecl;
+  TX509print = function(b: PBIO; a: PX509): integer; cdecl;
+  TX509SetVersion = function(x: PX509; version: integer): integer; cdecl;
+  TX509SetPubkey = function(x: PX509; pkey: EVP_PKEY): integer; cdecl;
+  TX509SetIssuerName = function(x: PX509; name: PX509_NAME): integer; cdecl;
+  TX509NameAddEntryByTxt = function(name: PX509_NAME; field: PChar; _type: integer;
+    bytes: PChar; len, loc, _set: integer): integer; cdecl;
+  TX509Sign = function(x: PX509; pkey: EVP_PKEY; const md: PEVP_MD): integer; cdecl;
+  TX509GmtimeAdj = function(s: PASN1_UTCTIME; adj: integer): PASN1_UTCTIME; cdecl;
+  TX509SetNotBefore = function(x: PX509; tm: PASN1_UTCTIME): integer; cdecl;
+  TX509SetNotAfter = function(x: PX509; tm: PASN1_UTCTIME): integer; cdecl;
+  TX509GetSerialNumber = function(x: PX509): PASN1_INTEGER; cdecl;
+  TEvpPkeyNew = function: EVP_PKEY; cdecl;
+  TEvpPkeyFree = procedure(pk: EVP_PKEY); cdecl;
+  TEvpPkeyAssign = function(pkey: EVP_PKEY; _type: integer; key: Prsa): integer; cdecl;
+  TEvpGetDigestByName = function(Name: PChar): PEVP_MD; cdecl;
+  TEVPcleanup = procedure; cdecl;
+  TSSLeayversion = function(t: integer): PChar; cdecl;
+  TErrErrorString = procedure(e: integer; buf: PChar; len: integer); cdecl;
   TErrGetError = function: integer; cdecl;
   TErrClearError = procedure; cdecl;
   TErrFreeStrings = procedure; cdecl;
   TErrRemoveState = procedure(pid: integer); cdecl;
-  TEVPcleanup = procedure; cdecl;
+  TOPENSSLaddallalgorithms = procedure; cdecl;
   TCRYPTOcleanupAllExData = procedure; cdecl;
   TRandScreen = procedure; cdecl;
   TBioNew = function(b: PBIO_METHOD): PBIO; cdecl;
@@ -627,12 +840,23 @@ type
   TBioCtrlPending = function(b: PBIO): integer; cdecl;
   TBioRead = function(b: PBIO; Buf: PChar; Len: integer): integer; cdecl;
   TBioWrite = function(b: PBIO; Buf: PChar; Len: integer): integer; cdecl;
-  TX509print = function(b: PBIO; a: PX509): integer; cdecl;
+  Td2iPKCS12bio = function(b:PBIO; Pkcs12: SslPtr): SslPtr; cdecl;
+  TPKCS12parse = function(p12: SslPtr; pass: PChar; var pkey, cert, ca: SslPtr): integer; cdecl;
+  TPKCS12free = procedure(p12: SslPtr); cdecl;
+  TRsaGenerateKey = function(bits, e: integer; callback: PFunction; cb_arg: SslPtr): PRSA; cdecl;
+  TAsn1UtctimeNew = function: PASN1_UTCTIME; cdecl;
+  TAsn1UtctimeFree = procedure(a: PASN1_UTCTIME); cdecl;
+  TAsn1IntegerSet = function(a: PASN1_INTEGER; v: integer): integer; cdecl;
+  Ti2dX509bio = function(b: PBIO; x: PX509): integer; cdecl;
+  Ti2dPrivateKeyBio= function(b: PBIO; pkey: EVP_PKEY): integer; cdecl;
+
   // 3DES functions
   TDESsetoddparity = procedure(Key: des_cblock); cdecl;
   TDESsetkeychecked = function(key: des_cblock; schedule: des_key_schedule): Integer; cdecl;
   TDESecbencrypt = procedure(Input: des_cblock; output: des_cblock; ks: des_key_schedule; enc: Integer); cdecl;
-
+  //thread lock functions
+  TCRYPTOnumlocks = function: integer; cdecl;
+  TCRYPTOSetLockingCallback = procedure(cb: Sslptr); cdecl;
 
 var
 // libssl.dll
@@ -647,7 +871,12 @@ var
   _SslMethodV3: TSslMethodV3 = nil;
   _SslMethodTLSV1: TSslMethodTLSV1 = nil;
   _SslMethodV23: TSslMethodV23 = nil;
+  _SslCtxUsePrivateKey: TSslCtxUsePrivateKey = nil;
+  _SslCtxUsePrivateKeyASN1: TSslCtxUsePrivateKeyASN1 = nil;
   _SslCtxUsePrivateKeyFile: TSslCtxUsePrivateKeyFile = nil;
+  _SslCtxUseCertificate: TSslCtxUseCertificate = nil;
+  _SslCtxUseCertificateASN1: TSslCtxUseCertificateASN1 = nil;
+  _SslCtxUseCertificateFile: TSslCtxUseCertificateFile = nil;
   _SslCtxUseCertificateChainFile: TSslCtxUseCertificateChainFile = nil;
   _SslCtxCheckPrivateKeyFile: TSslCtxCheckPrivateKeyFile = nil;
   _SslCtxSetDefaultPasswdCb: TSslCtxSetDefaultPasswdCb = nil;
@@ -671,19 +900,35 @@ var
   _SSLGetVerifyResult: TSSLGetVerifyResult = nil;
 
 // libeay.dll
-  _SslX509Free: TSslX509Free = nil;
-  _SslX509NameOneline: TSslX509NameOneline = nil;
-  _SslX509GetSubjectName: TSslX509GetSubjectName = nil;
-  _SslX509GetIssuerName: TSslX509GetIssuerName = nil;
-  _SslX509NameHash: TSslX509NameHash = nil;
-  _SslX509Digest: TSslX509Digest = nil;
-  _SslEvpMd5: TSslEvpMd5 = nil;
+  _X509New: TX509New = nil;
+  _X509Free: TX509Free = nil;
+  _X509NameOneline: TX509NameOneline = nil;
+  _X509GetSubjectName: TX509GetSubjectName = nil;
+  _X509GetIssuerName: TX509GetIssuerName = nil;
+  _X509NameHash: TX509NameHash = nil;
+  _X509Digest: TX509Digest = nil;
+  _X509print: TX509print = nil;
+  _X509SetVersion: TX509SetVersion = nil;
+  _X509SetPubkey: TX509SetPubkey = nil;
+  _X509SetIssuerName: TX509SetIssuerName = nil;
+  _X509NameAddEntryByTxt: TX509NameAddEntryByTxt = nil;
+  _X509Sign: TX509Sign = nil;
+  _X509GmtimeAdj: TX509GmtimeAdj = nil;
+  _X509SetNotBefore: TX509SetNotBefore = nil;
+  _X509SetNotAfter: TX509SetNotAfter = nil;
+  _X509GetSerialNumber: TX509GetSerialNumber = nil;
+  _EvpPkeyNew: TEvpPkeyNew = nil;
+  _EvpPkeyFree: TEvpPkeyFree = nil;
+  _EvpPkeyAssign: TEvpPkeyAssign = nil;
+  _EvpGetDigestByName: TEvpGetDigestByName = nil;
+  _EVPcleanup: TEVPcleanup = nil;
+  _SSLeayversion: TSSLeayversion = nil;
   _ErrErrorString: TErrErrorString = nil;
   _ErrGetError: TErrGetError = nil;
   _ErrClearError: TErrClearError = nil;
   _ErrFreeStrings: TErrFreeStrings = nil;
   _ErrRemoveState: TErrRemoveState = nil;
-  _EVPcleanup: TEVPcleanup = nil;
+  _OPENSSLaddallalgorithms: TOPENSSLaddallalgorithms = nil;
   _CRYPTOcleanupAllExData: TCRYPTOcleanupAllExData = nil;
   _RandScreen: TRandScreen = nil;
   _BioNew: TBioNew = nil;
@@ -692,16 +937,31 @@ var
   _BioCtrlPending: TBioCtrlPending = nil;
   _BioRead: TBioRead = nil;
   _BioWrite: TBioWrite = nil;
-  _X509print: TX509print = nil;
+  _d2iPKCS12bio: Td2iPKCS12bio = nil;
+  _PKCS12parse: TPKCS12parse = nil;
+  _PKCS12free: TPKCS12free = nil;
+  _RsaGenerateKey: TRsaGenerateKey = nil;
+  _Asn1UtctimeNew: TAsn1UtctimeNew = nil;
+  _Asn1UtctimeFree: TAsn1UtctimeFree = nil;
+  _Asn1IntegerSet: TAsn1IntegerSet = nil;
+  _i2dX509bio: Ti2dX509bio = nil;
+  _i2dPrivateKeyBio: Ti2dPrivateKeyBio = nil;
+
   // 3DES functions
   _DESsetoddparity: TDESsetoddparity = nil;
   _DESsetkeychecked: TDESsetkeychecked = nil;
   _DESecbencrypt: TDESecbencrypt = nil;
+  //thread lock functions
+  _CRYPTOnumlocks: TCRYPTOnumlocks = nil;
+  _CRYPTOSetLockingCallback: TCRYPTOSetLockingCallback = nil;
 {$ENDIF}
 
 var
   SSLCS: TCriticalSection;
   SSLloaded: boolean = false;
+{$IFNDEF CIL}
+  Locks: TList;
+{$ENDIF}
 
 {$IFNDEF CIL}
 // libssl.dll
@@ -790,11 +1050,51 @@ begin
     Result := nil;
 end;
 
+function SslCtxUsePrivateKey(ctx: PSSL_CTX; pkey: SslPtr):Integer;
+begin
+  if InitSSLInterface and Assigned(_SslCtxUsePrivateKey) then
+    Result := _SslCtxUsePrivateKey(ctx, pkey)
+  else
+    Result := 0;
+end;
+
+function SslCtxUsePrivateKeyASN1(pk: integer; ctx: PSSL_CTX; d: String; len: integer):Integer;
+begin
+  if InitSSLInterface and Assigned(_SslCtxUsePrivateKeyASN1) then
+    Result := _SslCtxUsePrivateKeyASN1(pk, ctx, Sslptr(d), len)
+  else
+    Result := 0;
+end;
+
 //function SslCtxUsePrivateKeyFile(ctx: PSSL_CTX; const _file: PChar; _type: Integer):Integer;
 function SslCtxUsePrivateKeyFile(ctx: PSSL_CTX; const _file: String; _type: Integer):Integer;
 begin
   if InitSSLInterface and Assigned(_SslCtxUsePrivateKeyFile) then
     Result := _SslCtxUsePrivateKeyFile(ctx, PChar(_file), _type)
+  else
+    Result := 0;
+end;
+
+function SslCtxUseCertificate(ctx: PSSL_CTX; x: SslPtr):Integer;
+begin
+  if InitSSLInterface and Assigned(_SslCtxUseCertificate) then
+    Result := _SslCtxUseCertificate(ctx, x)
+  else
+    Result := 0;
+end;
+
+function SslCtxUseCertificateASN1(ctx: PSSL_CTX; len: integer; d: String):Integer;
+begin
+  if InitSSLInterface and Assigned(_SslCtxUseCertificateASN1) then
+    Result := _SslCtxUseCertificateASN1(ctx, len, SslPtr(d))
+  else
+    Result := 0;
+end;
+
+function SslCtxUseCertificateFile(ctx: PSSL_CTX; const _file: String; _type: Integer):Integer;
+begin
+  if InitSSLInterface and Assigned(_SslCtxUseCertificateFile) then
+    Result := _SslCtxUseCertificateFile(ctx, PChar(_file), _type)
   else
     Result := 0;
 end;
@@ -832,7 +1132,7 @@ end;
 function SslCtxLoadVerifyLocations(ctx: PSSL_CTX; const CAfile: String; const CApath: String):Integer;
 begin
   if InitSSLInterface and Assigned(_SslCtxLoadVerifyLocations) then
-    Result := _SslCtxLoadVerifyLocations(ctx, Pointer(CAfile), Pointer(CApath))
+    Result := _SslCtxLoadVerifyLocations(ctx, SslPtr(CAfile), SslPtr(CApath))
   else
     Result := 0;
 end;
@@ -927,7 +1227,7 @@ begin
     Result := nil;
 end;
 
-//procedure SslCtxSetVerify(ctx: PSSL_CTX; mode: Integer; arg2: Pointer);
+//procedure SslCtxSetVerify(ctx: PSSL_CTX; mode: Integer; arg2: SslPtr);
 procedure SslCtxSetVerify(ctx: PSSL_CTX; mode: Integer; arg2: PFunction);
 begin
   if InitSSLInterface and Assigned(_SslCtxSetVerify) then
@@ -945,7 +1245,7 @@ begin
     Result := nil;
 end;
 
-//function SSLCipherGetName(c: pointer):PChar;
+//function SSLCipherGetName(c: SslPtr):PChar;
 function SSLCipherGetName(c: SslPtr):String;
 begin
   if InitSSLInterface and Assigned(_SSLCipherGetName) then
@@ -954,7 +1254,7 @@ begin
     Result := '';
 end;
 
-//function SSLCipherGetBits(c: pointer; alg_bits: PInteger):Integer;
+//function SSLCipherGetBits(c: SslPtr; alg_bits: PInteger):Integer;
 function SSLCipherGetBits(c: SslPtr; var alg_bits: Integer):Integer;
 begin
   if InitSSLInterface and Assigned(_SSLCipherGetBits) then
@@ -972,69 +1272,89 @@ begin
 end;
 
 // libeay.dll
-procedure SslX509Free(x: PX509);
+function X509New: PX509;
 begin
-  if InitSSLInterface and Assigned(_SslX509Free) then
-    _SslX509Free(x);
+  if InitSSLInterface and Assigned(_X509New) then
+    Result := _X509New
+  else
+    Result := nil;
+end;
+
+procedure X509Free(x: PX509);
+begin
+  if InitSSLInterface and Assigned(_X509Free) then
+    _X509Free(x);
 end;
 
 //function SslX509NameOneline(a: PX509_NAME; buf: PChar; size: Integer):PChar;
-function SslX509NameOneline(a: PX509_NAME; var buf: String; size: Integer):String;
+function X509NameOneline(a: PX509_NAME; var buf: String; size: Integer):String;
 begin
-  if InitSSLInterface and Assigned(_SslX509NameOneline) then
-    Result := _SslX509NameOneline(a, PChar(buf),size)
+  if InitSSLInterface and Assigned(_X509NameOneline) then
+    Result := _X509NameOneline(a, PChar(buf),size)
   else
     Result := '';
 end;
 
-function SslX509GetSubjectName(a: PX509):PX509_NAME;
+function X509GetSubjectName(a: PX509):PX509_NAME;
 begin
-  if InitSSLInterface and Assigned(_SslX509GetSubjectName) then
-    Result := _SslX509GetSubjectName(a)
+  if InitSSLInterface and Assigned(_X509GetSubjectName) then
+    Result := _X509GetSubjectName(a)
   else
     Result := nil;
 end;
 
-function SslX509GetIssuerName(a: PX509):PX509_NAME;
+function X509GetIssuerName(a: PX509):PX509_NAME;
 begin
-  if InitSSLInterface and Assigned(_SslX509GetIssuerName) then
-    Result := _SslX509GetIssuerName(a)
+  if InitSSLInterface and Assigned(_X509GetIssuerName) then
+    Result := _X509GetIssuerName(a)
   else
     Result := nil;
 end;
 
-function SslX509NameHash(x: PX509_NAME):Cardinal;
+function X509NameHash(x: PX509_NAME):Cardinal;
 begin
-  if InitSSLInterface and Assigned(_SslX509NameHash) then
-    Result := _SslX509NameHash(x)
+  if InitSSLInterface and Assigned(_X509NameHash) then
+    Result := _X509NameHash(x)
   else
     Result := 0;
 end;
 
 //function SslX509Digest(data: PX509; _type: PEVP_MD; md: PChar; len: PInteger):Integer;
-function SslX509Digest(data: PX509; _type: PEVP_MD; md: String; var len: Integer):Integer;
+function X509Digest(data: PX509; _type: PEVP_MD; md: String; var len: Integer):Integer;
 begin
-  if InitSSLInterface and Assigned(_SslX509Digest) then
-    Result := _SslX509Digest(data, _type, PChar(md), @len)
+  if InitSSLInterface and Assigned(_X509Digest) then
+    Result := _X509Digest(data, _type, PChar(md), @len)
   else
     Result := 0;
 end;
 
-function SslEvpMd5:PEVP_MD;
+function EvpPkeyNew: EVP_PKEY;
 begin
-  if InitSSLInterface and Assigned(_SslEvpMd5) then
-    Result := _SslEvpMd5
+  if InitSSLInterface and Assigned(_EvpPkeyNew) then
+    Result := _EvpPkeyNew
   else
     Result := nil;
 end;
 
-//function ErrErrorString(e: integer; buf: PChar): PChar;
-function ErrErrorString(e: integer; var buf: String): String;
+procedure EvpPkeyFree(pk: EVP_PKEY);
 begin
-  if InitSSLInterface and Assigned(_ErrErrorString) then
-    Result := PChar(_ErrErrorString(e, PChar(buf)))
+  if InitSSLInterface and Assigned(_EvpPkeyFree) then
+    _EvpPkeyFree(pk);
+end;
+
+function SSLeayversion(t: integer): string;
+begin
+  if InitSSLInterface and Assigned(_SSLeayversion) then
+    Result := PChar(_SSLeayversion(t))
   else
     Result := '';
+end;
+
+procedure ErrErrorString(e: integer; var buf: string; len: integer);
+begin
+  if InitSSLInterface and Assigned(_ErrErrorString) then
+    _ErrErrorString(e, Pointer(buf), len);
+  buf := PChar(Buf);
 end;
 
 function ErrGetError: integer;
@@ -1061,6 +1381,12 @@ procedure ErrRemoveState(pid: integer);
 begin
   if InitSSLInterface and Assigned(_ErrRemoveState) then
     _ErrRemoveState(pid);
+end;
+
+procedure OPENSSLaddallalgorithms;
+begin
+  if InitSSLInterface and Assigned(_OPENSSLaddallalgorithms) then
+    _OPENSSLaddallalgorithms;
 end;
 
 procedure EVPcleanup;
@@ -1137,6 +1463,163 @@ begin
     Result := 0;
 end;
 
+function d2iPKCS12bio(b:PBIO; Pkcs12: SslPtr): SslPtr;
+begin
+  if InitSSLInterface and Assigned(_d2iPKCS12bio) then
+    Result := _d2iPKCS12bio(b, Pkcs12)
+  else
+    Result := nil;
+end;
+
+function PKCS12parse(p12: SslPtr; pass: string; var pkey, cert, ca: SslPtr): integer;
+begin
+  if InitSSLInterface and Assigned(_PKCS12parse) then
+    Result := _PKCS12parse(p12, SslPtr(pass), pkey, cert, ca)
+  else
+    Result := 0;
+end;
+
+procedure PKCS12free(p12: SslPtr);
+begin
+  if InitSSLInterface and Assigned(_PKCS12free) then
+    _PKCS12free(p12);
+end;
+
+function RsaGenerateKey(bits, e: integer; callback: PFunction; cb_arg: SslPtr): PRSA;
+begin
+  if InitSSLInterface and Assigned(_RsaGenerateKey) then
+    Result := _RsaGenerateKey(bits, e, callback, cb_arg)
+  else
+    Result := nil;
+end;
+
+function EvpPkeyAssign(pkey: EVP_PKEY; _type: integer; key: Prsa): integer;
+begin
+  if InitSSLInterface and Assigned(_EvpPkeyAssign) then
+    Result := _EvpPkeyAssign(pkey, _type, key)
+  else
+    Result := 0;
+end;
+
+function X509SetVersion(x: PX509; version: integer): integer;
+begin
+  if InitSSLInterface and Assigned(_X509SetVersion) then
+    Result := _X509SetVersion(x, version)
+  else
+    Result := 0;
+end;
+
+function X509SetPubkey(x: PX509; pkey: EVP_PKEY): integer;
+begin
+  if InitSSLInterface and Assigned(_X509SetPubkey) then
+    Result := _X509SetPubkey(x, pkey)
+  else
+    Result := 0;
+end;
+
+function X509SetIssuerName(x: PX509; name: PX509_NAME): integer;
+begin
+  if InitSSLInterface and Assigned(_X509SetIssuerName) then
+    Result := _X509SetIssuerName(x, name)
+  else
+    Result := 0;
+end;
+
+function X509NameAddEntryByTxt(name: PX509_NAME; field: string; _type: integer;
+  bytes: string; len, loc, _set: integer): integer;
+begin
+  if InitSSLInterface and Assigned(_X509NameAddEntryByTxt) then
+    Result := _X509NameAddEntryByTxt(name, PChar(field), _type, PChar(Bytes), len, loc, _set)
+  else
+    Result := 0;
+end;
+
+function X509Sign(x: PX509; pkey: EVP_PKEY; const md: PEVP_MD): integer;
+begin
+  if InitSSLInterface and Assigned(_X509Sign) then
+    Result := _X509Sign(x, pkey, md)
+  else
+    Result := 0;
+end;
+
+function Asn1UtctimeNew: PASN1_UTCTIME;
+begin
+  if InitSSLInterface and Assigned(_Asn1UtctimeNew) then
+    Result := _Asn1UtctimeNew
+  else
+    Result := nil;
+end;
+
+procedure Asn1UtctimeFree(a: PASN1_UTCTIME);
+begin
+  if InitSSLInterface and Assigned(_Asn1UtctimeFree) then
+    _Asn1UtctimeFree(a);
+end;
+
+function X509GmtimeAdj(s: PASN1_UTCTIME; adj: integer): PASN1_UTCTIME;
+begin
+  if InitSSLInterface and Assigned(_X509GmtimeAdj) then
+    Result := _X509GmtimeAdj(s, adj)
+  else
+    Result := nil;
+end;
+
+function X509SetNotBefore(x: PX509; tm: PASN1_UTCTIME): integer;
+begin
+  if InitSSLInterface and Assigned(_X509SetNotBefore) then
+    Result := _X509SetNotBefore(x, tm)
+  else
+    Result := 0;
+end;
+
+function X509SetNotAfter(x: PX509; tm: PASN1_UTCTIME): integer;
+begin
+  if InitSSLInterface and Assigned(_X509SetNotAfter) then
+    Result := _X509SetNotAfter(x, tm)
+  else
+    Result := 0;
+end;
+
+function i2dX509bio(b: PBIO; x: PX509): integer;
+begin
+  if InitSSLInterface and Assigned(_i2dX509bio) then
+    Result := _i2dX509bio(b, x)
+  else
+    Result := 0;
+end;
+
+function i2dPrivateKeyBio(b: PBIO; pkey: EVP_PKEY): integer;
+begin
+  if InitSSLInterface and Assigned(_i2dPrivateKeyBio) then
+    Result := _i2dPrivateKeyBio(b, pkey)
+  else
+    Result := 0;
+end;
+
+function EvpGetDigestByName(Name: String): PEVP_MD;
+begin
+  if InitSSLInterface and Assigned(_EvpGetDigestByName) then
+    Result := _EvpGetDigestByName(PChar(Name))
+  else
+    Result := nil;
+end;
+
+function Asn1IntegerSet(a: PASN1_INTEGER; v: integer): integer;
+begin
+  if InitSSLInterface and Assigned(_Asn1IntegerSet) then
+    Result := _Asn1IntegerSet(a, v)
+  else
+    Result := 0;
+end;
+
+function X509GetSerialNumber(x: PX509): PASN1_INTEGER;
+begin
+  if InitSSLInterface and Assigned(_X509GetSerialNumber) then
+    Result := _X509GetSerialNumber(x)
+  else
+    Result := nil;
+end;
+
 // 3DES functions
 procedure DESsetoddparity(Key: des_cblock);
 begin
@@ -1157,6 +1640,37 @@ begin
   if InitSSLInterface and Assigned(_DESecbencrypt) then
     _DESecbencrypt(Input, output, ks, enc);
 end;
+
+procedure locking_callback(mode, ltype: integer; lfile: PChar; line: integer); cdecl;
+begin
+  if (mode and 1) > 0 then
+    TCriticalSection(Locks[ltype]).Enter
+  else
+    TCriticalSection(Locks[ltype]).Leave;
+end;
+
+procedure InitLocks;
+var
+  n: integer;
+  max: integer;
+begin
+  Locks := TList.Create;
+  max := _CRYPTOnumlocks;
+  for n := 1 to max do
+    Locks.Add(TCriticalSection.Create);
+  _CRYPTOsetlockingcallback(@locking_callback);
+end;
+
+procedure FreeLocks;
+var
+  n: integer;
+begin
+  _CRYPTOsetlockingcallback(nil);
+  for n := 0 to Locks.Count - 1 do
+    TCriticalSection(Locks[n]).Free;
+  Locks.Free;
+end;
+
 {$ENDIF}
 
 function LoadLib(const Value: String): HModule;
@@ -1211,7 +1725,14 @@ begin
         _SslMethodV3 := GetProcAddr(SSLLibHandle, 'SSLv3_method');
         _SslMethodTLSV1 := GetProcAddr(SSLLibHandle, 'TLSv1_method');
         _SslMethodV23 := GetProcAddr(SSLLibHandle, 'SSLv23_method');
-        _SslCtxUsePrivateKeyFile := GetProcAddr(SSLLibHandle, 'SSL_CTX_use_PrivateKey_file');
+        _SslCtxUsePrivateKey := GetProcAddr(SSLLibHandle, 'SSL_CTX_use_PrivateKey');
+        _SslCtxUsePrivateKeyASN1 := GetProcAddr(SSLLibHandle, 'SSL_CTX_use_PrivateKey_ASN1');
+        //use SSL_CTX_use_RSAPrivateKey_file instead SSL_CTX_use_PrivateKey_file,
+        //because SSL_CTX_use_PrivateKey_file not support DER format. :-O
+        _SslCtxUsePrivateKeyFile := GetProcAddr(SSLLibHandle, 'SSL_CTX_use_RSAPrivateKey_file');
+        _SslCtxUseCertificate := GetProcAddr(SSLLibHandle, 'SSL_CTX_use_certificate');
+        _SslCtxUseCertificateASN1 := GetProcAddr(SSLLibHandle, 'SSL_CTX_use_certificate_ASN1');
+        _SslCtxUseCertificateFile := GetProcAddr(SSLLibHandle, 'SSL_CTX_use_certificate_file');
         _SslCtxUseCertificateChainFile := GetProcAddr(SSLLibHandle, 'SSL_CTX_use_certificate_chain_file');
         _SslCtxCheckPrivateKeyFile := GetProcAddr(SSLLibHandle, 'SSL_CTX_check_private_key');
         _SslCtxSetDefaultPasswdCb := GetProcAddr(SSLLibHandle, 'SSL_CTX_set_default_passwd_cb');
@@ -1234,19 +1755,35 @@ begin
         _SslCipherGetBits := GetProcAddr(SSLLibHandle, 'SSL_CIPHER_get_bits');
         _SslGetVerifyResult := GetProcAddr(SSLLibHandle, 'SSL_get_verify_result');
 
-        _SslX509Free := GetProcAddr(SSLUtilHandle, 'X509_free');
-        _SslX509NameOneline := GetProcAddr(SSLUtilHandle, 'X509_NAME_oneline');
-        _SslX509GetSubjectName := GetProcAddr(SSLUtilHandle, 'X509_get_subject_name');
-        _SslX509GetIssuerName := GetProcAddr(SSLUtilHandle, 'X509_get_issuer_name');
-        _SslX509NameHash := GetProcAddr(SSLUtilHandle, 'X509_NAME_hash');
-        _SslX509Digest := GetProcAddr(SSLUtilHandle, 'X509_digest');
-        _SslEvpMd5 := GetProcAddr(SSLUtilHandle, 'EVP_md5');
-        _ErrErrorString := GetProcAddr(SSLUtilHandle, 'ERR_error_string');
+        _X509New := GetProcAddr(SSLUtilHandle, 'X509_new');
+        _X509Free := GetProcAddr(SSLUtilHandle, 'X509_free');
+        _X509NameOneline := GetProcAddr(SSLUtilHandle, 'X509_NAME_oneline');
+        _X509GetSubjectName := GetProcAddr(SSLUtilHandle, 'X509_get_subject_name');
+        _X509GetIssuerName := GetProcAddr(SSLUtilHandle, 'X509_get_issuer_name');
+        _X509NameHash := GetProcAddr(SSLUtilHandle, 'X509_NAME_hash');
+        _X509Digest := GetProcAddr(SSLUtilHandle, 'X509_digest');
+        _X509print := GetProcAddr(SSLUtilHandle, 'X509_print');
+        _X509SetVersion := GetProcAddr(SSLUtilHandle, 'X509_set_version');
+        _X509SetPubkey := GetProcAddr(SSLUtilHandle, 'X509_set_pubkey');
+        _X509SetIssuerName := GetProcAddr(SSLUtilHandle, 'X509_set_issuer_name');
+        _X509NameAddEntryByTxt := GetProcAddr(SSLUtilHandle, 'X509_NAME_add_entry_by_txt');
+        _X509Sign := GetProcAddr(SSLUtilHandle, 'X509_sign');
+        _X509GmtimeAdj := GetProcAddr(SSLUtilHandle, 'X509_gmtime_adj');
+        _X509SetNotBefore := GetProcAddr(SSLUtilHandle, 'X509_set_notBefore');
+        _X509SetNotAfter := GetProcAddr(SSLUtilHandle, 'X509_set_notAfter');
+        _X509GetSerialNumber := GetProcAddr(SSLUtilHandle, 'X509_get_serialNumber');
+        _EvpPkeyNew := GetProcAddr(SSLUtilHandle, 'EVP_PKEY_new');
+        _EvpPkeyFree := GetProcAddr(SSLUtilHandle, 'EVP_PKEY_free');
+        _EvpPkeyAssign := GetProcAddr(SSLUtilHandle, 'EVP_PKEY_assign');
+        _EVPCleanup := GetProcAddr(SSLUtilHandle, 'EVP_cleanup');
+        _EvpGetDigestByName := GetProcAddr(SSLUtilHandle, 'EVP_get_digestbyname');
+        _SSLeayversion := GetProcAddr(SSLUtilHandle, 'SSLeay_version');
+        _ErrErrorString := GetProcAddr(SSLUtilHandle, 'ERR_error_string_n');
         _ErrGetError := GetProcAddr(SSLUtilHandle, 'ERR_get_error');
         _ErrClearError := GetProcAddr(SSLUtilHandle, 'ERR_clear_error');
         _ErrFreeStrings := GetProcAddr(SSLUtilHandle, 'ERR_free_strings');
         _ErrRemoveState := GetProcAddr(SSLUtilHandle, 'ERR_remove_state');
-        _EVPCleanup := GetProcAddr(SSLUtilHandle, 'EVP_cleanup');
+        _OPENSSLaddallalgorithms := GetProcAddr(SSLUtilHandle, 'OPENSSL_add_all_algorithms_noconf');
         _CRYPTOcleanupAllExData := GetProcAddr(SSLUtilHandle, 'CRYPTO_cleanup_all_ex_data');
         _RandScreen := GetProcAddr(SSLUtilHandle, 'RAND_screen');
         _BioNew := GetProcAddr(SSLUtilHandle, 'BIO_new');
@@ -1255,15 +1792,28 @@ begin
         _BioCtrlPending := GetProcAddr(SSLUtilHandle, 'BIO_ctrl_pending');
         _BioRead := GetProcAddr(SSLUtilHandle, 'BIO_read');
         _BioWrite := GetProcAddr(SSLUtilHandle, 'BIO_write');
-        _X509print := GetProcAddr(SSLUtilHandle, 'X509_print');
+        _d2iPKCS12bio := GetProcAddr(SSLUtilHandle, 'd2i_PKCS12_bio');
+        _PKCS12parse := GetProcAddr(SSLUtilHandle, 'PKCS12_parse');
+        _PKCS12free := GetProcAddr(SSLUtilHandle, 'PKCS12_free');
+        _RsaGenerateKey := GetProcAddr(SSLUtilHandle, 'RSA_generate_key');
+        _Asn1UtctimeNew := GetProcAddr(SSLUtilHandle, 'ASN1_UTCTIME_new');
+        _Asn1UtctimeFree := GetProcAddr(SSLUtilHandle, 'ASN1_UTCTIME_free');
+        _Asn1IntegerSet := GetProcAddr(SSLUtilHandle, 'ASN1_INTEGER_set');
+        _i2dX509bio := GetProcAddr(SSLUtilHandle, 'i2d_X509_bio');
+        _i2dPrivateKeyBio := GetProcAddr(SSLUtilHandle, 'i2d_PrivateKey_bio');
+
         // 3DES functions
         _DESsetoddparity := GetProcAddr(SSLUtilHandle, 'DES_set_odd_parity');
         _DESsetkeychecked := GetProcAddr(SSLUtilHandle, 'DES_set_key_checked');
         _DESecbencrypt := GetProcAddr(SSLUtilHandle, 'DES_ecb_encrypt');
+        //
+        _CRYPTOnumlocks := GetProcAddr(SSLUtilHandle, 'CRYPTO_num_locks');
+        _CRYPTOsetlockingcallback := GetProcAddr(SSLUtilHandle, 'CRYPTO_set_locking_callback');
 {$ENDIF}
 {$IFDEF CIL}
         SslLibraryInit;
         SslLoadErrorStrings;
+        OPENSSLaddallalgorithms;
         RandScreen;
 {$ELSE}
         SetLength(s, 1024);
@@ -1279,8 +1829,12 @@ begin
           _SslLibraryInit;
         if assigned(_SslLoadErrorStrings) then
           _SslLoadErrorStrings;
+        if assigned(_OPENSSLaddallalgorithms) then
+          _OPENSSLaddallalgorithms;
         if assigned(_RandScreen) then
           _RandScreen;
+        if assigned(_CRYPTOnumlocks) and assigned(_CRYPTOsetlockingcallback) then
+          InitLocks;
 {$ENDIF}
         Result := True;
         SSLloaded := True;
@@ -1320,6 +1874,10 @@ begin
     if IsSSLLoaded then
     begin
       //deinit library
+{$IFNDEF CIL}
+      if assigned(_CRYPTOnumlocks) and assigned(_CRYPTOsetlockingcallback) then
+        FreeLocks;
+{$ENDIF}
       EVPCleanup;
       CRYPTOcleanupAllExData;
       ErrRemoveState(0);
@@ -1352,7 +1910,12 @@ begin
     _SslMethodV3 := nil;
     _SslMethodTLSV1 := nil;
     _SslMethodV23 := nil;
+    _SslCtxUsePrivateKey := nil;
+    _SslCtxUsePrivateKeyASN1 := nil;
     _SslCtxUsePrivateKeyFile := nil;
+    _SslCtxUseCertificate := nil;
+    _SslCtxUseCertificateASN1 := nil;
+    _SslCtxUseCertificateFile := nil;
     _SslCtxUseCertificateChainFile := nil;
     _SslCtxCheckPrivateKeyFile := nil;
     _SslCtxSetDefaultPasswdCb := nil;
@@ -1375,19 +1938,35 @@ begin
     _SslCipherGetBits := nil;
     _SslGetVerifyResult := nil;
 
-    _SslX509Free := nil;
-    _SslX509NameOneline := nil;
-    _SslX509GetSubjectName := nil;
-    _SslX509GetIssuerName := nil;
-    _SslX509NameHash := nil;
-    _SslX509Digest := nil;
-    _SslEvpMd5 := nil;
+    _X509New := nil;
+    _X509Free := nil;
+    _X509NameOneline := nil;
+    _X509GetSubjectName := nil;
+    _X509GetIssuerName := nil;
+    _X509NameHash := nil;
+    _X509Digest := nil;
+    _X509print := nil;
+    _X509SetVersion := nil;
+    _X509SetPubkey := nil;
+    _X509SetIssuerName := nil;
+    _X509NameAddEntryByTxt := nil;
+    _X509Sign := nil;
+    _X509GmtimeAdj := nil;
+    _X509SetNotBefore := nil;
+    _X509SetNotAfter := nil;
+    _X509GetSerialNumber := nil;
+    _EvpPkeyNew := nil;
+    _EvpPkeyFree := nil;
+    _EvpPkeyAssign := nil;
+    _EVPCleanup := nil;
+    _EvpGetDigestByName := nil;
+    _SSLeayversion := nil;
     _ErrErrorString := nil;
     _ErrGetError := nil;
     _ErrClearError := nil;
     _ErrFreeStrings := nil;
     _ErrRemoveState := nil;
-    _EVPCleanup := nil;
+    _OPENSSLaddallalgorithms := nil;
     _CRYPTOcleanupAllExData := nil;
     _RandScreen := nil;
     _BioNew := nil;
@@ -1396,11 +1975,23 @@ begin
     _BioCtrlPending := nil;
     _BioRead := nil;
     _BioWrite := nil;
-    _X509print := nil;
+    _d2iPKCS12bio := nil;
+    _PKCS12parse := nil;
+    _PKCS12free := nil;
+    _RsaGenerateKey := nil;
+    _Asn1UtctimeNew := nil;
+    _Asn1UtctimeFree := nil;
+    _Asn1IntegerSet := nil;
+    _i2dX509bio := nil;
+    _i2dPrivateKeyBio := nil;
+
     // 3DES functions
     _DESsetoddparity := nil;
     _DESsetkeychecked := nil;
     _DESecbencrypt := nil;
+    //
+    _CRYPTOnumlocks := nil;
+    _CRYPTOsetlockingcallback := nil;
 {$ENDIF}
   finally
     SSLCS.Leave;

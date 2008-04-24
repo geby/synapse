@@ -1,5 +1,5 @@
 {==============================================================================|
-| Project : Ararat Synapse                                       | 005.001.000 |
+| Project : Ararat Synapse                                       | 005.001.003 |
 |==============================================================================|
 | Content: Charset conversion support                                          |
 |==============================================================================|
@@ -63,6 +63,15 @@ Internal routines knows all major charsets for Europe or America. For East-Asian
 unit synachar;
 
 interface
+
+uses
+{$IFDEF LINUX}
+  Libc,
+{$ELSE}
+  Windows,
+{$ENDIF}
+  SysUtils,
+  synautil, synacode, synaicnv;
 
 type
   {:Type with all supported charsets.}
@@ -192,16 +201,6 @@ function WideToString(const Value: WideString): AnsiString;
 
 {==============================================================================}
 implementation
-
-uses
-{$IFDEF LINUX}
-  Libc,
-{$ELSE}
-  Windows,
-{$ENDIF}
-  SysUtils,
-  synautil, synacode, synaicnv;
-
 
 //character transcoding tables X to UCS-2
 {
@@ -996,9 +995,9 @@ Begin
             b1 := Ord(Value[Index + 3]);
           End;
       end;
-    Inc(Index, mb);
-  End;
-End;
+  end;
+  Inc(Index, mb);
+end;
 
 {==============================================================================}
 function WriteMulti(b1, b2, b3, b4: Byte; mb: Byte; le: boolean): AnsiString;
@@ -1279,6 +1278,61 @@ begin
 end;
 
 {==============================================================================}
+
+function InternalToUcs(const Value: AnsiString; Charfrom: TMimeChar): AnsiString;
+var
+  uni: Word;
+  n: Integer;
+  b1, b2, b3, b4: Byte;
+  SourceTable: array[128..255] of Word;
+  mbf: Byte;
+  lef: Boolean;
+  s: AnsiString;
+begin
+  if CharFrom = UTF_8 then
+    s := UTF8toUCS4(Value)
+  else
+    if CharFrom = UTF_7 then
+      s := UTF7toUCS2(Value, False)
+    else
+      if CharFrom = UTF_7mod then
+        s := UTF7toUCS2(Value, True)
+      else
+        s := Value;
+  GetArray(CharFrom, SourceTable);
+  mbf := 1;
+  if CharFrom in SetTwo then
+    mbf := 2;
+  if CharFrom in SetFour then
+    mbf := 4;
+  lef := CharFrom in SetLe;
+  Result := '';
+  n := 1;
+  while Length(s) >= n do
+  begin
+    ReadMulti(s, n, mbf, b1, b2, b3, b4, lef);
+    //handle BOM
+    if (b3 = 0) and (b4 = 0) then
+    begin
+      if (b1 = $FE) and (b2 = $FF) then
+      begin
+        lef := not lef;
+        continue;
+      end;
+      if (b1 = $FF) and (b2 = $FE) then
+        continue;
+    end;
+    if mbf = 1 then
+      if b1 > 127 then
+      begin
+        uni := SourceTable[b1];
+        b1 := Lo(uni);
+        b2 := Hi(uni);
+      end;
+    Result := Result + WriteMulti(b1, b2, b3, b4, 2, False);
+  end;
+end;
+
 function CharsetConversionTrans(Value: AnsiString; CharFrom: TMimeChar;
   CharTo: TMimeChar; const TransformTable: array of Word; Translit: Boolean): AnsiString;
 var
@@ -1286,9 +1340,9 @@ var
   n, m: Integer;
   b: Byte;
   b1, b2, b3, b4: Byte;
-  SourceTable, TargetTable: array[128..255] of Word;
-  mbf, mbt: Byte;
-  lef, let: Boolean;
+  TargetTable: array[128..255] of Word;
+  mbt: Byte;
+  let: Boolean;
   ucsstring, s, t: AnsiString;
   cd: iconv_t;
   f: Boolean;
@@ -1305,62 +1359,15 @@ begin
   ToID := GetIDFromCP(CharTo);
   cd := Iconv_t(-1);
   //do two-pass conversion. Transform to UCS-2 first.
-  if CharFrom = UCS_2 then
-    ucsstring := Value
-  else
-  begin
-    if not DisableIconv then
-      cd := SynaIconvOpenIgnore('UCS-2BE', FromID);
-    try
-      if cd <> iconv_t(-1) then
-        SynaIconv(cd, Value, ucsstring)
-      else
-      begin
-        s := Value;
-        if CharFrom = UTF_8 then
-          s := UTF8toUCS4(Value)
-        else
-          if CharFrom = UTF_7 then
-            s := UTF7toUCS2(Value, False)
-          else
-            if CharFrom = UTF_7mod then
-              s := UTF7toUCS2(Value, True);
-        GetArray(CharFrom, SourceTable);
-        mbf := 1;
-        if CharFrom in SetTwo then
-          mbf := 2;
-        if CharFrom in SetFour then
-          mbf := 4;
-        lef := CharFrom in SetLe;
-        ucsstring := '';
-        n := 1;
-        while Length(s) >= n do
-        begin
-          ReadMulti(s, n, mbf, b1, b2, b3, b4, lef);
-          //handle BOM
-          if (b3 = 0) and (b4 = 0) then
-          begin
-            if (b1 = $FE) and (b2 = $FF) then
-            begin
-              lef := not lef;
-              continue;
-            end;
-            if (b1 = $FF) and (b2 = $FE) then
-              continue;
-          end;
-          if mbf = 1 then
-            if b1 > 127 then
-            begin
-              uni := SourceTable[b1];
-              b1 := Lo(uni);
-              b2 := Hi(uni);
-            end;
-          ucsstring := ucsstring + WriteMulti(b1, b2, b3, b4, 2, False);
-        end;
-      end;
-    finally
-      SynaIconvClose(cd);
-    end;
+  if not DisableIconv then
+    cd := SynaIconvOpenIgnore('UCS-2BE', FromID);
+  try
+    if cd <> iconv_t(-1) then
+      SynaIconv(cd, Value, ucsstring)
+    else
+      ucsstring := InternalToUcs(Value, CharFrom);
+  finally
+    SynaIconvClose(cd);
   end;
   //here we allways have ucstring with UCS-2 encoding
   //second pass... from UCS-2 to target encoding.

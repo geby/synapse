@@ -1,9 +1,9 @@
 {==============================================================================|
-| Project : Ararat Synapse                                       | 001.003.000 |
+| Project : Ararat Synapse                                       | 001.004.000 |
 |==============================================================================|
 | Content: LDAP client                                                         |
 |==============================================================================|
-| Copyright (c)1999-2004, Lukas Gebauer                                        |
+| Copyright (c)1999-2005, Lukas Gebauer                                        |
 | All rights reserved.                                                         |
 |                                                                              |
 | Redistribution and use in source and binary forms, with or without           |
@@ -33,7 +33,7 @@
 | DAMAGE.                                                                      |
 |==============================================================================|
 | The Initial Developer of the Original Code is Lukas Gebauer (Czech Republic).|
-| Portions created by Lukas Gebauer are Copyright (c)2003-2004.                |
+| Portions created by Lukas Gebauer are Copyright (c)2003-2005.                |
 | All Rights Reserved.                                                         |
 |==============================================================================|
 | Contributor(s):                                                              |
@@ -58,9 +58,6 @@ interface
 
 uses
   SysUtils, Classes,
-  {$IFDEF STREAMSEC}
-  TlsInternalServer, TlsSynaSock,
-  {$ENDIF}
   blcksock, synautil, asn1util, synacode;
 
 const
@@ -197,12 +194,7 @@ type
    parent @link(TSynaClient) too!}
   TLDAPSend = class(TSynaClient)
   private
-    {$IFDEF STREAMSEC}
-    FSock: TSsTCPBlockSocket;
-    FTLSServer: TCustomTLSInternalServer;
-    {$ELSE}
     FSock: TTCPBlockSocket;
-    {$ENDIF}
     FResultCode: Integer;
     FResultString: string;
     FFullResult: string;
@@ -328,13 +320,9 @@ type
     {:When you call @link(Extended) operation, then here is result Value returned
      by server.}
     property ExtValue: string read FExtValue;
-{$IFDEF STREAMSEC}
-    property Sock: TSsTCPBlockSocket read FSock;
-    property TLSServer: TCustomTLSInternalServer read FTLSServer write FTLSServer;
-{$ELSE}
+
     {:TCP socket used by all LDAP operations.}
     property Sock: TTCPBlockSocket read FSock;
-{$ENDIF}
   end;
 
 {:Dump result of LDAP SEARCH into human readable form. Good for debugging.}
@@ -487,13 +475,7 @@ begin
   inherited Create;
   FReferals := TStringList.Create;
   FFullResult := '';
-{$IFDEF STREAMSEC}
-  FTLSServer := GlobalTLSInternalServer;
-  FSock := TSsTCPBlockSocket.Create;
-  FSock.BlockingRead := True;
-{$ELSE}
   FSock := TTCPBlockSocket.Create;
-{$ENDIF}
   FTimeout := 60000;
   FTargetPort := cLDAPProtocol;
   FAutoTLS := False;
@@ -610,25 +592,11 @@ begin
   FSock.LineBuffer := '';
   FSeq := 0;
   FSock.Bind(FIPInterface, cAnyPort);
-{$IFDEF STREAMSEC}
-  if FFullSSL then
-  begin
-    if Assigned(FTLSServer) then
-      FSock.TLSServer := FTLSServer
-    else
-    begin
-      Result := false;
-      Exit;
-    end;
-  end
-  else
-    FSock.TLSServer := nil;
-{$ELSE}
-  if FFullSSL then
-    FSock.SSLEnabled := True;
-{$ENDIF}
   if FSock.LastError = 0 then
     FSock.Connect(FTargetHost, FTargetPort);
+  if FSock.LastError = 0 then
+    if FFullSSL then
+      FSock.SSLDoConnect;
   Result := FSock.LastError = 0;
 end;
 
@@ -1166,19 +1134,8 @@ begin
   Result := Extended('1.3.6.1.4.1.1466.20037', '');
   if Result then
   begin
-{$IFDEF STREAMSEC}
-    if Assigned(FTLSServer) then
-    begin
-      Fsock.TLSServer := FTLSServer;
-      Fsock.Connect('','');
-      Result := FSock.LastError = 0;
-    end
-    else
-      Result := false;
-{$ELSE}
     Fsock.SSLDoConnect;
     Result := FSock.LastError = 0;
-{$ENDIF}
   end;
 end;
 

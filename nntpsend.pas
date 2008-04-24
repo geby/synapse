@@ -1,9 +1,9 @@
 {==============================================================================|
-| Project : Ararat Synapse                                       | 001.004.001 |
+| Project : Ararat Synapse                                       | 001.005.000 |
 |==============================================================================|
 | Content: NNTP client                                                         |
 |==============================================================================|
-| Copyright (c)1999-2003, Lukas Gebauer                                        |
+| Copyright (c)1999-2005, Lukas Gebauer                                        |
 | All rights reserved.                                                         |
 |                                                                              |
 | Redistribution and use in source and binary forms, with or without           |
@@ -33,7 +33,7 @@
 | DAMAGE.                                                                      |
 |==============================================================================|
 | The Initial Developer of the Original Code is Lukas Gebauer (Czech Republic).|
-| Portions created by Lukas Gebauer are Copyright (c) 1999-2003.               |
+| Portions created by Lukas Gebauer are Copyright (c) 1999-2005.               |
 | All Rights Reserved.                                                         |
 |==============================================================================|
 | Contributor(s):                                                              |
@@ -59,9 +59,6 @@ interface
 
 uses
   SysUtils, Classes,
-  {$IFDEF STREAMSEC}
-  TlsInternalServer, TlsSynaSock,
-  {$ENDIF}
   blcksock, synautil;
 
 const
@@ -78,12 +75,7 @@ type
    parent @link(TSynaClient) too!}
   TNNTPSend = class(TSynaClient)
   private
-    {$IFDEF STREAMSEC}
-    FSock: TSsTCPBlockSocket;
-    FTLSServer: TCustomTLSInternalServer;
-    {$ELSE}
     FSock: TTCPBlockSocket;
-    {$ENDIF}
     FResultCode: Integer;
     FResultString: string;
     FData: TStringList;
@@ -192,13 +184,9 @@ type
     {:SSL/TLS mode is used from first contact to server. Servers with full
      SSL/TLS mode usualy using non-standard TCP port!}
     property FullSSL: Boolean read FFullSSL Write FFullSSL;
-{$IFDEF STREAMSEC}
-    property Sock: TSsTCPBlockSocket read FSock;
-    property TLSServer: TCustomTLSInternalServer read FTLSServer write FTLSServer;
-{$ELSE}
+
     {:Socket object used for TCP/IP operation. Good for seting OnStatus hook, etc.}
     property Sock: TTCPBlockSocket read FSock;
-{$ENDIF}
   end;
 
 implementation
@@ -206,13 +194,7 @@ implementation
 constructor TNNTPSend.Create;
 begin
   inherited Create;
-{$IFDEF STREAMSEC}
-  FTLSServer := GlobalTLSInternalServer;
-  FSock := TSsTCPBlockSocket.Create;
-  FSock.BlockingRead := True;
-{$ELSE}
   FSock := TTCPBlockSocket.Create;
-{$ENDIF}
   FData := TStringList.Create;
   FDataToSend := TStringList.Create;
   FNNTPcap := TStringList.Create;
@@ -288,25 +270,11 @@ function TNNTPSend.Connect: Boolean;
 begin
   FSock.CloseSocket;
   FSock.Bind(FIPInterface, cAnyPort);
-{$IFDEF STREAMSEC}
-  if FFullSSL then
-  begin
-    if assigned(FTLSServer) then
-      FSock.TLSServer := FTLSServer;
-    else
-    begin
-      result := False;
-      Exit;
-    end;
-  end
-  else
-    FSock.TLSServer := nil;
-{$ELSE}
-  if FFullSSL then
-    FSock.SSLEnabled := True;
-{$ENDIF}
   if FSock.LastError = 0 then
     FSock.Connect(FTargetHost, FTargetPort);
+  if FSock.LastError = 0 then
+    if FFullSSL then
+      FSock.SSLDoConnect;
   Result := FSock.LastError = 0;
 end;
 
@@ -475,19 +443,8 @@ begin
   begin
     if DoCommand('STARTTLS') then
     begin
-{$IFDEF STREAMSEC}
-      if (Assigned(FTLSServer) then
-      begin
-        Fsock.TLSServer := FTLSServer;
-        Fsock.Connect('','');
-        Result := FSock.LastError = 0;
-      end
-      else
-        Result := False;
-{$ELSE}
       Fsock.SSLDoConnect;
       Result := FSock.LastError = 0;
-{$ENDIF}
     end;
   end;
 end;

@@ -1,9 +1,9 @@
 {==============================================================================|
-| Project : Ararat Synapse                                       | 002.003.000 |
+| Project : Ararat Synapse                                       | 002.004.000 |
 |==============================================================================|
 | Content: POP3 client                                                         |
 |==============================================================================|
-| Copyright (c)1999-2003, Lukas Gebauer                                        |
+| Copyright (c)1999-2005, Lukas Gebauer                                        |
 | All rights reserved.                                                         |
 |                                                                              |
 | Redistribution and use in source and binary forms, with or without           |
@@ -33,7 +33,7 @@
 | DAMAGE.                                                                      |
 |==============================================================================|
 | The Initial Developer of the Original Code is Lukas Gebauer (Czech Republic).|
-| Portions created by Lukas Gebauer are Copyright (c)2001-2003.                |
+| Portions created by Lukas Gebauer are Copyright (c)2001-2005.                |
 | All Rights Reserved.                                                         |
 |==============================================================================|
 | Contributor(s):                                                              |
@@ -58,9 +58,6 @@ interface
 
 uses
   SysUtils, Classes,
-  {$IFDEF STREAMSEC}
-  TlsInternalServer, TlsSynaSock,
-  {$ENDIF}
   blcksock, synautil, synacode;
 
 const
@@ -81,12 +78,7 @@ type
    parent @link(TSynaClient) too!}
   TPOP3Send = class(TSynaClient)
   private
-    {$IFDEF STREAMSEC}
-    FSock: TSsTCPBlockSocket;
-    FTLSServer: TCustomTLSInternalServer;
-    {$ELSE}
     FSock: TTCPBlockSocket;
-    {$ENDIF}
     FResultCode: Integer;
     FResultString: string;
     FFullResult: TStringList;
@@ -186,13 +178,8 @@ type
     {:SSL/TLS mode is used from first contact to server. Servers with full
      SSL/TLS mode usualy using non-standard TCP port!}
     property FullSSL: Boolean read FFullSSL Write FFullSSL;
-{$IFDEF STREAMSEC}
-    property Sock: TSsTCPBlockSocket read FSock;
-    property TLSServer: TCustomTLSInternalServer read FTLSServer write FTLSServer;
-{$ELSE}
     {:Socket object used for TCP/IP operation. Good for seting OnStatus hook, etc.}
     property Sock: TTCPBlockSocket read FSock;
-{$ENDIF}
   end;
 
 implementation
@@ -202,13 +189,7 @@ begin
   inherited Create;
   FFullResult := TStringList.Create;
   FPOP3cap := TStringList.Create;
-{$IFDEF STREAMSEC}           
-  FTLSServer := GlobalTLSInternalServer;     
-  FSock := TSsTCPBlockSocket.Create;
-  FSock.BlockingRead := True;
-{$ELSE}
   FSock := TTCPBlockSocket.Create;
-{$ENDIF}
   FSock.ConvertLineEnd := true;
   FTimeout := 60000;
   FTargetPort := cPop3Protocol;
@@ -277,25 +258,11 @@ begin
   FSock.CloseSocket;
   FSock.LineBuffer := '';
   FSock.Bind(FIPInterface, cAnyPort);
-{$IFDEF STREAMSEC}
-  if FFullSSL then
-  begin
-    if Assigned(FTLSServer) then
-      FSock.TLSServer := FTLSServer
-    else
-    begin
-      Result := false;
-      Exit;
-    end;
-  end
-  else
-    FSock.TLSServer := nil;
-{$ELSE}
-  if FFullSSL then
-    FSock.SSLEnabled := True;
-{$ENDIF}
   if FSock.LastError = 0 then
     FSock.Connect(FTargetHost, FTargetPort);
+  if FSock.LastError = 0 then
+    if FFullSSL then
+      FSock.SSLDoConnect;
   Result := FSock.LastError = 0;
 end;
 
@@ -425,19 +392,8 @@ begin
   FSock.SendString('STLS' + CRLF);
   if ReadResult(False) = 1 then
   begin
-{$IFDEF STREAMSEC}
-    if Assigned(FTLSServer) then
-    begin
-      Fsock.TLSServer := FTLSServer;
-      Fsock.Connect('','');
-      Result := FSock.LastError = 0;
-    end
-    else
-      Result := false;
-{$ELSE}
     Fsock.SSLDoConnect;
     Result := FSock.LastError = 0;
-{$ENDIF}
   end;
 end;
 

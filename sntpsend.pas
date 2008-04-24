@@ -1,5 +1,5 @@
 {==============================================================================|
-| Project : Ararat Synapse                                       | 003.000.000 |
+| Project : Ararat Synapse                                       | 003.000.001|
 |==============================================================================|
 | Content: SNTP client                                                         |
 |==============================================================================|
@@ -302,6 +302,7 @@ var
   x: Integer;
 begin
   Result := False;
+  FSock.CloseSocket;
   FSock.Bind(FIPInterface, cAnyPort);
   FSock.Connect(FTargetHost, FTargetPort);
   ClearNtp(q);
@@ -330,6 +331,7 @@ var
   t1, t2, t3, t4 : TDateTime;
 begin
   Result := False;
+  FSock.CloseSocket;
   FSock.Bind(FIPInterface, cAnyPort);
   FSock.Connect(FTargetHost, FTargetPort);
   ClearNtp(q);

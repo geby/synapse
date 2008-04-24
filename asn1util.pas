@@ -1,5 +1,5 @@
 {==============================================================================|
-| Project : Ararat Synapse                                       | 001.004.003 |
+| Project : Ararat Synapse                                       | 001.004.004 |
 |==============================================================================|
 | Content: support for ASN.1 BER coding and decoding                           |
 |==============================================================================|
@@ -53,7 +53,7 @@ Supported element types are: ASN1_BOOL, ASN1_INT, ASN1_OCTSTR, ASN1_NULL,
  ASN1_OBJID, ASN1_ENUM, ASN1_SEQ, ASN1_SETOF, ASN1_IPADDR, ASN1_COUNTER,
  ASN1_GAUGE, ASN1_TIMETICKS, ASN1_OPAQUE
 
-For sample of using, look to @link(TSnmpSend) class.
+For sample of using, look to @link(TSnmpSend) or @link(TLdapSend)class.
 }
 
 {$Q-}
@@ -67,7 +67,7 @@ unit asn1util;
 interface
 
 uses
-  SysUtils, Classes, SynaUtil;
+  SysUtils, Classes, synautil;
 
 const
   ASN1_BOOL = $01;

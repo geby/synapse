@@ -1,5 +1,5 @@
 {==============================================================================|
-| Project : Ararat Synapse                                       | 003.000.007 |
+| Project : Ararat Synapse                                       | 003.000.008 |
 |==============================================================================|
 | Content: SNMP client                                                         |
 |==============================================================================|
@@ -1055,6 +1055,7 @@ begin
     SNMPSend.TargetPort := cSnmpTrapProtocol;
     if SNMPSend.RecvTrap then
     begin
+      Result := 1;
       Dest := SNMPSend.HostIP;
       Community := SNMPSend.Reply.Community;
       Source := SNMPSend.Reply.OldTrapHost;

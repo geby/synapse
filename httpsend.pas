@@ -1,9 +1,9 @@
 {==============================================================================|
-| Project : Ararat Synapse                                       | 003.009.005 |
+| Project : Ararat Synapse                                       | 003.010.001 |
 |==============================================================================|
 | Content: HTTP client                                                         |
 |==============================================================================|
-| Copyright (c)1999-2004, Lukas Gebauer                                        |
+| Copyright (c)1999-2005, Lukas Gebauer                                        |
 | All rights reserved.                                                         |
 |                                                                              |
 | Redistribution and use in source and binary forms, with or without           |
@@ -33,7 +33,7 @@
 | DAMAGE.                                                                      |
 |==============================================================================|
 | The Initial Developer of the Original Code is Lukas Gebauer (Czech Republic).|
-| Portions created by Lukas Gebauer are Copyright (c) 1999-2004.               |
+| Portions created by Lukas Gebauer are Copyright (c) 1999-2005.               |
 | All Rights Reserved.                                                         |
 |==============================================================================|
 | Contributor(s):                                                              |
@@ -58,9 +58,6 @@ interface
 
 uses
   SysUtils, Classes,
-  {$IFDEF STREAMSEC}
-  TlsInternalServer, TlsSynaSock,
-  {$ENDIF}
   blcksock, synautil, synacode;
 
 const
@@ -74,12 +71,7 @@ type
   {:abstract(Implementation of HTTP protocol.)}
   THTTPSend = class(TSynaClient)
   protected
-    {$IFDEF STREAMSEC}
-    FSock: TSsTCPBlockSocket;
-    FTLSServer: TCustomTLSInternalServer;
-    {$ELSE}
     FSock: TTCPBlockSocket;
-    {$ENDIF}
     FTransferEncoding: TTransferEncoding;
     FAliveHost: string;
     FAlivePort: string;
@@ -206,13 +198,8 @@ type
      here total sice of uploaded data. It is good for draw upload progressbar
      from OnStatus event.}
     property UploadSize: integer read FUploadSize;
-{$IFDEF STREAMSEC}
-    property Sock: TSsTCPBlockSocket read FSock;
-    property TLSServer: TCustomTLSInternalServer read FTLSServer write FTLSServer;
-{$ELSE}
     {:Socket object used for TCP/IP operation. Good for seting OnStatus hook, etc.}
     property Sock: TTCPBlockSocket read FSock;
-{$ENDIF}
   end;
 
 {:A very usefull function, and example of use can be found in the THTTPSend
@@ -264,13 +251,7 @@ begin
   FHeaders := TStringList.Create;
   FCookies := TStringList.Create;
   FDocument := TMemoryStream.Create;
-{$IFDEF STREAMSEC}
-  FTLSServer := GlobalTLSInternalServer;
-  FSock := TSsTCPBlockSocket.Create;
-  FSock.BlockingRead := True;
-{$ELSE}
   FSock := TTCPBlockSocket.Create;
-{$ENDIF}
   FSock.ConvertLineEnd := True;
   FSock.SizeRecvBuffer := c64k;
   FSock.SizeSendBuffer := c64k;
@@ -371,7 +352,6 @@ begin
   FHeaders.Insert(0, 'Content-Length: ' + IntToStr(FDocument.Size));
   if Sending then
   begin
-//    FHeaders.Insert(0, 'Content-Length: ' + IntToStr(FDocument.Size));
     if FMimeType <> '' then
       FHeaders.Insert(0, 'Content-Type: ' + FMimeType);
   end;
@@ -441,19 +421,13 @@ begin
     FSock.Bind(FIPInterface, cAnyPort);
     if FSock.LastError <> 0 then
       Exit;
-{$IFDEF STREAMSEC}
-    FSock.TLSServer := nil;
-    if UpperCase(Prot) = 'HTTPS' then
-      if assigned(FTLSServer) then
-        FSock.TLSServer := FTLSServer
-      else
-        exit;
-{$ELSE}
-    FSock.SSLEnabled := UpperCase(Prot) = 'HTTPS';
-{$ENDIF}
     if FSock.LastError <> 0 then
       Exit;
     FSock.Connect(FTargetHost, FTargetPort);
+    if FSock.LastError <> 0 then
+      Exit;
+    if UpperCase(Prot) = 'HTTPS' then
+      FSock.SSLDoConnect;
     if FSock.LastError <> 0 then
       Exit;
     FAliveHost := FTargetHost;
@@ -467,19 +441,12 @@ begin
       FSock.Bind(FIPInterface, cAnyPort);
       if FSock.LastError <> 0 then
         Exit;
-{$IFDEF STREAMSEC}
-      FSock.TLSServer := nil;
-      if UpperCase(Prot) = 'HTTPS' then
-        if assigned(FTLSServer) then
-          FSock.TLSServer := FTLSServer
-        else
-          exit;
-{$ELSE}
-      FSock.SSLEnabled := UpperCase(Prot) = 'HTTPS';
-{$ENDIF}
       if FSock.LastError <> 0 then
         Exit;
       FSock.Connect(FTargetHost, FTargetPort);
+      if FSock.LastError = 0 then
+        if UpperCase(Prot) = 'HTTPS' then
+          FSock.SSLDoConnect;
       if FSock.LastError <> 0 then
       begin
         FSock.CloseSocket;
@@ -556,7 +523,6 @@ begin
       { old HTTP 0.9 and some buggy servers not send result }
       s := s + CRLF;
       WriteStrToStream(FDocument, s);
-//      FDocument.Write(Pointer(s)^, Length(s));
       FResultCode := 0;
     end;
   end
@@ -693,7 +659,8 @@ begin
   HTTP := THTTPSend.Create;
   try
     Result := HTTP.HTTPMethod('GET', URL);
-    Response.LoadFromStream(HTTP.Document);
+    if Result then
+      Response.LoadFromStream(HTTP.Document);
   finally
     HTTP.Free;
   end;
@@ -706,8 +673,11 @@ begin
   HTTP := THTTPSend.Create;
   try
     Result := HTTP.HTTPMethod('GET', URL);
-    Response.Seek(0, soFromBeginning);
-    Response.CopyFrom(HTTP.Document, 0);
+    if Result then
+    begin
+      Response.Seek(0, soFromBeginning);
+      Response.CopyFrom(HTTP.Document, 0);
+    end;
   finally
     HTTP.Free;
   end;
@@ -722,8 +692,11 @@ begin
     HTTP.Document.CopyFrom(Data, 0);
     HTTP.MimeType := 'Application/octet-stream';
     Result := HTTP.HTTPMethod('POST', URL);
-    Data.Seek(0, soFromBeginning);
-    Data.CopyFrom(HTTP.Document, 0);
+    if Result then
+    begin
+      Data.Seek(0, soFromBeginning);
+      Data.CopyFrom(HTTP.Document, 0);
+    end;
   finally
     HTTP.Free;
   end;
@@ -736,10 +709,10 @@ begin
   HTTP := THTTPSend.Create;
   try
     WriteStrToStream(HTTP.Document, URLData);
-//    HTTP.Document.Write(Pointer(URLData)^, Length(URLData));
     HTTP.MimeType := 'application/x-www-form-urlencoded';
     Result := HTTP.HTTPMethod('POST', URL);
-    Data.CopyFrom(HTTP.Document, 0);
+    if Result then
+      Data.CopyFrom(HTTP.Document, 0);
   finally
     HTTP.Free;
   end;
@@ -759,14 +732,13 @@ begin
     s := s + ' filename="' + FileName +'"' + CRLF;
     s := s + 'Content-Type: Application/octet-string' + CRLF + CRLF;
     WriteStrToStream(HTTP.Document, s);
-//    HTTP.Document.Write(Pointer(s)^, Length(s));
     HTTP.Document.CopyFrom(Data, 0);
     s := CRLF + '--' + Bound + '--' + CRLF;
     WriteStrToStream(HTTP.Document, s);
-//    HTTP.Document.Write(Pointer(s)^, Length(s));
     HTTP.MimeType := 'multipart/form-data; boundary=' + Bound;
     Result := HTTP.HTTPMethod('POST', URL);
-    ResultData.LoadFromStream(HTTP.Document);
+    if Result then
+      ResultData.LoadFromStream(HTTP.Document);
   finally
     HTTP.Free;
   end;

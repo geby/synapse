@@ -1,5 +1,5 @@
 {==============================================================================|
-| Project : Ararat Synapse                                       | 004.006.009 |
+| Project : Ararat Synapse                                       | 004.008.001 |
 |==============================================================================|
 | Content: support procedures and functions                                    |
 |==============================================================================|
@@ -62,6 +62,9 @@ uses
   Libc,
 {$ELSE}
   Windows,
+{$ENDIF}
+{$IFDEF CIL}
+  System.IO,
 {$ENDIF}
   SysUtils, Classes;
 
@@ -280,7 +283,10 @@ function CountOfChar(const Value: string; Chr: char): integer;
 
 {:Remove quotation from Value string. If Value is not quoted, then return same
  string without any modification. }
-function UnquoteStr(Value: string; Quote: Char): string;
+function UnquoteStr(const Value: string; Quote: Char): string;
+
+{:Quote Value string. If Value contains some Quote chars, then it is doubled.}
+function QuoteStr(const Value: string; Quote: Char): string;
 
 {:Convert lines in stringlist from 'name: value' form to 'name=value' form.}
 procedure HeadersToList(const Value: TStrings);
@@ -296,6 +302,10 @@ function ReadStrFromStream(const Stream: TStream; len: integer): AnsiString;
 
 {:write string to stream.}
 procedure WriteStrToStream(const Stream: TStream; Value: AnsiString);
+
+{:Return filename of new temporary file in Dir (if empty, then default temporary
+ directory is used) and with optional filename prefix.}
+function GetTempFile(const Dir, prefix: AnsiString): AnsiString;
 
 var
   {:can be used for your own months strings for @link(getmonthnumber)}
@@ -339,11 +349,12 @@ begin
 {$IFNDEF FPC}
   __time(@T);
   localtime_r(@T, UT);
+  Result := ut.__tm_gmtoff div 60;
 {$ELSE}
   __time(T);
   localtime_r(T, UT);
+  Result := ut.tm_gmtoff div 60;
 {$ENDIF}
-  Result := ut.__tm_gmtoff div 60;
 {$ELSE}
 var
   zoneinfo: TTimeZoneInformation;
@@ -745,7 +756,6 @@ var
   TZ: Ttimezone;
   PZ: PTimeZone;
 begin
-  Result := false;
   TZ.tz_minuteswest := 0;
   TZ.tz_dsttime := 0;
   PZ := @TZ;
@@ -947,13 +957,12 @@ end;
 //Hernan Sanchez
 function IPToID(Host: string): string;
 var
-  s, t: string;
+  s: string;
   i, x: Integer;
 begin
   Result := '';
   for x := 1 to 3 do
   begin
-    t := '';
     s := Fetch(Host, '.');
     i := StrToIntDef(s, 0);
     Result := Result + Chr(i);
@@ -1096,7 +1105,7 @@ begin
   begin
     s := Trim(FetchEx(v, ';', '"'));
     if Pos(Uppercase(parameter), Uppercase(s)) = 1 then
-    begin
+    begin                       
       Delete(s, 1, Length(Parameter));
       s := Trim(s);
       if s = '' then
@@ -1416,13 +1425,11 @@ end;
 
 function FetchEx(var Value: string; const Delimiter, Quotation: string): string;
 var
-  n: integer;
   b: Boolean;
 begin
   Result := '';
   b := False;
-  n := 1;
-  while n <= Length(Value) do
+  while Length(Value) > 0 do
   begin
     if b then
     begin
@@ -1551,26 +1558,57 @@ end;
 {$ENDIF}
 
 {==============================================================================}
-
+//improved by 'DoggyDawg'
 function GetBetween(const PairBegin, PairEnd, Value: string): string;
 var
   n: integer;
   x: integer;
   s: string;
+  lenBegin: integer;
+  lenEnd: integer;
+  str: string;
+  max: integer;
 begin
-  Result := '';
-  s := SeparateRight(Value, PairBegin);
-  x := 1;
-  for n := 1 to Length(s) do
+  lenBegin := Length(PairBegin);
+  lenEnd := Length(PairEnd);
+  n := Length(Value);
+  if (Value = PairBegin + PairEnd) then
   begin
-    if s[n] = PairBegin then
-      Inc(x);
-    if s[n] = PairEnd then
+    Result := '';//nothing between
+    exit;
+  end;
+  if (n < lenBegin + lenEnd) then
+  begin
+    Result := Value;
+    exit;
+  end;
+  s := SeparateRight(Value, PairBegin);
+  if (s = Value) then
+  begin
+    Result := Value;
+    exit;
+  end;
+  n := Pos(PairEnd, s);
+  if (n = 0) then
+  begin
+    Result := Value;
+    exit;
+  end;
+  Result := '';
+  x := 1;
+  max := Length(s) - lenEnd + 1;
+  for n := 1 to max do
+  begin
+    str := copy(s, n, lenEnd);
+    if (str = PairEnd) then
     begin
       Dec(x);
-      if x <= 0 then
+      if (x <= 0) then
         Break;
     end;
+    str := copy(s, n, lenBegin);
+    if (str = PairBegin) then
+      Inc(x);
     Result := Result + s[n];
   end;
 end;
@@ -1588,36 +1626,60 @@ begin
 end;
 
 {==============================================================================}
-
-function UnquoteStr(Value: string; Quote: Char): string;
-  {$IFNDEF CIL}
+// ! do not use AnsiExtractQuotedStr, it's very buggy and can crash application!
+function UnquoteStr(const Value: string; Quote: Char): string;
 var
-  LText: PChar;
-  {$ENDIF}
+  n: integer;
+  inq, dq: Boolean;
+  c, cn: char;
 begin
+  Result := '';
   if Value = '' then
-  begin
-    Result := '';
     Exit;
-  end;
   if Value = Quote + Quote then
-  begin
-    Result := '';
     Exit;
+  inq := False;
+  dq := False;
+  for n := 1 to Length(Value) do
+  begin
+    c := Value[n];
+    if n <> Length(Value) then
+      cn := Value[n + 1]
+    else
+      cn := #0;
+    if c = quote then
+      if dq then
+        dq := False
+      else
+        if not inq then
+          inq := True
+        else
+          if cn = quote then
+          begin
+            Result := Result + Quote;
+            dq := True;
+          end
+          else
+            inq := False
+    else
+      Result := Result + c;
   end;
-  //workaround for bug in AnsiExtractQuotedStr
-  //...if string begin by Quote, but not ending by Quote, then it eat last char.
-  if length(Value) > 1 then
-    if (Value[1] = Quote) and (Value[Length(value)] <> Quote) then
-      Value := Value + Quote;
-  {$IFNDEF CIL}
-  LText := PChar(Value);
-  Result := AnsiExtractQuotedStr(LText, Quote);
-  {$ELSE}
-  Result := DequotedStr(Value, Quote);
-  {$ENDIF}
-  if Result = '' then
-    Result := Value;
+end;
+
+{==============================================================================}
+
+function QuoteStr(const Value: string; Quote: Char): string;
+var
+  n: integer;
+begin
+  Result := '';
+  for n := 1 to length(value) do
+  begin
+    Result := result + Value[n];
+    if value[n] = Quote then
+      Result := Result + Quote;
+  end;
+  Result :=  Quote + Result + Quote;
 end;
 
 {==============================================================================}
@@ -1707,6 +1769,45 @@ begin
   Stream.Write(buf,length(Value));
 {$ELSE}
   Stream.Write(PChar(Value)^, Length(Value));
+{$ENDIF}
+end;
+
+{==============================================================================}
+function GetTempFile(const Dir, prefix: AnsiString): AnsiString;
+{$IFNDEF FPC}
+{$IFNDEF LINUX}
+var
+  Path: AnsiString;
+  x: integer;
+{$ENDIF}
+{$ENDIF}
+begin
+{$IFDEF FPC}
+  Result := GetTempFileName(Dir, Prefix);
+{$ELSE}
+  {$IFDEF LINUX}
+    Result := tempnam(Pointer(Dir), Pointer(prefix));
+  {$ELSE}
+    {$IFDEF CIL}
+  Result := System.IO.Path.GetTempFileName;
+    {$ELSE}
+  if Dir = '' then
+  begin
+    SetLength(Path, MAX_PATH);
+	  x := GetTempPath(Length(Path), PChar(Path));
+  	SetLength(Path, x);
+  end
+  else
+    Path := Dir;
+  x := Length(Path);
+  if Path[x] <> '\' then
+    Path := Path + '\';
+  SetLength(Result, MAX_PATH + 1);
+  GetTempFileName(PChar(Path), PChar(Prefix), 0, PChar(Result));
+  Result := PChar(Result);
+  SetFileattributes(PChar(Result), GetFileAttributes(PChar(Result)) or FILE_ATTRIBUTE_TEMPORARY);
+    {$ENDIF}
+  {$ENDIF}
 {$ENDIF}
 end;
 
