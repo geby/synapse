@@ -23,6 +23,8 @@
 |          (Found at URL: http://www.ararat.cz/synapse/)                       |
 |==============================================================================}
 
+{$Q-}
+
 unit MIMEchar;
 
 interface

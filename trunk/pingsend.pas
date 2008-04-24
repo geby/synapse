@@ -45,6 +45,8 @@ After you change the registry, you need to restart your computer!
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 }
 
+{$Q-}
+
 unit PINGsend;
 
 interface

@@ -1,5 +1,5 @@
 {==============================================================================|
-| Project : Delphree - Synapse                                   | 001.003.003 |
+| Project : Delphree - Synapse                                   | 001.004.000 |
 |==============================================================================|
 | Content: Coding and decoding support                                         |
 |==============================================================================|
@@ -23,6 +23,8 @@
 |          (Found at URL: http://www.ararat.cz/synapse/)                       |
 |==============================================================================}
 
+{$Q-}
+
 unit SynaCode;
 
 interface
@@ -30,9 +32,17 @@ interface
 uses
   sysutils;
 
+type
+  TSpecials=set of char;
+
 const
-  SpecialChar:set of char
+  SpecialChar:TSpecials
     =['=','(',')','[',']','<','>',':',';','.',',','@','/','?','\','"','_'];
+
+  URLFullSpecialChar:TSpecials
+    =[';','/','?',':','@','=','&','#'];
+  URLSpecialChar:TSpecials
+    =[#$00..#$1f,'_','<','>','"','%','{','}','|','\','^','~','[',']','`',#$7f..#$ff];
 
   TableBase64=
     'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/=';
@@ -153,8 +163,13 @@ type
       1: (BufLong: array[0..15] of integer);
   end;
 
+function DecodeTriplet(Value:string;limiter:char):string;
 function DecodeQuotedPrintable(value:string):string;
+function DecodeURL(value:string):string;
+function EncodeTriplet(value:string;limiter:char;specials:TSpecials):string;
 function EncodeQuotedPrintable(value:string):string;
+function EncodeURLElement(value:string):string;
+function EncodeURL(value:string):string;
 function Decode4to3(value,table:string):string;
 function DecodeBase64(value:string):string;
 function EncodeBase64(value:string):string;
@@ -170,8 +185,8 @@ function HMAC_MD5(text,key:string):string;
 implementation
 
 {==============================================================================}
-{DecodeQuotedPrintable}
-function DecodeQuotedPrintable(value:string):string;
+{DecodeTriplet}
+function DecodeTriplet(Value:string;limiter:char):string;
 var
   x:integer;
   c:char;
@@ -183,7 +198,7 @@ begin
     begin
       c:=value[x];
       inc(x);
-      if c<>'='
+      if c<>limiter
         then result:=result+c
         else
           if x<length(value)
@@ -197,8 +212,22 @@ begin
 end;
 
 {==============================================================================}
-{EncodeQuotedPrintable}
-function EncodeQuotedPrintable(value:string):string;
+{DecodeQuotedPrintable}
+function DecodeQuotedPrintable(value:string):string;
+begin
+  Result:=DecodeTriplet(Value,'=');
+end;
+
+{==============================================================================}
+{DecodeURL}
+function DecodeURL(value:string):string;
+begin
+  Result:=DecodeTriplet(Value,'%');
+end;
+
+{==============================================================================}
+{EncodeTriplet}
+function EncodeTriplet(value:string;limiter:char;specials:TSpecials):string;
 var
   n:integer;
   s:string;
@@ -207,10 +236,31 @@ begin
   for n:=1 to length(value) do
     begin
       s:=value[n];
-      if s[1] in (SpecialChar+[char(1)..char(31),char(128)..char(255)])
-        then s:='='+inttohex(ord(s[1]),2);
+      if s[1] in Specials
+        then s:=limiter+inttohex(ord(s[1]),2);
       result:=result+s;
     end;
+end;
+
+{==============================================================================}
+{EncodeQuotedPrintable}
+function EncodeQuotedPrintable(value:string):string;
+begin
+  Result:=EncodeTriplet(Value,'=',SpecialChar+[char(1)..char(31),char(128)..char(255)]);
+end;
+
+{==============================================================================}
+{EncodeURLElement}
+function EncodeURLElement(value:string):string;
+begin
+  Result:=EncodeTriplet(Value,'%',URLSpecialChar+URLFullSpecialChar);
+end;
+
+{==============================================================================}
+{EncodeURL}
+function EncodeURL(value:string):string;
+begin
+  Result:=EncodeTriplet(Value,'%',URLSpecialChar);
 end;
 
 {==============================================================================}

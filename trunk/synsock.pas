@@ -1,5 +1,5 @@
 {==============================================================================|
-| Project : Delphree - Synapse                                   | 001.000.000 |
+| Project : Delphree - Synapse                                   | 001.000.001 |
 |==============================================================================|
 | Content: Socket Independent Platform                                         |
 |==============================================================================|
@@ -254,9 +254,11 @@ implementation
 function LSWSAStartup (wVersionRequired: Word; var WSData: TWSAData): Integer;
 begin
   WSData.wVersion:=wVersionRequired;
-  WSData.wHighVersion:=wVersionRequired;
+  WSData.wHighVersion:=$101;
   WSData.szDescription:='Synapse Platform Independent Socket Layer';
   WSData.szSystemStatus:='On Linux';
+  WSData.iMaxSockets:=32768;
+  WSData.iMaxUdpDg:=8192;
   result:=0;
 end;
 
