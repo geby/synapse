@@ -1,5 +1,5 @@
 {==============================================================================|
-| Project : Delphree - Synapse                                   | 001.000.001 |
+| Project : Delphree - Synapse                                   | 001.001.000 |
 |==============================================================================|
 | Content: POP3 client                                                         |
 |==============================================================================|
@@ -27,16 +27,19 @@ unit POP3send;
 
 interface
 uses
-  Blcksock, sysutils, classes, windows, SynaUtil, SynaCode;
+  Blcksock, sysutils, classes, SynaUtil, SynaCode;
 
 const
   CRLF=#13+#10;
 
 type
+  TPOP3AuthType = (POP3AuthAll,POP3AuthLogin,POP3AuthAPOP);
+
   TPOP3Send = class
   private
     Sock:TTCPBlockSocket;
     function ReadResult(full:boolean):integer;
+    function Connect:Boolean;
   public
     timeout:integer;
     POP3Host:string;
@@ -49,11 +52,11 @@ type
     StatCount:integer;
     StatSize:integer;
     TimeStamp:string;
+    AuthType:TPOP3AuthType;
     Constructor Create;
     Destructor Destroy; override;
     function AuthLogin:Boolean;
     function AuthApop:Boolean;
-    function Connect:Boolean;
     function login:Boolean;
     procedure logout;
     function reset:Boolean;
@@ -82,6 +85,7 @@ begin
   Password:='';
   StatCount:=0;
   StatSize:=0;
+  AuthType:=POP3AuthAll;
 end;
 
 {TPOP3Send.Destroy}
@@ -140,7 +144,7 @@ end;
 {TPOP3Send.Connect}
 function TPOP3Send.Connect:Boolean;
 begin
-//Do not call this function! It is calling by LOGIn method!
+//Do not call this function! It is calling by LOGIN method!
   Result:=false;
   StatCount:=0;
   StatSize:=0;
@@ -169,9 +173,9 @@ begin
         then TimeStamp:='<'+s1+'>';
     end;
   result:=false;
-  if TimeStamp<>''
+  if (TimeStamp<>'') and not(AuthType=POP3AuthLogin)
     then result:=AuthApop;
-  if not result
+  if not(Result) and not(AuthType=POP3AuthAPOP)
     then result:=AuthLogin;
 end;
 
@@ -222,7 +226,7 @@ begin
   if value=0
     then Sock.SendString('LIST'+CRLF)
     else Sock.SendString('LIST '+IntToStr(value)+CRLF);
-  if readresult(true)<>1 then Exit;
+  if readresult(value=0)<>1 then Exit;
   Result:=True;
 end;
 
@@ -260,7 +264,7 @@ begin
   if value=0
     then Sock.SendString('UIDL'+CRLF)
     else Sock.SendString('UIDL '+IntToStr(value)+CRLF);
-  if readresult(true)<>1 then Exit;
+  if readresult(value=0)<>1 then Exit;
   Result:=True;
 end;
 

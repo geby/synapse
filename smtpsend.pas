@@ -1,5 +1,5 @@
 {==============================================================================|
-| Project : Delphree - Synapse                                   | 002.001.001 |
+| Project : Delphree - Synapse                                   | 002.001.002 |
 |==============================================================================|
 | Content: SMTP client                                                         |
 |==============================================================================|
@@ -27,7 +27,7 @@ unit SMTPsend;
 
 interface
 uses
-  Blcksock, sysutils, classes, windows, SynaUtil, SynaCode;
+  Blcksock, sysutils, classes, SynaUtil, SynaCode;
 
 const
   CRLF=#13+#10;

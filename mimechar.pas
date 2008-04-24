@@ -1,5 +1,5 @@
 {==============================================================================|
-| Project : Delphree - Synapse                                   | 002.000.000 |
+| Project : Delphree - Synapse                                   | 003.000.000 |
 |==============================================================================|
 | Content: MIME support character conversion tables                            |
 |==============================================================================|
@@ -26,6 +26,11 @@
 unit MIMEchar;
 
 interface
+
+{$IFDEF LINUX}
+uses
+  libc;
+{$ENDIF}
 
 type
 
@@ -557,10 +562,13 @@ Function IdealCoding(value:string;CharFrom:TMimeChar;CharTo:TSetChar):TMimeChar;
 implementation
 
 uses
-  windows, sysutils, synautil, synacode;
+{$IFNDEF LINUX}
+  windows,
+{$ENDIF}
+  sysutils, synautil, synacode;
 
 {==============================================================================}
-procedure CopyArray(var SourceTable, TargetTable:array of word);
+procedure CopyArray(const SourceTable:array of word; var TargetTable:array of word);
 var
   n:integer;
 begin
@@ -882,6 +890,10 @@ end;
 {==============================================================================}
 {GetCurChar}
 Function GetCurCP:TMimeChar;
+{$IFDEF LINUX}
+begin
+  result:=GetCPFromID(nl_langinfo(_NL_CTYPE_CODESET_NAME));
+{$ELSE}
 var
   x:integer;
 begin
@@ -895,6 +907,7 @@ begin
   if x=1256 then result:=CP1256;
   if x=1257 then result:=CP1257;
   if x=1258 then result:=CP1258;
+{$ENDIF}
 end;
 
 {==============================================================================}

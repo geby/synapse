@@ -1,5 +1,5 @@
 {==============================================================================|
-| Project : Delphree - Synapse                                   | 001.003.000 |
+| Project : Delphree - Synapse                                   | 001.004.000 |
 |==============================================================================|
 | Content: MIME support procedures and functions                               |
 |==============================================================================|
@@ -28,7 +28,7 @@ unit MIMEpart;
 interface
 
 uses
-  sysutils, classes, windows, MIMEchar, SynaCode, SynaUtil, MIMEinLn;
+  sysutils, classes, MIMEchar, SynaCode, SynaUtil, MIMEinLn;
 
 type
 
@@ -61,6 +61,7 @@ TMimePart=class
     secondary:string;
     description:string;
     disposition:string;
+    contentID:string;
     boundary:string;
     FileName:string;
     Lines:TStringList;
@@ -176,6 +177,7 @@ begin
   TargetCharset:=GetCurCP;
   secondary:='';
   disposition:='';
+  contentID:='';
   description:='';
   boundary:='';
   FileName:='';
@@ -263,6 +265,10 @@ begin
             disposition:=separateright(su,':');
             disposition:=trim(separateleft(disposition,';'));
             fn:=getparameter(s,'filename=');
+          end;
+        if pos('CONTENT-ID:',su)=1 then
+          begin
+            contentID:=separateright(s,':');
           end;
       end;
 
@@ -458,7 +464,8 @@ begin
           then s:='; filename="'+filename+'"';
         lines.insert(0,'Content-Disposition: '+lowercase(disposition)+s);
       end;
-
+    if contentID<>''
+      then lines.insert(0,'Content-ID: '+contentID);
 
     case EncodingCode of
       ME_7BIT:              s:='7bit';
@@ -494,6 +501,7 @@ begin
   s:=uppercase(extractfileext(value));
   if s=''
     then s:=uppercase(value);
+  s:=separateright(s,'.');
   for n:=0 to MaxMimeType do
     if MimeType[n,0]=s then
       begin

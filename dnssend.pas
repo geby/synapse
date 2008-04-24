@@ -1,5 +1,5 @@
 {==============================================================================|
-| Project : Delphree - Synapse                                   | 001.001.000 |
+| Project : Delphree - Synapse                                   | 001.001.001 |
 |==============================================================================|
 | Content: DNS client                                                          |
 |==============================================================================|
@@ -29,7 +29,7 @@ unit DNSsend;
 
 interface
 uses
-  Blcksock, sysutils, classes, SynaUtil, dialogs;
+  Blcksock, sysutils, classes, SynaUtil;
 
 const
   Qtype_A     =1;

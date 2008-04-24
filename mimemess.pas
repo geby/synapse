@@ -1,5 +1,5 @@
 {==============================================================================|
-| Project : Delphree - Synapse                                   | 001.002.000 |
+| Project : Delphree - Synapse                                   | 001.003.000 |
 |==============================================================================|
 | Content: MIME message object                                                 |
 |==============================================================================|
@@ -52,6 +52,7 @@ TMimeMess=class(TObject)
     function AddPart:integer;
     procedure AddPartText(value:tstringList);
     procedure AddPartHTML(value:tstringList);
+    procedure AddPartHTMLBinary(Value,Cid:string);
     procedure AddPartBinary(value:string);
     procedure EncodeMessage;
     procedure FinalizeHeaders;
@@ -166,6 +167,27 @@ begin
       MimeTypeFromExt(s);
       description:='Attached file: '+s;
       disposition:='attachment';
+      filename:=s;
+      EncodingCode:=ME_BASE64;
+      EncodePart;
+    end;
+end;
+
+{TMimeMess.AddPartHTMLBinary}
+procedure TMimeMess.AddPartHTMLBinary(Value,Cid:string);
+var
+  x:integer;
+  s:string;
+begin
+  x:=Addpart;
+  with TMimePart(PartList[x]) do
+    begin
+      DecodedLines.LoadFromFile(Value);
+      s:=ExtractFileName(value);
+      MimeTypeFromExt(s);
+      description:='Included file: '+s;
+      disposition:='inline';
+      contentID:=cid;
       filename:=s;
       EncodingCode:=ME_BASE64;
       EncodePart;
