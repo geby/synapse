@@ -1,5 +1,5 @@
 {==============================================================================|
-| Project : Ararat Synapse                                       | 001.000.003 |
+| Project : Ararat Synapse                                       | 001.000.004 |
 |==============================================================================|
 | Content: SSL support by OpenSSL                                              |
 |==============================================================================|
@@ -643,6 +643,11 @@ begin
     Exit;
   end;
   cert := SSLGetPeerCertificate(Fssl);
+  if not assigned(cert) then
+  begin
+    Result := '';
+    Exit;
+  end;
 {$IFDEF CIL}
   sb := StringBuilder.Create(4096);
   Result := X509NameOneline(X509GetSubjectName(cert), sb, 4096);
@@ -676,6 +681,11 @@ begin
     Exit;
   end;
   cert := SSLGetPeerCertificate(Fssl);
+  if not assigned(cert) then
+  begin
+    Result := '';
+    Exit;
+  end;
 {$IFDEF CIL}
   sb := StringBuilder.Create(4096);
   Result := X509NameOneline(X509GetIssuerName(cert), sb, 4096);
@@ -700,6 +710,11 @@ begin
     Exit;
   end;
   cert := SSLGetPeerCertificate(Fssl);
+  if not assigned(cert) then
+  begin
+    Result := '';
+    Exit;
+  end;
 {$IFDEF CIL}
   sb := StringBuilder.Create(EVP_MAX_MD_SIZE);
   X509Digest(cert, EvpGetDigestByName('MD5'), sb, x);
@@ -729,6 +744,11 @@ begin
     Exit;
   end;
   cert := SSLGetPeerCertificate(Fssl);
+  if not assigned(cert) then
+  begin
+    Result := '';
+    Exit;
+  end;
   b := BioNew(BioSMem);
   try
     X509Print(b, cert);

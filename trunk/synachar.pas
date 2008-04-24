@@ -65,7 +65,7 @@ unit synachar;
 interface
 
 uses
-{$IFDEF LINUX}
+{$IFNDEF WIN32}
   Libc,
 {$ELSE}
   Windows,
@@ -1469,7 +1469,7 @@ begin
 end;
 
 {==============================================================================}
-{$IFDEF LINUX}
+{$IFNDEF WIN32}
 
 function GetCurCP: TMimeChar;
 begin

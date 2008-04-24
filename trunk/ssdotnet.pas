@@ -49,7 +49,7 @@
 interface
 
 uses
-  SyncObjs, SysUtils,
+  SyncObjs, SysUtils, Classes,
   System.Net,
   System.Net.Sockets;
 
@@ -73,6 +73,7 @@ type
   TMemory = Array of byte;
   TLinger = LingerOption;
   TSocket = socket;
+  TAddrFamily = AddressFamily;
 
 const
   WSADESCRIPTION_LEN     =   256;
@@ -89,33 +90,10 @@ type
 //    lpVendorInfo: PChar;
   end;
 
-  SunB6 = packed record
-    s_b1,  s_b2,  s_b3,  s_b4,
-    s_b5,  s_b6,  s_b7,  s_b8,
-    s_b9,  s_b10, s_b11, s_b12,
-    s_b13, s_b14, s_b15, s_b16: u_char;
-  end;
-
-  S6_Bytes   = SunB6;
-  S6_Addr    = SunB6;
-
-  TInAddr6 = packed record
-      S_un_b:  SunB6;
-  end;
-
-  TSockAddrIn6 = packed record
-		sin6_family:   u_short;     // AF_INET6
-		sin6_port:     u_short;     // Transport level port number
-		sin6_flowinfo: u_long;	    // IPv6 flow information
-		sin6_addr:     TInAddr6;    // IPv6 address
-		sin6_scope_id: u_long;      // Scope Id: IF number for link-local
-                                //           SITE id for site-local
-  end;
-
-
 const
   MSG_NOSIGNAL = 0;
   INVALID_SOCKET = nil;
+  AF_UNSPEC = AddressFamily.Unspecified;
   AF_INET = AddressFamily.InterNetwork;
   AF_INET6 = AddressFamily.InterNetworkV6;
   SOCKET_ERROR = integer(-1);
@@ -387,7 +365,7 @@ function RecvFrom(s: TSocket; Buf: TMemory; len, flags: Integer; var from: TVarS
   function  ntohs(netshort: u_short): u_short;
   function  ntohl(netlong: u_long): u_long;
   function  Listen(s: TSocket; backlog: Integer): Integer;
-  function  IoctlSocket(s: TSocket; cmd: DWORD; var arg: u_long): Integer;
+  function  IoctlSocket(s: TSocket; cmd: DWORD; var arg: integer): Integer;
   function  htons(hostshort: u_short): u_short;
   function  htonl(hostlong: u_long): u_long;
 //  function  GetSockName(s: TSocket; name: PSockAddr; var namelen: Integer): Integer;
@@ -413,6 +391,14 @@ function RecvFrom(s: TSocket; Buf: TMemory; len, flags: Integer; var from: TVarS
 //    stdcall;
 
   function GetPortService(value: string): integer;
+
+function IsNewApi(Family: TAddrFamily): Boolean;
+function SetVarSin(var Sin: TVarSin; IP, Port: string; Family: TAddrFamily; SockProtocol, SockType: integer; PreferIP4: Boolean): integer;
+function GetSinIP(Sin: TVarSin): string;
+function GetSinPort(Sin: TVarSin): Integer;
+procedure ResolveNameToIP(Name: string; Family: TAddrFamily; SockProtocol, SockType: integer; const IPList: TStrings);
+function ResolveIPToName(IP: string; Family: TAddrFamily; SockProtocol, SockType: integer): string;
+function ResolvePort(Port: string; Family: TAddrFamily; SockProtocol, SockType: integer): Word;
 
 var
   SynSockCS: SyncObjs.TCriticalSection;
@@ -826,7 +812,7 @@ begin
   end;
 end;
 
-function  IoctlSocket(s: TSocket; cmd: DWORD; var arg: u_long): Integer;
+function  IoctlSocket(s: TSocket; cmd: DWORD; var arg: integer): Integer;
 var
   inv, outv: TMemory;
 begin
@@ -840,7 +826,7 @@ begin
       inv := BitConverter.GetBytes(arg);
       outv := BitConverter.GetBytes(integer(0));
       s.IOControl(cmd, inv, outv);
-      arg := BitConverter.ToUInt32(outv, 0);
+      arg := BitConverter.ToInt32(outv, 0);
     end;
   except
     on e: System.Net.Sockets.SocketException do
@@ -984,6 +970,106 @@ begin
   if Result = 0 then
     Result := StrToIntDef(value, 0);
 end;
+
+{=============================================================================}
+function IsNewApi(Family: TAddrFamily): Boolean;
+begin
+  Result := true;
+end;
+
+function SetVarSin(var Sin: TVarSin; IP, Port: string; Family: TAddrFamily; SockProtocol, SockType: integer; PreferIP4: Boolean): integer;
+var
+  IPs: array of IPAddress;
+  n: integer;
+  ip4, ip6: string;
+  sip: string;
+begin
+  sip := '';
+  ip4 := '';
+  ip6 := '';
+  IPs := Dns.Resolve(IP).AddressList;
+  for n :=low(IPs) to high(IPs) do begin
+    if (ip4 = '') and (IPs[n].AddressFamily = AF_INET) then
+      ip4 := IPs[n].toString;
+    if (ip6 = '') and (IPs[n].AddressFamily = AF_INET6) then
+      ip6 := IPs[n].toString;
+    if (ip4 <> '') and (ip6 <> '') then
+      break;
+  end;
+  case Family of
+    AF_UNSPEC:
+      begin
+        if (ip4 <> '') and (ip6 <> '') then
+        begin
+          if PreferIP4 then
+            sip := ip4
+          else
+            Sip := ip6;
+          end
+        else
+        begin
+          sip := ip4;
+          if (ip6 <> '') then
+            sip := ip6;
+        end;
+      end;
+    AF_INET:
+      sip := ip4;
+    AF_INET6:
+      sip := ip6;
+  end;
+  sin := TVarSin.Create(IPAddress.Parse(sip), GetPortService(Port));
+end;
+
+function GetSinIP(Sin: TVarSin): string;
+begin
+  Result := Sin.Address.ToString;
+end;
+
+function GetSinPort(Sin: TVarSin): Integer;
+begin
+  Result := Sin.Port;
+end;
+
+procedure ResolveNameToIP(Name: string; Family: TAddrFamily; SockProtocol, SockType: integer; const IPList: TStrings);
+var
+  IPs :array of IPAddress;
+  n: integer;
+begin
+  IPList.Clear;
+  IPs := Dns.Resolve(Name).AddressList;
+  for n := low(IPs) to high(IPs) do
+  begin
+    if not(((Family = AF_INET6) and (IPs[n].AddressFamily = AF_INET))
+      or ((Family = AF_INET) and (IPs[n].AddressFamily = AF_INET6))) then
+    begin
+      IPList.Add(IPs[n].toString);
+    end;
+  end;
+end;
+
+function ResolvePort(Port: string; Family: TAddrFamily; SockProtocol, SockType: integer): Word;
+var
+  n: integer;
+begin
+  Result := StrToIntDef(port, 0);
+  if Result = 0 then
+  begin
+    port := Lowercase(port);
+    for n := 0 to High(Services) do
+      if services[n, 0] = port then
+      begin
+        Result := strtointdef(services[n, 1], 0);
+        break;
+      end;
+  end;
+end;
+
+function ResolveIPToName(IP: string; Family: TAddrFamily; SockProtocol, SockType: integer): string;
+begin
+  Result := Dns.GetHostByAddress(IP).HostName;
+end;
+
 
 {=============================================================================}
 function InitSocketInterface(stack: string): Boolean;

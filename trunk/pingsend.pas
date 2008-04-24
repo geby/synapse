@@ -1,5 +1,5 @@
 {==============================================================================|
-| Project : Ararat Synapse                                       | 003.001.006 |
+| Project : Ararat Synapse                                       | 003.001.008 |
 |==============================================================================|
 | Content: PING sender                                                         |
 |==============================================================================|
@@ -59,16 +59,15 @@ Note: IPv6 not working under .NET. It is lack of Microsoft's .NET framework.
 {$R-}
 {$H+}
 
+{$IFDEF CIL}
+  Sorry, this unit is not for .NET!
+{$ENDIF}
+
 unit pingsend;
 
 interface
 
 uses
-{$IFDEF LINUX}
-  Libc,
-{$ELSE}
-  Windows,
-{$ENDIF}
   SysUtils,
   synsock, blcksock, synautil;
 
@@ -91,7 +90,7 @@ type
     i_checkSum: Word;
     i_Id: Word;
     i_seq: Word;
-    TimeStamp: ULong;
+    TimeStamp: integer;
   end;
 
   {:record used internally by TPingSend for compute checksum of ICMPv6 packet
@@ -274,7 +273,7 @@ begin
       break;
     if fSock.IP6used then
     begin
-{$IFDEF LINUX}
+{$IFNDEF WIN32}
       IcmpEchoHeaderPtr := Pointer(FBuffer);
 {$ELSE}
 //WinXP SP1 with networking update doing this think by another way ;-O
@@ -288,6 +287,12 @@ begin
       IPHeadPtr := Pointer(FBuffer);
       IpHdrLen := (IPHeadPtr^.VerLen and $0F) * 4;
       IcmpEchoHeaderPtr := @FBuffer[IpHdrLen + 1];
+    end;
+  //check for timeout
+    if TickDelta(x, GetTick) > FTimeout then
+    begin
+      t := false;
+      Break;
     end;
   //it discard sometimes possible 'echoes' of previosly sended packet
   //or other unwanted ICMP packets...
@@ -307,7 +312,7 @@ end;
 
 function TPINGSend.Checksum(Value: string): Word;
 var
-  CkSum: DWORD;
+  CkSum: integer;
   Num, Remain: Integer;
   n, i: Integer;
 begin
@@ -341,9 +346,8 @@ var
   ip6: TSockAddrIn6;
   x: integer;
 begin
-{$IFDEF LINUX}
   Result := 0;
-{$ELSE}
+{$IFDEF WIN32}
   s := StringOfChar(#0, SizeOf(TICMP6Packet)) + Value;
   ICMP6Ptr := Pointer(s);
   x := synsock.WSAIoctl(FSock.Socket, SIO_ROUTING_INTERFACE_QUERY,

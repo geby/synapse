@@ -1,9 +1,9 @@
 {==============================================================================|
-| Project : Ararat Synapse                                       | 009.000.007 |
+| Project : Ararat Synapse                                       | 009.001.003 |
 |==============================================================================|
 | Content: Library base                                                        |
 |==============================================================================|
-| Copyright (c)1999-2005, Lukas Gebauer                                        |
+| Copyright (c)1999-2006, Lukas Gebauer                                        |
 | All rights reserved.                                                         |
 |                                                                              |
 | Redistribution and use in source and binary forms, with or without           |
@@ -33,7 +33,7 @@
 | DAMAGE.                                                                      |
 |==============================================================================|
 | The Initial Developer of the Original Code is Lukas Gebauer (Czech Republic).|
-| Portions created by Lukas Gebauer are Copyright (c)1999-2005.                |
+| Portions created by Lukas Gebauer are Copyright (c)1999-2006.                |
 | All Rights Reserved.                                                         |
 |==============================================================================|
 | Contributor(s):                                                              |
@@ -88,16 +88,8 @@ interface
 
 uses
   SysUtils, Classes,
-{$IFDEF LINUX}
-  {$IFDEF FPC}
   synafpc,
-  {$ENDIF}
-  Libc,
-{$ENDIF}
-{$IFDEF WIN32}
-  Windows,
-{$ENDIF}
-  synsock, synautil, synacode
+  synsock, synautil, synacode, synaip
 {$IFDEF CIL}
   ,System.Net
   ,System.Net.Sockets
@@ -107,7 +99,7 @@ uses
 
 const
 
-  SynapseRelease = '36';
+  SynapseRelease = '37';
 
   cLocalhost = '127.0.0.1';
   cAnyHost = '0.0.0.0';
@@ -119,8 +111,7 @@ const
   CR = #$0d;
   LF = #$0a;
   CRLF = CR + LF;
-  c64k = 65535;
-
+  c64k = 65536;
 
 type
 
@@ -271,9 +262,9 @@ type
     FNonBlockMode: Boolean;
     FMaxLineLength: Integer;
     FMaxSendBandwidth: Integer;
-    FNextSend: ULong;
+    FNextSend: LongWord;
     FMaxRecvBandwidth: Integer;
-    FNextRecv: ULong;
+    FNextRecv: LongWord;
     FConvertLineEnd: Boolean;
     FLastCR: Boolean;
     FLastLF: Boolean;
@@ -298,10 +289,10 @@ type
     procedure SetNonBlockMode(Value: Boolean);
     procedure SetTTL(TTL: integer);
     function GetTTL:integer;
-    function IsNewApi: Boolean;
     procedure SetFamily(Value: TSocketFamily); virtual;
     procedure SetSocket(Value: TSocket); virtual;
     function GetWsaData: TWSAData;
+    function FamilyToAF(f: TSocketFamily): TAddrFamily;
   protected
     FSocket: TSocket;
     FLastError: Integer;
@@ -317,9 +308,10 @@ type
     procedure DoReadFilter(Buffer: TMemory; var Len: Integer);
     procedure DoMonitor(Writing: Boolean; const Buffer: TMemory; Len: Integer);
     procedure DoCreateSocket;
-    procedure LimitBandwidth(Length: Integer; MaxB: integer; var Next: ULong);
+    procedure LimitBandwidth(Length: Integer; MaxB: integer; var Next: LongWord);
     procedure SetBandwidth(Value: Integer);
     function TestStopFlag: Boolean;
+    procedure InternalSendStream(const Stream: TStream; WithSize, Indy: boolean); virtual;
   public
     constructor Create;
 
@@ -656,14 +648,6 @@ type
      it. (It not supported by all socket providers!)}
     procedure SetRecvTimeout(Timeout: Integer);
 
-    {:Convert IPv6 address from their string form to binary. This function
-     working only on systems with IPv6 support!}
-    function StrToIP6(const value: string): TSockAddrIn6;
-
-    {:Convert IPv6 address from binary to string form. This function working
-     only on systems with IPv6 support!}
-    function IP6ToStr(const value: TSockAddrIn6): string;
-
     {:Return value of socket type.}
     function GetSocketType: integer; Virtual;
 
@@ -774,8 +758,8 @@ type
      specify if is used IPv4 (dafault - @true) or IPv6.}
     property PreferIP4: Boolean read FPreferIP4 Write FPreferIP4;
 
-    {:By dafault (@false) is all timeouts used as timeout between two packets in
-     reading operations. If you set this to @true, then Timeouts is for overall
+    {:By default (@true) is all timeouts used as timeout between two packets in
+     reading operations. If you set this to @false, then Timeouts is for overall
      reading operation!}
     property InterPacketTimeout: Boolean read FInterPacketTimeout Write FInterPacketTimeout;
 
@@ -1332,9 +1316,9 @@ type
     TTL: Byte;
     Protocol: Byte;
     CheckSum: Word;
-    SourceIp: DWORD;
-    DestIp: DWORD;
-    Options: DWORD;
+    SourceIp: LongWord;
+    DestIp: LongWord;
+    Options: LongWord;
   end;
 
   {:@abstract(Parent class of application protocol implementations.)
@@ -1460,11 +1444,16 @@ begin
   inherited Destroy;
 end;
 
-function TBlockSocket.IsNewApi: Boolean;
+function TBlockSocket.FamilyToAF(f: TSocketFamily): TAddrFamily;
 begin
-  Result := SockEnhancedApi;
-  if not Result then
-    Result := (FFamily = SF_ip6) and SockWship6Api;
+  case f of
+    SF_ip4:
+      Result := AF_INET;
+    SF_ip6:
+      Result := AF_INET6;
+  else
+    Result := AF_UNSPEC;
+  end;
 end;
 
 procedure TBlockSocket.SetDelayedOption(const Value: TSynaOption);
@@ -1510,7 +1499,7 @@ begin
       begin
         FNonBlockMode := Value.Enabled;
         x := Ord(FNonBlockMode);
-        synsock.IoctlSocket(FSocket, FIONBIO, u_long(x));
+        synsock.IoctlSocket(FSocket, FIONBIO, x);
       end;
     SOT_RecvTimeout:
       begin
@@ -1622,242 +1611,36 @@ begin
 end;
 
 procedure TBlockSocket.SetSin(var Sin: TVarSin; IP, Port: string);
-{$IFNDEF CIL}
-type
-  pu_long = ^u_long;
 var
-  ProtoEnt: PProtoEnt;
-  ServEnt: PServEnt;
-  HostEnt: PHostEnt;
-  r: integer;
-  Hints1, Hints2: TAddrInfo;
-  Sin1, Sin2: TVarSin;
-  TwoPass: boolean;
-
-  function GetAddr(const IP, port: string; Hints: TAddrInfo; var Sin: TVarSin): integer;
-  var
-    Addr: PAddrInfo;
-  begin
-    Addr := nil;
-    try
-      FillChar(Sin, Sizeof(Sin), 0);
-      if Hints.ai_socktype = SOCK_RAW then
-      begin
-        Hints.ai_socktype := 0;
-        Hints.ai_protocol := 0;
-        Result := synsock.GetAddrInfo(PChar(IP), nil, @Hints, Addr);
-      end
-      else
-      begin
-        if (IP = cAnyHost) or (IP = c6AnyHost) then
-        begin
-          Hints.ai_flags := AI_PASSIVE;
-          Result := synsock.GetAddrInfo(nil, PChar(Port), @Hints, Addr);
-        end
-        else
-          if (IP = cLocalhost) or (IP = c6Localhost) then
-          begin
-            Result := synsock.GetAddrInfo(nil, PChar(Port), @Hints, Addr);
-          end
-          else
-          begin
-            Result := synsock.GetAddrInfo(PChar(IP), PChar(Port), @Hints, Addr);
-          end;
-      end;
-      if Result = 0 then
-        if (Addr <> nil) then
-          Move(Addr^.ai_addr^, Sin, Addr^.ai_addrlen);
-    finally
-      if Assigned(Addr) then
-        synsock.FreeAddrInfo(Addr);
-    end;
-  end;
-
+  f: TSocketFamily;
 begin
   DoStatus(HR_ResolvingBegin, IP + ':' + Port);
   FLastError := 0;
-  FillChar(Sin, Sizeof(Sin), 0);
-  if not IsNewApi then
+  //if socket exists, then use their type, else use users selection
+  f := SF_Any;
+  if (FSocket = INVALID_SOCKET) and (FFamily = SF_any) then
   begin
-    SynSockCS.Enter;
-    try
-      Sin.sin_family := AF_INET;
-      ProtoEnt := synsock.GetProtoByNumber(GetSocketProtocol);
-      ServEnt := nil;
-      if ProtoEnt <> nil then
-        ServEnt := synsock.GetServByName(PChar(Port), ProtoEnt^.p_name);
-      if ServEnt = nil then
-        Sin.sin_port := synsock.htons(StrToIntDef(Port, 0))
-      else
-        Sin.sin_port := ServEnt^.s_port;
-      if IP = cBroadcast then
-        Sin.sin_addr.s_addr := u_long(INADDR_BROADCAST)
-      else
-      begin
-        Sin.sin_addr.s_addr := synsock.inet_addr(PChar(IP));
-        if Sin.sin_addr.s_addr = u_long(INADDR_NONE) then
-        begin
-          HostEnt := synsock.GetHostByName(PChar(IP));
-          FLastError := synsock.WSAGetLastError;
-          if HostEnt <> nil then
-            Sin.sin_addr.S_addr := u_long(Pu_long(HostEnt^.h_addr_list^)^);
-        end;
-      end;
-    finally
-      SynSockCS.Leave;
-    end;
+    if IsIP(IP) then
+      f := SF_IP4
+    else
+      if IsIP6(IP) then
+        f := SF_IP6;
   end
   else
-  begin
-    FillChar(Hints1, Sizeof(Hints1), 0);
-    FillChar(Hints2, Sizeof(Hints2), 0);
-    TwoPass := False;
-    //if socket exists, then use their type, else use users selection
-    if FSocket = INVALID_SOCKET then
-      case FFamily of
-        SF_Any:
-          begin
-            if IsIP(IP) then
-              Hints1.ai_family := AF_INET
-            else
-              if IsIP6(IP) then
-                Hints1.ai_family := AF_INET6
-              else
-                if FPreferIP4 then
-                begin
-                  Hints1.ai_family := AF_INET;
-                  Hints2.ai_family := AF_INET6;
-                  TwoPass := True;
-                end
-                else
-                begin
-                  Hints2.ai_family := AF_INET;
-                  Hints1.ai_family := AF_INET6;
-                  TwoPass := True;
-                end
-          end;
-        SF_IP4:
-          Hints1.ai_family := AF_INET;
-        SF_IP6:
-          Hints1.ai_family := AF_INET6;
-      end
-    else
-      if FIP6Used then
-        Hints1.ai_family := AF_INET6
-      else
-        Hints1.ai_family := AF_INET;
-    Hints1.ai_socktype := GetSocketType;
-    Hints1.ai_protocol := GetSocketprotocol;
-    Hints2.ai_socktype := Hints1.ai_socktype;
-    Hints2.ai_protocol := Hints1.ai_protocol;
-
-    r := GetAddr(IP, Port, Hints1, Sin1);
-    FLastError := r;
-    sin := sin1;
-    if r <> 0 then
-      if TwoPass then
-      begin
-        r := GetAddr(IP, Port, Hints2, Sin2);
-        FLastError := r;
-        if r = 0 then
-          sin := sin2;
-      end;
-  end;
-{$ELSE}
-var
-  IPs: array of IPAddress;
-  n: integer;
-  ip4, ip6: string;
-  sip: string;
-begin
-  ip4 := '';
-  ip6 := '';
-  IPs := Dns.Resolve(IP).AddressList;
-  for n :=low(IPs) to high(IPs) do begin
-    if (ip4 = '') and (IPs[n].AddressFamily = AF_INET) then
-      ip4 := IPs[n].toString;
-    if (ip6 = '') and (IPs[n].AddressFamily = AF_INET6) then
-      ip6 := IPs[n].toString;
-    if (ip4 <> '') and (ip6 <> '') then
-      break;
-  end;
-  if FSocket = INVALID_SOCKET then
-  case FFamily of
-    SF_Any:
-      begin
-        if (ip4 <> '') and (ip6 <> '') then
-        begin
-          if FPreferIP4 then
-            sip := ip4
-          else
-            Sip := ip6;
-          end
-        else
-        begin
-          sip := ip4;
-          if (ip6 <> '') then
-            sip := ip6;
-        end;
-      end;
-    SF_IP4:
-      sip := ip4;
-    SF_IP6:
-      sip := ip6;
-  end
-  else
-    if FIP6Used then
-      sip := ip6
-    else
-      sip := ip4;
-
-  sin := TVarSin.Create(IPAddress.Parse(sip), GetPortService(Port));
-{$ENDIF}
+    f := FFamily;
+  FLastError := synsock.SetVarSin(sin, ip, port, FamilyToAF(f),
+    GetSocketprotocol, GetSocketType, FPreferIP4);
   DoStatus(HR_ResolvingEnd, IP + ':' + Port);
 end;
 
 function TBlockSocket.GetSinIP(Sin: TVarSin): string;
-{$IFNDEF CIL}
-var
-  p: PChar;
-  host, serv: string;
-  hostlen, servlen: integer;
-  r: integer;
 begin
-  Result := '';
-  if not IsNewApi then
-  begin
-    p := synsock.inet_ntoa(Sin.sin_addr);
-    if p <> nil then
-      Result := p;
-  end
-  else
-  begin
-    hostlen := NI_MAXHOST;
-    servlen := NI_MAXSERV;
-    setlength(host, hostlen);
-    setlength(serv, servlen);
-    r := getnameinfo(@sin, SizeOfVarSin(sin), PChar(host), hostlen,
-      PChar(serv), servlen, NI_NUMERICHOST + NI_NUMERICSERV);
-    if r = 0 then
-      Result := PChar(host);
-  end;
-{$ELSE}
-begin
-  Result := Sin.Address.ToString;
-{$ENDIF}
+  Result := synsock.GetSinIP(sin);
 end;
 
 function TBlockSocket.GetSinPort(Sin: TVarSin): Integer;
-{$IFNDEF CIL}
 begin
-  if (Sin.sin_family = AF_INET6) then
-    Result := synsock.ntohs(Sin.sin6_port)
-  else
-    Result := synsock.ntohs(Sin.sin_port);
-{$ELSE}
-begin
-  Result := Sin.Port;
-{$ENDIF}
+  Result := synsock.GetSinPort(sin);
 end;
 
 procedure TBlockSocket.CreateSocket;
@@ -2014,10 +1797,10 @@ begin
   MaxRecvBandwidth := Value;
 end;
 
-procedure TBlockSocket.LimitBandwidth(Length: Integer; MaxB: integer; var Next: ULong);
+procedure TBlockSocket.LimitBandwidth(Length: Integer; MaxB: integer; var Next: LongWord);
 var
-  x: ULong;
-  y: ULong;
+  x: LongWord;
+  y: LongWord;
 begin
   if MaxB > 0 then
   begin
@@ -2131,22 +1914,30 @@ begin
 end;
 
 procedure TBlockSocket.SendBlock(const Data: AnsiString);
+var
+  i: integer;
 begin
-  SendInteger(Length(data));
-  SendString(Data);
+  i := SwapBytes(Length(data));
+  SendString(Codelongint(i) + Data);
 end;
 
-procedure TBlockSocket.SendStreamRaw(const Stream: TStream);
+procedure TBlockSocket.InternalSendStream(const Stream: TStream; WithSize, Indy: boolean);
 var
-  si: integer;
+  si, l: integer;
   x, y, yr: integer;
   s: AnsiString;
+  b: boolean;
 {$IFDEF CIL}
   buf: TMemory;
 {$ENDIF}
 begin
   si := Stream.Size - Stream.Position;
+  if not indy then
+    l := SwapBytes(si)
+  else
+    l := si;
   x := 0;
+  b := true;
   while x < si do
   begin
     y := si - x;
@@ -2157,6 +1948,11 @@ begin
     yr := Stream.read(buf, y);
     if yr > 0 then
     begin
+      if WithSize and b then
+      begin
+        b := false;
+        SendString(CodeLongInt(l));
+      end;
       SendBuffer(buf, yr);
       if FLastError <> 0 then
         break;
@@ -2170,7 +1966,13 @@ begin
     if yr > 0 then
     begin
       SetLength(s, yr);
-      SendString(s);
+      if WithSize and b then
+      begin
+        b := false;
+        SendString(CodeLongInt(l) + s);
+      end
+      else
+        SendString(s);
       if FLastError <> 0 then
         break;
       Inc(x, yr);
@@ -2181,23 +1983,19 @@ begin
   end;
 end;
 
-procedure TBlockSocket.SendStreamIndy(const Stream: TStream);
-var
-  si: integer;
+procedure TBlockSocket.SendStreamRaw(const Stream: TStream);
 begin
-  si := Stream.Size - Stream.Position;
-  si := synsock.HToNL(si);
-  SendInteger(si);
-  SendStreamRaw(Stream);
+  InternalSendStream(Stream, false, false);
+end;
+
+procedure TBlockSocket.SendStreamIndy(const Stream: TStream);
+begin
+  InternalSendStream(Stream, true, true);
 end;
 
 procedure TBlockSocket.SendStream(const Stream: TStream);
-var
-  si: integer;
 begin
-  si := Stream.Size - Stream.Position;
-  SendInteger(si);
-  SendStreamRaw(Stream);
+  InternalSendStream(Stream, true, false);
 end;
 
 function TBlockSocket.RecvBuffer(Buffer: TMemory; Length: Integer): Integer;
@@ -2213,10 +2011,13 @@ begin
   else
     SockCheck(Result);
   ExceptCheck;
-  Inc(FRecvCounter, Result);
-  DoStatus(HR_ReadCount, IntToStr(Result));
-  DoMonitor(False, Buffer, Result);
-  DoReadFilter(Buffer, Result);
+  if Result > 0 then
+  begin
+    Inc(FRecvCounter, Result);
+    DoStatus(HR_ReadCount, IntToStr(Result));
+    DoMonitor(False, Buffer, Result);
+    DoReadFilter(Buffer, Result);
+  end;
 end;
 
 function TBlockSocket.RecvBufferEx(Buffer: TMemory; Len: Integer;
@@ -2224,45 +2025,49 @@ function TBlockSocket.RecvBufferEx(Buffer: TMemory; Len: Integer;
 var
   s: AnsiString;
   rl, l: integer;
-  ti: ULong;
+  ti: LongWord;
 {$IFDEF CIL}
   n: integer;
   b: TMemory;
 {$ENDIF}
 begin
   FLastError := 0;
-  rl := 0;
-  repeat
-    ti := GetTick;
-    s := RecvPacket(Timeout);
-    l := Length(s);
-    if (rl + l) > Len then
-      l := Len - rl;
-    {$IFDEF CIL}
-    b := BytesOf(s);
-    for n := 0 to l do
-      Buffer[rl + n] := b[n];
-    {$ELSE}
-    Move(Pointer(s)^, IncPoint(Buffer, rl)^, l);
-    {$ENDIF}
-    rl := rl + l;
-    if FLastError <> 0 then
-      Break;
-    if rl >= Len then
-      Break;
-    if not FInterPacketTimeout then
-    begin
-      Timeout := Timeout - integer(TickDelta(ti, GetTick));
-      if Timeout <= 0 then
-      begin
-        FLastError := WSAETIMEDOUT;
+  Result := 0;
+  if Len > 0 then
+  begin
+    rl := 0;
+    repeat
+      ti := GetTick;
+      s := RecvPacket(Timeout);
+      l := Length(s);
+      if (rl + l) > Len then
+        l := Len - rl;
+      {$IFDEF CIL}
+      b := BytesOf(s);
+      for n := 0 to l do
+        Buffer[rl + n] := b[n];
+      {$ELSE}
+      Move(Pointer(s)^, IncPoint(Buffer, rl)^, l);
+      {$ENDIF}
+      rl := rl + l;
+      if FLastError <> 0 then
         Break;
+      if rl >= Len then
+        Break;
+      if not FInterPacketTimeout then
+      begin
+        Timeout := Timeout - integer(TickDelta(ti, GetTick));
+        if Timeout <= 0 then
+        begin
+          FLastError := WSAETIMEDOUT;
+          Break;
+        end;
       end;
-    end;
-  until False;
-  delete(s, 1, l);
-  FBuffer := s;
-  Result := rl;
+    until False;
+    delete(s, 1, l);
+    FBuffer := s;
+    Result := rl;
+  end;
 end;
 
 function TBlockSocket.RecvBufferStr(Length: Integer; Timeout: Integer): AnsiString;
@@ -2312,8 +2117,10 @@ begin
   end
   else
   begin
+    {$IFDEF WIN32}
     //not drain CPU on large downloads...
     Sleep(0);
+    {$ENDIF}
     x := WaitingData;
     if x > 0 then
     begin
@@ -2361,6 +2168,15 @@ begin
         FLastError := WSAETIMEDOUT;
     end;
   end;
+  if FConvertLineEnd and (Result <> '') then
+  begin
+    if FLastCR and (Result[1] = LF) then
+      Delete(Result, 1, 1);
+    if FLastLF and (Result[1] = CR) then
+      Delete(Result, 1, 1);
+    FLastCR := False;
+    FLastLF := False;
+  end;
   ExceptCheck;
 end;
 
@@ -2397,7 +2213,7 @@ var
   CorCRLF: Boolean;
   t: AnsiString;
   tl: integer;
-  ti: ULong;
+  ti: LongWord;
 begin
   FLastError := 0;
   Result := '';
@@ -2418,12 +2234,6 @@ begin
     if Length(s) > 0 then
       if CorCRLF then
       begin
-        if FLastCR and (s[1] = LF) then
-          Delete(s, 1, 1);
-        if FLastLF and (s[1] = CR) then
-          Delete(s, 1, 1);
-        FLastCR := False;
-        FLastLF := False;
         t := '';
         x := PosCRLF(s, t);
         tl := Length(t);
@@ -2623,8 +2433,10 @@ var
   x: Integer;
 begin
   Result := 0;
-  if synsock.IoctlSocket(FSocket, FIONREAD, u_long(x)) = 0 then
+  if synsock.IoctlSocket(FSocket, FIONREAD, x) = 0 then
     Result := x;
+  if Result > c64k then
+    Result := c64k;
 end;
 
 function TBlockSocket.WaitingDataEx: Integer;
@@ -2640,7 +2452,11 @@ begin
   Sleep(1);
   try
     while (Length(FBuffer) > 0) or (WaitingData > 0) do
+    begin
       RecvPacket(0);
+      if FLastError <> 0 then
+        break;
+    end;
   except
     on exception do;
   end;
@@ -2665,116 +2481,13 @@ begin
     Result := '127.0.0.1';
 end;
 
-{$IFDEF CIL}
 procedure TBlockSocket.ResolveNameToIP(Name: string; const IPList: TStrings);
-var
-  IPs :array of IPAddress;
-  n: integer;
 begin
   IPList.Clear;
-  IPs := Dns.Resolve(Name).AddressList;
-  for n := low(IPs) to high(IPs) do
-  begin
-    if not(((FFamily = SF_IP6) and (IPs[n].AddressFamily = AF_INET))
-      or ((FFamily = SF_IP4) and (IPs[n].AddressFamily = AF_INET6))) then
-    begin
-      IPList.Add(IPs[n].toString);
-    end;
-  end;
-end;
-
-{$ELSE}
-procedure TBlockSocket.ResolveNameToIP(Name: string; const IPList: TStrings);
-type
-  TaPInAddr = array[0..250] of PInAddr;
-  PaPInAddr = ^TaPInAddr;
-var
-  Hints: TAddrInfo;
-  Addr: PAddrInfo;
-  AddrNext: PAddrInfo;
-  r: integer;
-  host, serv: string;
-  hostlen, servlen: integer;
-  RemoteHost: PHostEnt;
-  IP: u_long;
-  PAdrPtr: PaPInAddr;
-  i: Integer;
-  s: string;
-  InAddr: TInAddr;
-begin
-  IPList.Clear;
-  if not IsNewApi then
-  begin
-    IP := synsock.inet_addr(PChar(Name));
-    if IP = u_long(INADDR_NONE) then
-    begin
-      SynSockCS.Enter;
-      try
-        RemoteHost := synsock.GetHostByName(PChar(Name));
-        if RemoteHost <> nil then
-        begin
-          PAdrPtr := PAPInAddr(RemoteHost^.h_addr_list);
-          i := 0;
-          while PAdrPtr^[i] <> nil do
-          begin
-            InAddr := PAdrPtr^[i]^;
-            with InAddr.S_un_b do
-              s := Format('%d.%d.%d.%d',
-                [Ord(s_b1), Ord(s_b2), Ord(s_b3), Ord(s_b4)]);
-            IPList.Add(s);
-            Inc(i);
-          end;
-        end;
-      finally
-        SynSockCS.Leave;
-      end;
-    end
-    else
-      IPList.Add(Name);
-  end
-  else
-  begin
-    Addr := nil;
-    try
-      FillChar(Hints, Sizeof(Hints), 0);
-      Hints.ai_family := AF_UNSPEC;
-      Hints.ai_socktype := GetSocketType;
-      Hints.ai_protocol := GetSocketprotocol;
-      Hints.ai_flags := 0;
-      r := synsock.GetAddrInfo(PChar(Name), nil, @Hints, Addr);
-      if r = 0 then
-      begin
-        AddrNext := Addr;
-        while not(AddrNext = nil) do
-        begin
-          if not(((FFamily = SF_IP6) and (AddrNext^.ai_family = AF_INET))
-            or ((FFamily = SF_IP4) and (AddrNext^.ai_family = AF_INET6))) then
-          begin
-            hostlen := NI_MAXHOST;
-            servlen := NI_MAXSERV;
-            setlength(host, hostlen);
-            setlength(serv, servlen);
-            r := getnameinfo(AddrNext^.ai_addr, AddrNext^.ai_addrlen,
-              PChar(host), hostlen, PChar(serv), servlen,
-              NI_NUMERICHOST + NI_NUMERICSERV);
-            if r = 0 then
-            begin
-              host := PChar(host);
-              IPList.Add(host);
-            end;
-          end;
-          AddrNext := AddrNext^.ai_next;
-        end;
-      end;
-    finally
-      if Assigned(Addr) then
-        synsock.FreeAddrInfo(Addr);
-    end;
-  end;
+  synsock.ResolveNameToIP(Name, FamilyToAF(FFamily), GetSocketprotocol, GetSocketType, IPList);
   if IPList.Count = 0 then
     IPList.Add(cAnyHost);
 end;
-{$ENDIF}
 
 function TBlockSocket.ResolveName(Name: string): string;
 var
@@ -2790,123 +2503,16 @@ begin
 end;
 
 function TBlockSocket.ResolvePort(Port: string): Word;
-{$IFDEF CIL}
 begin
-  Result := SynSock.GetPortService(Port);
+  Result := synsock.ResolvePort(Port, FamilyToAF(FFamily), GetSocketProtocol, GetSocketType);
 end;
-{$ELSE}
-var
-  ProtoEnt: PProtoEnt;
-  ServEnt: PServEnt;
-  Hints: TAddrInfo;
-  Addr: PAddrInfo;
-  r: integer;
-begin
-  Result := 0;
-  if not IsNewApi then
-  begin
-    SynSockCS.Enter;
-    try
-      ProtoEnt := synsock.GetProtoByNumber(GetSocketProtocol);
-      ServEnt := nil;
-      if ProtoEnt <> nil then
-        ServEnt := synsock.GetServByName(PChar(Port), ProtoEnt^.p_name);
-      if ServEnt = nil then
-        Result := StrToIntDef(Port, 0)
-      else
-        Result := synsock.htons(ServEnt^.s_port);
-    finally
-      SynSockCS.Leave;
-    end;
-  end
-  else
-  begin
-    Addr := nil;
-    try
-      FillChar(Hints, Sizeof(Hints), 0);
-      Hints.ai_family := AF_UNSPEC;
-      Hints.ai_socktype := GetSocketType;
-      Hints.ai_protocol := GetSocketprotocol;
-      Hints.ai_flags := AI_PASSIVE;
-      r := synsock.GetAddrInfo(nil, PChar(Port), @Hints, Addr);
-      if (r = 0) and Assigned(Addr) then
-      begin
-        if Addr^.ai_family = AF_INET then
-          Result := synsock.htons(Addr^.ai_addr^.sin_port);
-        if Addr^.ai_family = AF_INET6 then
-          Result := synsock.htons(PSockAddrIn6(Addr^.ai_addr)^.sin6_port);
-      end;
-    finally
-      if Assigned(Addr) then
-        synsock.FreeAddrInfo(Addr);
-    end;
-  end;
-end;
-{$ENDIF}
 
-{$IFDEF CIL}
 function TBlockSocket.ResolveIPToName(IP: string): string;
 begin
-  Result := Dns.GetHostByAddress(IP).HostName;
+  if not IsIP(IP) or not IsIp6(IP) then
+    IP := ResolveName(IP);
+  Result := synsock.ResolveIPToName(IP, FamilyToAF(FFamily), GetSocketProtocol, GetSocketType);
 end;
-{$ELSE}
-function TBlockSocket.ResolveIPToName(IP: string): string;
-var
-  Hints: TAddrInfo;
-  Addr: PAddrInfo;
-  r: integer;
-  host, serv: string;
-  hostlen, servlen: integer;
-  RemoteHost: PHostEnt;
-  IPn: u_long;
-begin
-  Result := IP;
-  if not IsNewApi then
-  begin
-    if not IsIP(IP) then
-      IP := ResolveName(IP);
-    IPn := synsock.inet_addr(PChar(IP));
-    if IPn <> u_long(INADDR_NONE) then
-    begin
-      SynSockCS.Enter;
-      try
-        RemoteHost := GetHostByAddr(@IPn, SizeOf(IPn), AF_INET);
-        if RemoteHost <> nil then
-          Result := RemoteHost^.h_name;
-      finally
-        SynSockCS.Leave;
-      end;
-    end;
-  end
-  else
-  begin
-    Addr := nil;
-    try
-      FillChar(Hints, Sizeof(Hints), 0);
-      Hints.ai_family := AF_UNSPEC;
-      Hints.ai_socktype := GetSocketType;
-      Hints.ai_protocol := GetSocketprotocol;
-      Hints.ai_flags := 0;
-      r := synsock.GetAddrInfo(PChar(IP), nil, @Hints, Addr);
-      if (r = 0) and Assigned(Addr)then
-      begin
-        hostlen := NI_MAXHOST;
-        servlen := NI_MAXSERV;
-        setlength(host, hostlen);
-        setlength(serv, servlen);
-        r := getnameinfo(Addr^.ai_addr, Addr^.ai_addrlen,
-          PChar(host), hostlen, PChar(serv), servlen,
-          NI_NUMERICSERV);
-        if r = 0 then
-          Result := PChar(host);
-      end;
-    finally
-      if Assigned(Addr) then
-        synsock.FreeAddrInfo(Addr);
-    end;
-  end;
-end;
-{$ENDIF}
 
 procedure TBlockSocket.SetRemoteSin(IP, Port: string);
 begin
@@ -3004,7 +2610,7 @@ begin
     Exit;
   DoMonitor(True, Buffer, Length);
   LimitBandwidth(Length, FMaxSendBandwidth, FNextsend);
-  Result := synsock.SendTo(FSocket, Buffer, Length, 0, FRemoteSin);
+  Result := synsock.SendTo(FSocket, Buffer, Length, MSG_NOSIGNAL, FRemoteSin);
   SockCheck(Result);
   ExceptCheck;
   Inc(FSendCounter, Result);
@@ -3017,7 +2623,7 @@ begin
   if TestStopFlag then
     Exit;
   LimitBandwidth(Length, FMaxRecvBandwidth, FNextRecv);
-  Result := synsock.RecvFrom(FSocket, Buffer, Length, 0, FRemoteSin);
+  Result := synsock.RecvFrom(FSocket, Buffer, Length, MSG_NOSIGNAL, FRemoteSin);
   SockCheck(Result);
   ExceptCheck;
   Inc(FRecvCounter, Result);
@@ -3211,107 +2817,6 @@ begin
   GetSins;
   FIP6Used := FRemoteSin.AddressFamily = AF_INET6;
 end;
-
-{$IFDEF CIL}
-function TBlockSocket.StrToIP6(const value: string): TSockAddrIn6;
-var
-  buf: TMemory;
-  IP: IPAddress;
-begin
-  IP := IPAddress.Parse(Value);
-  buf := IP.GetAddressBytes;
-  result.sin6_addr.S_un_b.s_b1 := char(buf[0]);
-  result.sin6_addr.S_un_b.s_b2 := char(buf[1]);
-  result.sin6_addr.S_un_b.s_b3 := char(buf[2]);
-  result.sin6_addr.S_un_b.s_b4 := char(buf[3]);
-  result.sin6_addr.S_un_b.s_b5 := char(buf[4]);
-  result.sin6_addr.S_un_b.s_b6 := char(buf[5]);
-  result.sin6_addr.S_un_b.s_b7 := char(buf[6]);
-  result.sin6_addr.S_un_b.s_b8 := char(buf[7]);
-  result.sin6_addr.S_un_b.s_b9 := char(buf[8]);
-  result.sin6_addr.S_un_b.s_b10 := char(buf[9]);
-  result.sin6_addr.S_un_b.s_b11 := char(buf[10]);
-  result.sin6_addr.S_un_b.s_b12 := char(buf[11]);
-  result.sin6_addr.S_un_b.s_b13 := char(buf[12]);
-  result.sin6_addr.S_un_b.s_b14 := char(buf[13]);
-  result.sin6_addr.S_un_b.s_b15 := char(buf[14]);
-  result.sin6_addr.S_un_b.s_b16 := char(buf[15]);
-  result.sin6_family := Word(AF_INET6);
-end;
-{$ELSE}
-function TBlockSocket.StrToIP6(const value: string): TSockAddrIn6;
-var
-  addr: PAddrInfo;
-  hints: TAddrInfo;
-  r: integer;
-begin
-  FillChar(Result, Sizeof(Result), 0);
-  if SockEnhancedApi or SockWship6Api then
-  begin
-    Addr := nil;
-    try
-      FillChar(Hints, Sizeof(Hints), 0);
-      Hints.ai_family := AF_INET6;
-      Hints.ai_flags := AI_NUMERICHOST;
-      r := synsock.GetAddrInfo(PChar(value), nil, @Hints, Addr);
-      if (r = 0) and Assigned(Addr) then
-        if (Addr^.ai_family = AF_INET6) then
-            Move(Addr^.ai_addr^, Result, SizeOf(Result));
-    finally
-      if Assigned(Addr) then
-        synsock.FreeAddrInfo(Addr);
-    end;
-  end;
-end;
-{$ENDIF}
-
-{$IFDEF CIL}
-function TBlockSocket.IP6ToStr(const value: TSockAddrIn6): string;
-var
-  buf: TMemory;
-  IP: IPAddress;
-begin
-  setlength(buf, 16);
-  buf[0] := byte(value.sin6_addr.S_un_b.s_b1);
-  buf[1] := byte(value.sin6_addr.S_un_b.s_b2);
-  buf[2] := byte(value.sin6_addr.S_un_b.s_b3);
-  buf[3] := byte(value.sin6_addr.S_un_b.s_b4);
-  buf[4] := byte(value.sin6_addr.S_un_b.s_b5);
-  buf[5] := byte(value.sin6_addr.S_un_b.s_b6);
-  buf[6] := byte(value.sin6_addr.S_un_b.s_b7);
-  buf[7] := byte(value.sin6_addr.S_un_b.s_b8);
-  buf[8] := byte(value.sin6_addr.S_un_b.s_b9);
-  buf[9] := byte(value.sin6_addr.S_un_b.s_b10);
-  buf[10] := byte(value.sin6_addr.S_un_b.s_b11);
-  buf[11] := byte(value.sin6_addr.S_un_b.s_b12);
-  buf[12] := byte(value.sin6_addr.S_un_b.s_b13);
-  buf[13] := byte(value.sin6_addr.S_un_b.s_b14);
-  buf[14] := byte(value.sin6_addr.S_un_b.s_b15);
-  buf[15] := byte(value.sin6_addr.S_un_b.s_b16);
-  IP := IPAddress.Create(buf);
-  Result := IP.ToString;
-end;
-{$ELSE}
-function TBlockSocket.IP6ToStr(const value: TSockAddrIn6): string;
-var
-  host, serv: string;
-  hostlen, servlen: integer;
-  r: integer;
-begin
-  Result := '';
-  if SockEnhancedApi or SockWship6Api then
-  begin
-    hostlen := NI_MAXHOST;
-    servlen := NI_MAXSERV;
-    setlength(host, hostlen);
-    setlength(serv, servlen);
-    r := getnameinfo(@Value, SizeOf(value), PChar(host), hostlen,
-      PChar(serv), servlen, NI_NUMERICHOST + NI_NUMERICSERV);
-    if r = 0 then
-      Result := PChar(host);
-  end;
-end;
-{$ENDIF}
 
 function TBlockSocket.GetWsaData: TWSAData;
 begin
@@ -3648,8 +3153,8 @@ end;
 
 function TSocksBlockSocket.SocksCode(IP, Port: string): string;
 var
-  s: string;
-  ip6: TSockAddrIn6;
+  ip6: TIp6Bytes;
+  n: integer;
 begin
   if FSocksType <> ST_Socks5 then
   begin
@@ -3678,24 +3183,9 @@ begin
       if IsIP6(IP) then
       begin
         ip6 := StrToIP6(IP);
-        setlength(s, 16);
-        s[1] := ip6.sin6_addr.S_un_b.s_b1;
-        s[2] := ip6.sin6_addr.S_un_b.s_b2;
-        s[3] := ip6.sin6_addr.S_un_b.s_b3;
-        s[4] := ip6.sin6_addr.S_un_b.s_b4;
-        s[5] := ip6.sin6_addr.S_un_b.s_b5;
-        s[6] := ip6.sin6_addr.S_un_b.s_b6;
-        s[7] := ip6.sin6_addr.S_un_b.s_b7;
-        s[8] := ip6.sin6_addr.S_un_b.s_b8;
-        s[9] := ip6.sin6_addr.S_un_b.s_b9;
-        s[10] := ip6.sin6_addr.S_un_b.s_b10;
-        s[11] := ip6.sin6_addr.S_un_b.s_b11;
-        s[12] := ip6.sin6_addr.S_un_b.s_b12;
-        s[13] := ip6.sin6_addr.S_un_b.s_b13;
-        s[14] := ip6.sin6_addr.S_un_b.s_b14;
-        s[15] := ip6.sin6_addr.S_un_b.s_b15;
-        s[16] := ip6.sin6_addr.S_un_b.s_b16;
-        Result := #4 + s;
+        Result := #4;
+        for n := 0 to 15 do
+          Result := Result + char(ip6[n]);
       end
       else
         Result := #3 + char(Length(IP)) + IP;
@@ -3708,7 +3198,7 @@ var
   Atyp: Byte;
   y, n: integer;
   w: Word;
-  ip6: TSockAddrIn6;
+  ip6: TIp6Bytes;
 begin
   FSocksResponsePort := '0';
   Result := 0;
@@ -3751,26 +3241,8 @@ begin
         begin
           if Length(Value) < 22 then
             Exit;
-          ip6.sin6_addr.S_un_b.s_b1 := Value[5];
-          ip6.sin6_addr.S_un_b.s_b2 := Value[6];
-          ip6.sin6_addr.S_un_b.s_b3 := Value[7];
-          ip6.sin6_addr.S_un_b.s_b4 := Value[8];
-          ip6.sin6_addr.S_un_b.s_b5 := Value[9];
-          ip6.sin6_addr.S_un_b.s_b6 := Value[10];
-          ip6.sin6_addr.S_un_b.s_b7 := Value[11];
-          ip6.sin6_addr.S_un_b.s_b8 := Value[12];
-          ip6.sin6_addr.S_un_b.s_b9 := Value[13];
-          ip6.sin6_addr.S_un_b.s_b10 := Value[14];
-          ip6.sin6_addr.S_un_b.s_b11 := Value[15];
-          ip6.sin6_addr.S_un_b.s_b12 := Value[16];
-          ip6.sin6_addr.S_un_b.s_b13 := Value[17];
-          ip6.sin6_addr.S_un_b.s_b14 := Value[18];
-          ip6.sin6_addr.S_un_b.s_b15 := Value[19];
-          ip6.sin6_addr.S_un_b.s_b16 := Value[20];
-          ip6.sin6_family := word(AF_INET6);
-          ip6.sin6_port := 0;
-          ip6.sin6_flowinfo := 0;
-          ip6.sin6_scope_id := 0;
+          for n := 0 to 15 do
+            ip6[n] := ord(Value[n + 5]);
           FSocksResponseIP := IP6ToStr(ip6);
           Result := 21;
         end;
@@ -3913,18 +3385,22 @@ procedure TUDPBlockSocket.AddMulticast(MCastIP: string);
 var
   Multicast: TIP_mreq;
   Multicast6: TIPv6_mreq;
+  n: integer;
+  ip6: Tip6bytes;
 begin
   if FIP6Used then
   begin
-    Multicast6.ipv6mr_multiaddr := StrToIp6(MCastIP).sin6_addr;
+    ip6 := StrToIp6(MCastIP);
+    for n := 0 to 15 do
+      Multicast6.ipv6mr_multiaddr.u6_addr8[n] := Ip6[n];
     Multicast6.ipv6mr_interface := 0;
     SockCheck(synsock.SetSockOpt(FSocket, IPPROTO_IPV6, IPV6_JOIN_GROUP,
       pchar(@Multicast6), SizeOf(Multicast6)));
   end
   else
   begin
-    Multicast.imr_multiaddr.S_addr := synsock.inet_addr(PChar(MCastIP));
-    Multicast.imr_interface.S_addr := u_long(INADDR_ANY);
+    Multicast.imr_multiaddr.S_addr := strtoip(MCastIP);
+    Multicast.imr_interface.S_addr := INADDR_ANY;
     SockCheck(synsock.SetSockOpt(FSocket, IPPROTO_IP, IP_ADD_MEMBERSHIP,
       pchar(@Multicast), SizeOf(Multicast)));
   end;
@@ -3935,18 +3411,22 @@ procedure TUDPBlockSocket.DropMulticast(MCastIP: string);
 var
   Multicast: TIP_mreq;
   Multicast6: TIPv6_mreq;
+  n: integer;
+  ip6: Tip6bytes;
 begin
   if FIP6Used then
   begin
-    Multicast6.ipv6mr_multiaddr := StrToIp6(MCastIP).sin6_addr;
+    ip6 := StrToIp6(MCastIP);
+    for n := 0 to 15 do
+      Multicast6.ipv6mr_multiaddr.u6_addr8[n] := Ip6[n];
     Multicast6.ipv6mr_interface := 0;
     SockCheck(synsock.SetSockOpt(FSocket, IPPROTO_IPV6, IPV6_LEAVE_GROUP,
       pchar(@Multicast6), SizeOf(Multicast6)));
   end
   else
   begin
-    Multicast.imr_multiaddr.S_addr := synsock.inet_addr(PChar(MCastIP));
-    Multicast.imr_interface.S_addr := u_long(INADDR_ANY);
+    Multicast.imr_multiaddr.S_addr := strtoip(MCastIP);
+    Multicast.imr_interface.S_addr := INADDR_ANY;
     SockCheck(synsock.SetSockOpt(FSocket, IPPROTO_IP, IP_DROP_MEMBERSHIP,
       pchar(@Multicast), SizeOf(Multicast)));
   end;
@@ -4038,7 +3518,7 @@ end;
 function TTCPBlockSocket.WaitingData: Integer;
 begin
   Result := 0;
-  if FSSL.SSLEnabled then
+  if FSSL.SSLEnabled and (FSocket <> INVALID_SOCKET) then
     Result := FSSL.WaitingData;
   if Result = 0 then
     Result := inherited WaitingData;

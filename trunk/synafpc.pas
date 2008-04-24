@@ -1,9 +1,9 @@
 {==============================================================================|
-| Project : Ararat Synapse                                       | 001.000.000 |
+| Project : Ararat Synapse                                       | 001.001.000 |
 |==============================================================================|
 | Content: Utils for FreePascal compatibility                                  |
 |==============================================================================|
-| Copyright (c)1999-2003, Lukas Gebauer                                        |
+| Copyright (c)1999-2006, Lukas Gebauer                                        |
 | All rights reserved.                                                         |
 |                                                                              |
 | Redistribution and use in source and binary forms, with or without           |
@@ -33,7 +33,7 @@
 | DAMAGE.                                                                      |
 |==============================================================================|
 | The Initial Developer of the Original Code is Lukas Gebauer (Czech Republic).|
-| Portions created by Lukas Gebauer are Copyright (c)2003.                     |
+| Portions created by Lukas Gebauer are Copyright (c)2003-2006.                |
 | All Rights Reserved.                                                         |
 |==============================================================================|
 | Contributor(s):                                                              |
@@ -53,56 +53,79 @@ unit synafpc;
 
 interface
 
-{$IFDEF LINUX}
-  {$IFDEF FPC}
 uses
-  Libc,
-  dynlibs;
-
-type
-  HMODULE = Longint;
-
-function LoadLibrary(ModuleName: PChar): HMODULE;
-function FreeLibrary(Module: HMODULE): LongBool;
-function GetProcAddress(Module: HMODULE; Proc: PChar): Pointer;
-function GetModuleFileName(Module: HMODULE; Buffer: PChar; BufLen: Integer): Integer;
-procedure Sleep(milliseconds: Cardinal);
-
+{$IFDEF FPC}
+  dynlibs, sysutils;
+{$ELSE}
+  {$IFDEF WIN32}
+  Windows;
+  {$ELSE}
+  Sysutils;
   {$ENDIF}
 {$ENDIF}
+
+{$IFDEF FPC}
+type
+  TLibHandle = dynlibs.TLibHandle;
+  
+function LoadLibrary(ModuleName: PChar): TLibHandle;
+function FreeLibrary(Module: TLibHandle): LongBool;
+function GetProcAddress(Module: TLibHandle; Proc: PChar): Pointer;
+function GetModuleFileName(Module: TLibHandle; Buffer: PChar; BufLen: Integer): Integer;
+{$ELSE}
+type
+  {$IFDEF CIL}
+  TLibHandle = Integer;
+  {$ELSE}
+  TLibHandle = HModule;
+  {$ENDIF}
+  {$IFDEF VER100}
+  LongWord = DWord;
+  {$ENDIF}
+{$ENDIF}
+
+procedure Sleep(milliseconds: Cardinal);
 
 
 implementation
 
 {==============================================================================}
-{$IFDEF LINUX}
-  {$IFDEF FPC}
-function LoadLibrary(ModuleName: PChar): HMODULE;
+{$IFDEF FPC}
+function LoadLibrary(ModuleName: PChar): TLibHandle;
 begin
-  Result := HMODULE(dynlibs.LoadLibrary(Modulename));
+  Result := dynlibs.LoadLibrary(Modulename);
 end;
 
-function FreeLibrary(Module: HMODULE): LongBool;
+function FreeLibrary(Module: TLibHandle): LongBool;
 begin
-  Result := dynlibs.UnloadLibrary(pointer(Module));
+  Result := dynlibs.UnloadLibrary(Module);
 end;
 
-function GetProcAddress(Module: HMODULE; Proc: PChar): Pointer;
+function GetProcAddress(Module: TLibHandle; Proc: PChar): Pointer;
 begin
-  Result := dynlibs.GetProcedureAddress(pointer(Module), Proc);
+  Result := dynlibs.GetProcedureAddress(Module, Proc);
 end;
 
-function GetModuleFileName(Module: HMODULE; Buffer: PChar; BufLen: Integer): Integer;
+function GetModuleFileName(Module: TLibHandle; Buffer: PChar; BufLen: Integer): Integer;
 begin
   Result := 0;
-end; 
+end;
+
+{$ELSE}
+{$ENDIF}
 
 procedure Sleep(milliseconds: Cardinal);
 begin
-  usleep(milliseconds * 1000);  // usleep is in microseconds
-end;
- 
+{$IFDEF WIN32}
+  {$IFDEF FPC}
+  sysutils.sleep(milliseconds);
+  {$ELSE}
+  windows.sleep(milliseconds);
   {$ENDIF}
+{$ELSE}
+  sysutils.sleep(milliseconds);
 {$ENDIF}
+
+end;
 
 end.

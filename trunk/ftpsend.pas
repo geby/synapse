@@ -1,5 +1,5 @@
 {==============================================================================|
-| Project : Ararat Synapse                                       | 003.004.005 |
+| Project : Ararat Synapse                                       | 003.004.008 |
 |==============================================================================|
 | Content: FTP client                                                          |
 |==============================================================================|
@@ -59,7 +59,7 @@ interface
 
 uses
   SysUtils, Classes,
-  blcksock, synautil, synsock;
+  blcksock, synautil, synaip, synsock;
 
 const
   cFtpProtocol = 'ftp';
@@ -1220,6 +1220,7 @@ begin
   //VMS
   FMasks.add('v*$  DD TTT YYYY hh mm');
   FMasks.add('v*$!DD TTT YYYY hh mm');
+  FMasks.add('n*$                 YYYY MM DD hh mm$S*');
   //AS400
   FMasks.add('!S*$MM DD YY hh mm ss !n*');
   FMasks.add('!S*$DD MM YY hh mm ss !n*');
@@ -1246,7 +1247,7 @@ begin
   //tandem
   FMasks.add('nnnnnnnn                   SSSSSSS DD TTT YY hh mm ss');
   //MVS
-  FMasks.add('-             YYYY MM DD                     SSSSS   d=O  n*');
+  FMasks.add('-             YYYY MM DD                     SSSSS   d=O n*');
   //BullGCOS8
   FMasks.add('             $S* MM DD YY hh mm ss  !n*');
   FMasks.add('d            $S* MM DD YY           !n*');
@@ -1738,14 +1739,14 @@ begin
     if Value[1] = '+' then
     begin
       os := Value;
+      Delete(Value, 1, 1);
       flr := TFTPListRec.create;
+      flr.FileName := SeparateRight(Value, #9);
       s := Fetch(Value, ',');
       while s <> '' do
       begin
         if s[1] = #9 then
-        begin
-          flr.FileName := Copy(s, 2, Length(s) - 1);
-        end;
+          Break;
         case s[1] of
           '/':
             flr.Directory := true;
