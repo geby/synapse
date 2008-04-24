@@ -1,5 +1,5 @@
 {==============================================================================|
-| Project : Delphree - Synapse                                   | 002.001.000 |
+| Project : Delphree - Synapse                                   | 002.001.001 |
 |==============================================================================|
 | Content: PING sender                                                         |
 |==============================================================================|
@@ -79,6 +79,7 @@ type
     property Timeout: Integer read FTimeout Write FTimeout;
     property PacketSize: Integer read FPacketSize Write FPacketSize;
     property PingTime: Integer read FPingTime;
+    property Sock: TICMPBlockSocket read FSock;
   end;
 
 function PingHost(const Host: string): Integer;

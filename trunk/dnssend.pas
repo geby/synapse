@@ -1,5 +1,5 @@
 {==============================================================================|
-| Project : Delphree - Synapse                                   | 001.001.002 |
+| Project : Delphree - Synapse                                   | 001.001.003 |
 |==============================================================================|
 | Content: DNS client                                                          |
 |==============================================================================|
@@ -103,6 +103,7 @@ type
     property Timeout: Integer read FTimeout Write FTimeout;
     property DNSHost: string read FDNSHost Write FDNSHost;
     property RCode: Integer read FRCode;
+    property Sock: TUDPBlockSocket read FSock;
   end;
 
 function GetMailServers(const DNSHost, Domain: string;

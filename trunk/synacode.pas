@@ -217,7 +217,6 @@ begin
 end;
 
 {==============================================================================}
-{DecodeQuotedPrintable}
 
 function DecodeQuotedPrintable(const Value: string): string;
 begin

@@ -1,5 +1,5 @@
 {==============================================================================|
-| Project : Delphree - Synapse                                   | 001.004.000 |
+| Project : Delphree - Synapse                                   | 001.005.000 |
 |==============================================================================|
 | Content: MIME message object                                                 |
 |==============================================================================|
@@ -40,15 +40,19 @@ type
     FToList: TStringList;
     FSubject: string;
     FOrganization: string;
+    FCustomHeaders: TStringList;
   public
     constructor Create;
     destructor Destroy; override;
     procedure Clear;
+    procedure EncodeHeaders(Value: TStringList);
+    procedure DecodeHeaders(Value: TStringList);
   published
     property From: string read FFrom Write FFrom;
-    property ToList: TStringList read FToList Write FToList;
+    property ToList: TStringList read FToList;
     property Subject: string read FSubject Write FSubject;
     property Organization: string read FOrganization Write FOrganization;
+    property CustomHeaders: TStringList read FCustomHeaders;
   end;
 
   TMimeMess = class(TObject)
@@ -56,6 +60,7 @@ type
     FPartList: TList;
     FLines: TStringList;
     FHeader: TMessHeader;
+    FMultipartType: string;
   public
     constructor Create;
     destructor Destroy; override;
@@ -70,9 +75,10 @@ type
     procedure ParseHeaders;
     procedure DecodeMessage;
   published
-    property PartList: TList read FPartList Write FPartList;
-    property Lines: TStringList read FLines Write FLines;
-    property Header: TMessHeader read FHeader Write FHeader;
+    property PartList: TList read FPartList;
+    property Lines: TStringList read FLines;
+    property Header: TMessHeader read FHeader;
+    property MultipartType: string read FMultipartType Write FMultipartType;
   end;
 
 implementation
@@ -83,10 +89,12 @@ constructor TMessHeader.Create;
 begin
   inherited Create;
   FToList := TStringList.Create;
+  FCustomHeaders := TStringList.Create;
 end;
 
 destructor TMessHeader.Destroy;
 begin
+  FCustomHeaders.Free;
   FToList.Free;
   inherited Destroy;
 end;
@@ -99,6 +107,64 @@ begin
   FToList.Clear;
   FSubject := '';
   FOrganization := '';
+  FCustomHeaders.Clear;
+end;
+
+procedure TMessHeader.EncodeHeaders(Value: TStringList);
+var
+  n: Integer;
+begin
+  for n := FCustomHeaders.Count - 1 downto 0 do
+    if FCustomHeaders[n] <> '' then
+      Value.Insert(0, FCustomHeaders[n]);
+  Value.Insert(0, 'x-mailer: Synapse - Delphi TCP/IP library by Lukas Gebauer');
+  Value.Insert(0, 'MIME-Version: 1.0 (produced by Synapse)');
+  Value.Insert(0, 'date: ' + Rfc822DateTime(Now));
+  if FOrganization <> '' then
+    Value.Insert(0, 'Organization: ' + InlineCode(FOrganization));
+  if FSubject <> '' then
+    Value.Insert(0, 'Subject: ' + InlineCode(FSubject));
+  for n := 0 to FToList.Count - 1 do
+    Value.Insert(0, 'To: ' + InlineEmail(FToList[n]));
+  Value.Insert(0, 'From: ' + InlineEmail(FFrom));
+end;
+
+procedure TMessHeader.DecodeHeaders(Value: TStringList);
+var
+  s: string;
+  x: Integer;
+  cp: TMimeChar;
+begin
+  cp := GetCurCP;
+  Clear;
+  x := 0;
+  while Value.Count > x do
+  begin
+    s := NormalizeHeader(Value, x);
+    if s = '' then
+      Break;
+    if Pos('FROM:', UpperCase(s)) = 1 then
+    begin
+      FFrom := InlineDecode(SeparateRight(s, ':'), cp);
+      continue;
+    end;
+    if Pos('SUBJECT:', UpperCase(s)) = 1 then
+    begin
+      FSubject := InlineDecode(SeparateRight(s, ':'), cp);
+      continue;
+    end;
+    if Pos('ORGANIZATION:', UpperCase(s)) = 1 then
+    begin
+      FOrganization := InlineDecode(SeparateRight(s, ':'), cp);
+      continue;
+    end;
+    if Pos('TO:', UpperCase(s)) = 1 then
+    begin
+      FToList.Add(InlineDecode(SeparateRight(s, ':'), cp));
+      continue;
+    end;
+    FCustomHeaders.Add(s);
+  end;
 end;
 
 {==============================================================================}
@@ -109,6 +175,7 @@ begin
   FPartList := TList.Create;
   FLines := TStringList.Create;
   FHeader := TMessHeader.Create;
+  FMultipartType := 'Mixed';
 end;
 
 destructor TMimeMess.Destroy;
@@ -125,31 +192,26 @@ procedure TMimeMess.Clear;
 var
   n: Integer;
 begin
+  FMultipartType := 'Mixed';
   Lines.Clear;
-  for n := 0 to PartList.Count - 1 do
-    TMimePart(PartList[n]).Free;
-  PartList.Clear;
+  for n := 0 to FPartList.Count - 1 do
+    TMimePart(FPartList[n]).Free;
+  FPartList.Clear;
   FHeader.Clear;
 end;
 
 {==============================================================================}
 
 function TMimeMess.AddPart: Integer;
-var
-  mp: TMimePart;
 begin
-  mp := TMimePart.Create;
-  Result := PartList.Add(mp);
+  Result := FPartList.Add(TMimePart.Create);
 end;
 
 {==============================================================================}
 
 procedure TMimeMess.AddPartText(Value: TStringList);
-var
-  x: Integer;
 begin
-  x := AddPart;
-  with TMimePart(PartList[x]) do
+  with TMimePart(FPartList[AddPart]) do
   begin
     Value.SaveToStream(DecodedLines);
     Primary := 'text';
@@ -167,11 +229,8 @@ end;
 {==============================================================================}
 
 procedure TMimeMess.AddPartHTML(Value: TStringList);
-var
-  x: Integer;
 begin
-  x := AddPart;
-  with TMimePart(PartList[x]) do
+  with TMimePart(FPartList[AddPart]) do
   begin
     Value.SaveToStream(DecodedLines);
     Primary := 'text';
@@ -188,11 +247,9 @@ end;
 
 procedure TMimeMess.AddPartBinary(Value: string);
 var
-  x: Integer;
   s: string;
 begin
-  x := AddPart;
-  with TMimePart(PartList[x]) do
+  with TMimePart(FPartList[AddPart]) do
   begin
     DecodedLines.LoadFromFile(Value);
     s := ExtractFileName(Value);
@@ -207,18 +264,16 @@ end;
 
 procedure TMimeMess.AddPartHTMLBinary(Value, Cid: string);
 var
-  x: Integer;
   s: string;
 begin
-  x := AddPart;
-  with TMimePart(PartList[x]) do
+  with TMimePart(FPartList[AddPart]) do
   begin
     DecodedLines.LoadFromFile(Value);
     s := ExtractFileName(Value);
     MimeTypeFromExt(s);
     Description := 'Included file: ' + s;
     Disposition := 'inline';
-    ContentID := cid;
+    ContentID := Cid;
     FileName := s;
     EncodingCode := ME_BASE64;
     EncodePart;
@@ -232,27 +287,27 @@ var
   bound: string;
   n: Integer;
 begin
-  Lines.Clear;
-  if PartList.Count = 1 then
-    Lines.Assign(TMimePart(PartList[0]).Lines)
+  FLines.Clear;
+  if FPartList.Count = 1 then
+    FLines.Assign(TMimePart(FPartList[0]).Lines)
   else
   begin
     bound := GenerateBoundary;
-    for n := 0 to PartList.Count - 1 do
+    for n := 0 to FPartList.Count - 1 do
     begin
-      Lines.Add('--' + bound);
-      Lines.AddStrings(TMimePart(PartList[n]).Lines);
+      FLines.Add('--' + bound);
+      FLines.AddStrings(TMimePart(FPartList[n]).Lines);
     end;
-    Lines.Add('--' + bound);
+    FLines.Add('--' + bound + '--');
     with TMimePart.Create do
     try
-      Self.Lines.SaveToStream(DecodedLines);
+      Self.FLines.SaveToStream(DecodedLines);
       Primary := 'Multipart';
-      Secondary := 'mixed';
+      Secondary := FMultipartType;
       Description := 'Multipart message';
       Boundary := bound;
       EncodePart;
-      Self.Lines.Assign(Lines);
+      Self.FLines.Assign(Lines);
     finally
       Free;
     end;
@@ -262,46 +317,15 @@ end;
 {==============================================================================}
 
 procedure TMimeMess.FinalizeHeaders;
-var
-  n: Integer;
 begin
-  Lines.Insert(0, 'x-mailer: Synapse - Delphi TCP/IP library by Lukas Gebauer');
-  Lines.Insert(0, 'MIME-Version: 1.0 (produced by Synapse)');
-  Lines.Insert(0, 'date: ' + Rfc822DateTime(Now));
-  if FHeader.Organization <> '' then
-    Lines.Insert(0, 'Organization: ' + InlineCode(Header.Organization));
-  if Header.Subject <> '' then
-    FLines.Insert(0, 'Subject: ' + InlineCode(Header.Subject));
-  for n := 0 to FHeader.ToList.Count - 1 do
-    Lines.Insert(0, 'To: ' + InlineEmail(FHeader.ToList[n]));
-  Lines.Insert(0, 'From: ' + InlineEmail(FHeader.From));
+  FHeader.EncodeHeaders(FLines);
 end;
 
 {==============================================================================}
 
 procedure TMimeMess.ParseHeaders;
-var
-  s: string;
-  x: Integer;
-  cp: TMimeChar;
 begin
-  cp := GetCurCP;
-  FHeader.Clear;
-  x := 0;
-  while Lines.Count > x do
-  begin
-    s := NormalizeHeader(Lines, x);
-    if s = '' then
-      Break;
-    if Pos('FROM:', UpperCase(s)) = 1 then
-      FHeader.From := InlineDecode(SeparateRight(s, ':'), cp);
-    if Pos('SUBJECT:', UpperCase(s)) = 1 then
-      FHeader.Subject := InlineDecode(SeparateRight(s, ':'), cp);
-    if Pos('ORGANIZATION:', UpperCase(s)) = 1 then
-      FHeader.Organization := InlineDecode(SeparateRight(s, ':'), cp);
-    if Pos('TO:', UpperCase(s)) = 1 then
-      FHeader.ToList.Add(InlineDecode(SeparateRight(s, ':'), cp));
-  end;
+  FHeader.DecodeHeaders(FLines);
 end;
 
 {==============================================================================}
@@ -310,13 +334,13 @@ procedure TMimeMess.DecodeMessage;
 var
   l: TStringList;
   m: TMimePart;
-  x, i: Integer;
+  i: Integer;
   bound: string;
 begin
   l := TStringList.Create;
   m := TMimePart.Create;
   try
-    l.Assign(Lines);
+    l.Assign(FLines);
     FHeader.Clear;
     ParseHeaders;
     m.ExtractPart(l, 0);
@@ -325,8 +349,7 @@ begin
       bound := m.Boundary;
       i := 0;
       repeat
-        x := AddPart;
-        with TMimePart(PartList[x]) do
+        with TMimePart(PartList[AddPart]) do
         begin
           Boundary := bound;
           i := ExtractPart(l, i);
@@ -336,8 +359,7 @@ begin
     end
     else
     begin
-      x := AddPart;
-      with TMimePart(PartList[x]) do
+      with TMimePart(PartList[AddPart]) do
       begin
         ExtractPart(l, 0);
         DecodePart;

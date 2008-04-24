@@ -1,5 +1,5 @@
 {==============================================================================|
-| Project : Delphree - Synapse                                   | 002.000.001 |
+| Project : Delphree - Synapse                                   | 002.000.002 |
 |==============================================================================|
 | Content: SNTP client                                                         |
 |==============================================================================|
@@ -76,6 +76,7 @@ type
     property NTPTime: TDateTime read FNTPTime;
     property SntpHost: string read FSntpHost write FSntpHost;
     property Timeout: Integer read FTimeout write FTimeout;
+    property Sock: TUDPBlockSocket read FSock;
   end;
 
 implementation

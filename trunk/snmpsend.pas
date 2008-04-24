@@ -1,5 +1,5 @@
 {==============================================================================|
-| Project : Delphree - Synapse                                   | 002.003.002 |
+| Project : Delphree - Synapse                                   | 002.003.003 |
 |==============================================================================|
 | Content: SNMP client                                                         |
 |==============================================================================|
@@ -112,6 +112,7 @@ type
     property HostIP: string read FHostIP;
     property Query: TSNMPRec read FQuery;
     property Reply: TSNMPRec read FReply;
+    property Sock: TUDPBlockSocket read FSock;
   end;
 
 function SNMPGet(const Oid, Community, SNMPHost: string;
