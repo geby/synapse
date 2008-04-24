@@ -1,5 +1,5 @@
 {==============================================================================|
-| Project : Delphree - Synapse                                   | 001.002.000 |
+| Project : Delphree - Synapse                                   | 001.003.000 |
 |==============================================================================|
 | Content: Coding and decoding support                                         |
 |==============================================================================|
@@ -14,7 +14,7 @@
 | The Original Code is Synapse Delphi Library.                                 |
 |==============================================================================|
 | The Initial Developer of the Original Code is Lukas Gebauer (Czech Republic).|
-| Portions created by Lukas Gebauer are Copyright (c)2000.                     |
+| Portions created by Lukas Gebauer are Copyright (c)2000, 2001.               |
 | All Rights Reserved.                                                         |
 |==============================================================================|
 | Contributor(s):                                                              |
@@ -133,6 +133,7 @@ function Crc32(value:string):integer;
 function UpdateCrc16(value:byte;crc16:word):word;
 function Crc16(value:string):word;
 function MD5(value:string):string;
+function HMAC_MD5(text,key:string):string;
 
 implementation
 
@@ -554,6 +555,37 @@ var
 begin
   MD5Init(MD5Context);
   MD5Update(MD5Context,value);
+  result:=MD5Final(MD5Context);
+end;
+
+{==============================================================================}
+{HMAC_MD5}
+function HMAC_MD5(text,key:string):string;
+var
+  ipad,opad,s:string;
+  n:integer;
+  MD5Context : TMD5Ctx;
+begin
+  if length(key)>64 then
+    key:=md5(key);
+  ipad:='';
+  for n:=1 to 64 do
+    ipad:=ipad+#$36;
+  opad:='';
+  for n:=1 to 64 do
+    opad:=opad+#$5c;
+  for n:=1 to length(key) do
+    begin
+      ipad[n]:=char(byte(ipad[n]) xor byte(key[n]));
+      opad[n]:=char(byte(opad[n]) xor byte(key[n]));
+    end;
+  MD5Init(MD5Context);
+  MD5Update(MD5Context,ipad);
+  MD5Update(MD5Context,text);
+  s:=MD5Final(MD5Context);
+  MD5Init(MD5Context);
+  MD5Update(MD5Context,opad);
+  MD5Update(MD5Context,s);
   result:=MD5Final(MD5Context);
 end;
 
