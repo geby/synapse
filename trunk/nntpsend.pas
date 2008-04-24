@@ -1,9 +1,9 @@
 {==============================================================================|
-| Project : Delphree - Synapse                                   | 001.001.000 |
+| Project : Delphree - Synapse                                   | 001.002.003 |
 |==============================================================================|
 | Content: NNTP client                                                         |
 |==============================================================================|
-| Copyright (c)1999-2002, Lukas Gebauer                                        |
+| Copyright (c)1999-2003, Lukas Gebauer                                        |
 | All rights reserved.                                                         |
 |                                                                              |
 | Redistribution and use in source and binary forms, with or without           |
@@ -33,7 +33,7 @@
 | DAMAGE.                                                                      |
 |==============================================================================|
 | The Initial Developer of the Original Code is Lukas Gebauer (Czech Republic).|
-| Portions created by Lukas Gebauer are Copyright (c) 1999,2000,2001.          |
+| Portions created by Lukas Gebauer are Copyright (c) 1999-2003.               |
 | All Rights Reserved.                                                         |
 |==============================================================================|
 | Contributor(s):                                                              |
@@ -62,6 +62,9 @@ type
     FResultCode: Integer;
     FResultString: string;
     FData: TStringList;
+    FDataToSend: TStringList;
+    FUsername: string;
+    FPassword: string;
     function ReadResult: Integer;
     function ReadData: boolean;
     function SendData: boolean;
@@ -71,6 +74,9 @@ type
     destructor Destroy; override;
     function Login: Boolean;
     procedure Logout;
+    function DoCommand(const Command: string): boolean;
+    function DoCommandRead(const Command: string): boolean;
+    function DoCommandWrite(const Command: string): boolean;
     function GetArticle(const Value: string): Boolean;
     function GetBody(const Value: string): Boolean;
     function GetHead(const Value: string): Boolean;
@@ -84,7 +90,10 @@ type
     function NewArticles(const Group: string; Since: TDateTime): Boolean;
     function PostArticle: Boolean;
     function SwitchToSlave: Boolean;
+    function Xover(xoStart, xoEnd: string): boolean;
   published
+    property Username: string read FUsername write FUsername;
+    property Password: string read FPassword write FPassword;
     property ResultCode: Integer read FResultCode;
     property ResultString: string read FResultString;
     property Data: TStringList read FData;
@@ -93,23 +102,23 @@ type
 
 implementation
 
-const
-  CRLF = #13#10;
-
 constructor TNNTPSend.Create;
 begin
   inherited Create;
   FData := TStringList.Create;
+  FDataToSend := TStringList.Create;
   FSock := TTCPBlockSocket.Create;
-  FSock.CreateSocket;
   FSock.ConvertLineEnd := True;
   FTimeout := 300000;
   FTargetPort := cNNTPProtocol;
+  FUsername := '';
+  FPassword := '';
 end;
 
 destructor TNNTPSend.Destroy;
 begin
   FSock.Free;
+  FDataToSend.Free;
   FData.Free;
   inherited Destroy;
 end;
@@ -149,22 +158,26 @@ var
   s: string;
   n: integer;
 begin
-  for n := 0 to FData.Count -1 do
+  for n := 0 to FDataToSend.Count - 1 do
   begin
-    s := FData[n];
-    if (s <> '') and (s[1]='.') then
+    s := FDataToSend[n];
+    if (s <> '') and (s[1] = '.') then
       s := s + '.';
     FSock.SendString(s + CRLF);
     if FSock.LastError <> 0 then
       break;
   end;
+  if FDataToSend.Count = 0 then
+    FSock.SendString(CRLF);
+  if FSock.LastError = 0 then
+    FSock.SendString('.' + CRLF);
+  FDataToSend.Clear;
   Result := FSock.LastError = 0;
 end;
 
 function TNNTPSend.Connect: Boolean;
 begin
   FSock.CloseSocket;
-  FSock.CreateSocket;
   FSock.Bind(FIPInterface, cAnyPort);
   FSock.Connect(FTargetHost, FTargetPort);
   Result := FSock.LastError = 0;
@@ -176,6 +189,15 @@ begin
   if not Connect then
     Exit;
   Result := (ReadResult div 100) = 2;
+  if (FUsername <> '') and Result then
+  begin
+    FSock.SendString('AUTHINFO USER ' + FUsername + CRLF);
+    if (ReadResult div 100) = 3 then
+    begin
+      FSock.SendString('AUTHINFO PASS ' + FPassword + CRLF);
+      Result := (ReadResult div 100) = 2;
+    end;
+  end;
 end;
 
 procedure TNNTPSend.Logout;
@@ -185,136 +207,132 @@ begin
   FSock.CloseSocket;
 end;
 
+function TNNTPSend.DoCommand(const Command: string): Boolean;
+begin
+  FSock.SendString(Command + CRLF);
+  Result := (ReadResult div 100) = 2;
+  Result := Result and (FSock.LastError = 0);
+end;
+
+function TNNTPSend.DoCommandRead(const Command: string): Boolean;
+begin
+  Result := DoCommand(Command);
+  if Result then
+  begin
+    Result := ReadData;
+    Result := Result and (FSock.LastError = 0);
+  end;
+end;
+
+function TNNTPSend.DoCommandWrite(const Command: string): Boolean;
+var
+  x: integer;
+begin
+  FDataToSend.Assign(FData);
+  FSock.SendString(Command + CRLF);
+  x := (ReadResult div 100);
+  if x = 3 then
+  begin
+    SendData;
+    x := (ReadResult div 100);
+  end;
+  Result := x = 2;
+  Result := Result and (FSock.LastError = 0);
+end;
+
 function TNNTPSend.GetArticle(const Value: string): Boolean;
 var
   s: string;
 begin
-  Result := False;
   s := 'ARTICLE';
   if Value <> '' then
     s := s + ' ' + Value;
-  FSock.SendString(s + CRLF);
-  if (ReadResult div 100) <> 2 then
-    Exit;
-  Result := ReadData;
+  Result := DoCommandRead(s);
 end;
 
 function TNNTPSend.GetBody(const Value: string): Boolean;
 var
   s: string;
 begin
-  Result := False;
   s := 'BODY';
   if Value <> '' then
     s := s + ' ' + Value;
-  FSock.SendString(s + CRLF);
-  if (ReadResult div 100) <> 2 then
-    Exit;
-  Result := ReadData;
+  Result := DoCommandRead(s);
 end;
 
 function TNNTPSend.GetHead(const Value: string): Boolean;
 var
   s: string;
 begin
-  Result := False;
   s := 'HEAD';
   if Value <> '' then
     s := s + ' ' + Value;
-  FSock.SendString(s + CRLF);
-  if (ReadResult div 100) <> 2 then
-    Exit;
-  Result := ReadData;
+  Result := DoCommandRead(s);
 end;
 
 function TNNTPSend.GetStat(const Value: string): Boolean;
 var
   s: string;
 begin
-  Result := False;
   s := 'STAT';
   if Value <> '' then
     s := s + ' ' + Value;
-  FSock.SendString(s + CRLF);
-  if (ReadResult div 100) <> 2 then
-    Exit;
-  Result := FSock.LastError = 0;
+  Result := DoCommandRead(s);
 end;
 
 function TNNTPSend.SelectGroup(const Value: string): Boolean;
 begin
-  FSock.SendString('GROUP ' + Value + CRLF);
-  Result := (ReadResult div 100) = 2;
+  Result := DoCommand('GROUP ' + Value);
 end;
 
 function TNNTPSend.IHave(const MessID: string): Boolean;
-var
-  x: integer;
 begin
-  FSock.SendString('IHAVE ' + MessID + CRLF);
-  x := (ReadResult div 100);
-  if x = 3 then
-  begin
-    SendData;
-    x := (ReadResult div 100);
-  end;
-  Result := x = 2;
+  Result := DoCommandWrite('IHAVE ' + MessID);
 end;
 
 function TNNTPSend.GotoLast: Boolean;
 begin
-  FSock.SendString('LAST' + CRLF);
-  Result := (ReadResult div 100) = 2;
+  Result := DoCommand('LAST');
 end;
 
 function TNNTPSend.GotoNext: Boolean;
 begin
-  FSock.SendString('NEXT' + CRLF);
-  Result := (ReadResult div 100) = 2;
+  Result := DoCommand('NEXT');
 end;
 
 function TNNTPSend.ListGroups: Boolean;
 begin
-  FSock.SendString('LIST' + CRLF);
-  Result := (ReadResult div 100) = 2;
-  if Result then
-    Result := ReadData;
+  Result := DoCommandRead('LIST');
 end;
 
 function TNNTPSend.ListNewGroups(Since: TDateTime): Boolean;
 begin
-  FSock.SendString('NEWGROUPS ' + SimpleDateTime(Since) + ' GMT' + CRLF);
-  Result := (ReadResult div 100) = 2;
-  if Result then
-    Result := ReadData;
+  Result := DoCommandRead('NEWGROUPS ' + SimpleDateTime(Since) + ' GMT');
 end;
 
 function TNNTPSend.NewArticles(const Group: string; Since: TDateTime): Boolean;
 begin
-  FSock.SendString('NEWNEWS ' + Group + ' ' + SimpleDateTime(Since) + ' GMT' + CRLF);
-  Result := (ReadResult div 100) = 2;
-  if Result then
-    Result := ReadData;
+  Result := DoCommandRead('NEWNEWS ' + Group + ' ' + SimpleDateTime(Since) + ' GMT');
 end;
 
 function TNNTPSend.PostArticle: Boolean;
-var
-  x: integer;
 begin
-  FSock.SendString('POST' + CRLF);
-  x := (ReadResult div 100);
-  if x = 3 then
-  begin
-    SendData;
-    x := (ReadResult div 100);
-  end;
-  Result := x = 2;
+  Result := DoCommandWrite('POST');
 end;
 
 function TNNTPSend.SwitchToSlave: Boolean;
 begin
-  FSock.SendString('SLAVE' + CRLF);
-  Result := (ReadResult div 100) = 2;
+  Result := DoCommand('SLAVE');
+end;
+
+function TNNTPSend.Xover(xoStart, xoEnd: string): Boolean;
+var
+  s: string;
+begin
+  s := 'XOVER ' + xoStart;
+  if xoEnd <> xoStart then
+    s := s + '-' + xoEnd;
+  Result := DoCommandRead(s);
 end;
 
 {==============================================================================}

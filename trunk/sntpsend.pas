@@ -1,9 +1,9 @@
 {==============================================================================|
-| Project : Delphree - Synapse                                   | 002.002.000 |
+| Project : Delphree - Synapse                                   | 002.002.001 |
 |==============================================================================|
 | Content: SNTP client                                                         |
 |==============================================================================|
-| Copyright (c)1999-2002, Lukas Gebauer                                        |
+| Copyright (c)1999-2003, Lukas Gebauer                                        |
 | All rights reserved.                                                         |
 |                                                                              |
 | Redistribution and use in source and binary forms, with or without           |
@@ -33,7 +33,7 @@
 | DAMAGE.                                                                      |
 |==============================================================================|
 | The Initial Developer of the Original Code is Lukas Gebauer (Czech Republic).|
-| Portions created by Lukas Gebauer are Copyright (c)2000,2001.                |
+| Portions created by Lukas Gebauer are Copyright (c)2000-2003.                |
 | All Rights Reserved.                                                         |
 |==============================================================================|
 | Contributor(s):                                                              |
@@ -154,12 +154,12 @@ var
 begin
   d  := (dt - 2) * 86400;
   d1 := frac(d);
-  d  := trunc(d);
-  if d>maxilongint then
+  if d > maxilongint then
      d := d - maxi - 1;
+  d  := trunc(d);
   d1 := Trunc(d1 * 10000) / 10000;
   d1 := d1 * maxi;
-  if d1>maxilongint then
+  if d1 > maxilongint then
      d1 := d1 - maxi - 1;
   Nsec:=trunc(d);
   Nfrac:=trunc(d1);
@@ -232,7 +232,7 @@ begin
   FillChar(q, SizeOf(q), 0);
   q.mode := $1B;
   t1 := GetUTTime;
-  EncodeTs(t1,q.org1,q.org2);
+  EncodeTs(t1, q.org1, q.org2);
   FSock.SendBuffer(@q, SizeOf(q));
   FBuffer := FSock.RecvPacket(FTimeout);
   if FSock.LastError = 0 then

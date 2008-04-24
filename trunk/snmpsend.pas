@@ -1,9 +1,9 @@
 {==============================================================================|
-| Project : Delphree - Synapse                                   | 002.005.000 |
+| Project : Delphree - Synapse                                   | 002.006.000 |
 |==============================================================================|
 | Content: SNMP client                                                         |
 |==============================================================================|
-| Copyright (c)1999-2002, Lukas Gebauer                                        |
+| Copyright (c)1999-2003, Lukas Gebauer                                        |
 | All rights reserved.                                                         |
 |                                                                              |
 | Redistribution and use in source and binary forms, with or without           |
@@ -33,7 +33,7 @@
 | DAMAGE.                                                                      |
 |==============================================================================|
 | The Initial Developer of the Original Code is Lukas Gebauer (Czech Republic).|
-| Portions created by Lukas Gebauer are Copyright (c)2000,2001.                |
+| Portions created by Lukas Gebauer are Copyright (c)2000-2003.                |
 | All Rights Reserved.                                                         |
 |==============================================================================|
 | Contributor(s):                                                              |
@@ -102,6 +102,8 @@ type
     procedure MIBAdd(const MIB, Value: string; ValueType: Integer);
     procedure MIBDelete(Index: Integer);
     function MIBGet(const MIB: string): string;
+    function MIBCount: integer;
+    function MIBByIndex(Index: Integer): TSNMPMib;
   published
     property Version: Integer read FVersion write FVersion;
     property Community: string read FCommunity write FCommunity;
@@ -262,11 +264,23 @@ end;
 
 procedure TSNMPRec.MIBDelete(Index: Integer);
 begin
-  if (Index >= 0) and (Index < FSNMPMibList.Count) then
+  if (Index >= 0) and (Index < MIBCount) then
   begin
     TSNMPMib(FSNMPMibList[Index]).Free;
     FSNMPMibList.Delete(Index);
   end;
+end;
+
+function TSNMPRec.MIBCount: integer;
+begin
+  Result := FSNMPMibList.Count;
+end;
+
+function TSNMPRec.MIBByIndex(Index: Integer): TSNMPMib;
+begin
+  Result := nil;
+  if (Index >= 0) and (Index < MIBCount) then
+    Result := TSNMPMib(FSNMPMibList[Index]);
 end;
 
 function TSNMPRec.MIBGet(const MIB: string): string;
@@ -274,7 +288,7 @@ var
   i: Integer;
 begin
   Result := '';
-  for i := 0 to FSNMPMibList.Count - 1 do
+  for i := 0 to MIBCount - 1 do
   begin
     if ((TSNMPMib(FSNMPMibList[i])).OID = MIB) then
     begin
@@ -365,25 +379,32 @@ begin
   end;
 end;
 
+function InternalGetNext(const SNMPSend: TSNMPSend; var OID: string;
+  const Community: string; var Value: string): Boolean;
+begin
+  SNMPSend.Query.Clear;
+  SNMPSend.Query.ID := SNMPSend.Query.ID + 1;
+  SNMPSend.Query.Community := Community;
+  SNMPSend.Query.PDUType := PDUGetNextRequest;
+  SNMPSend.Query.MIBAdd(OID, '', ASN1_NULL);
+  Result := SNMPSend.DoIt;
+  Value := '';
+  if Result then
+    if SNMPSend.Reply.SNMPMibList.Count > 0 then
+    begin
+      OID := TSNMPMib(SNMPSend.Reply.SNMPMibList[0]).OID;
+      Value := TSNMPMib(SNMPSend.Reply.SNMPMibList[0]).Value;
+    end;
+end;
+
 function SNMPGetNext(var OID: string; const Community, SNMPHost: string; var Value: string): Boolean;
 var
   SNMPSend: TSNMPSend;
 begin
   SNMPSend := TSNMPSend.Create;
   try
-    SNMPSend.Query.Clear;
-    SNMPSend.Query.Community := Community;
-    SNMPSend.Query.PDUType := PDUGetNextRequest;
-    SNMPSend.Query.MIBAdd(OID, '', ASN1_NULL);
     SNMPSend.TargetHost := SNMPHost;
-    Result := SNMPSend.DoIt;
-    Value := '';
-    if Result then
-      if SNMPSend.Reply.SNMPMibList.Count > 0 then
-      begin
-        OID := TSNMPMib(SNMPSend.Reply.SNMPMibList[0]).OID;
-        Value := TSNMPMib(SNMPSend.Reply.SNMPMibList[0]).Value;
-      end;
+    Result := InternalGetNext(SNMPSend, OID, Community, Value);
   finally
     SNMPSend.Free;
   end;
@@ -394,33 +415,39 @@ var
   OID: string;
   s: string;
   col,row: string;
-  lastcol: string;
-  x, n: integer;
+  x: integer;
+  SNMPSend: TSNMPSend;
+  RowList: TStringList;
 begin
   Value.Clear;
-  OID := BaseOID;
-  lastcol := '';
-  x := 0;
-  repeat
-    Result := SNMPGetNext(OID, Community, SNMPHost, s);
-    if Pos(BaseOID, OID) <> 1 then
-        break;
-    row := separateright(oid, baseoid + '.');
-    col := fetch(row, '.');
-    if col = lastcol then
-      inc(x)
-    else
-      x:=0;
-    lastcol := col;
-    if value.count <= x then
-      for n := value.Count - 1 to x do
-        value.add('');
-    if value[x] <> '' then
-      value[x] := value[x] + ',';
-    if IsBinaryString(s) then
-      s := StrToHex(s);
-    value[x] := value[x] + AnsiQuotedStr(s, '"');
-  until not result;
+  SNMPSend := TSNMPSend.Create;
+  RowList := TStringList.Create;
+  try
+    SNMPSend.TargetHost := SNMPHost;
+    OID := BaseOID;
+    repeat
+      Result := InternalGetNext(SNMPSend, OID, Community, s);
+      if Pos(BaseOID, OID) <> 1 then
+          break;
+      row := separateright(oid, baseoid + '.');
+      col := fetch(row, '.');
+
+      if IsBinaryString(s) then
+        s := StrToHex(s);
+      x := RowList.indexOf(Row);
+      if x < 0 then
+      begin
+        x := RowList.add(Row);
+        Value.Add('');
+      end;
+      if (Value[x] <> '') then
+        Value[x] := Value[x] + ',';
+      Value[x] := Value[x] + AnsiQuotedStr(s, '"');
+    until not result;
+  finally
+    SNMPSend.Free;
+    RowList.Free;
+  end;
 end;
 
 function SNMPGetTableElement(const BaseOID, RowID, ColID, Community, SNMPHost: string; var Value: String): Boolean;

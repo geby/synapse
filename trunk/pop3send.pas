@@ -1,9 +1,9 @@
 {==============================================================================|
-| Project : Delphree - Synapse                                   | 002.001.000 |
+| Project : Delphree - Synapse                                   | 002.001.004 |
 |==============================================================================|
 | Content: POP3 client                                                         |
 |==============================================================================|
-| Copyright (c)1999-2002, Lukas Gebauer                                        |
+| Copyright (c)1999-2003, Lukas Gebauer                                        |
 | All rights reserved.                                                         |
 |                                                                              |
 | Redistribution and use in source and binary forms, with or without           |
@@ -33,7 +33,7 @@
 | DAMAGE.                                                                      |
 |==============================================================================|
 | The Initial Developer of the Original Code is Lukas Gebauer (Czech Republic).|
-| Portions created by Lukas Gebauer are Copyright (c)2001-2002.                |
+| Portions created by Lukas Gebauer are Copyright (c)2001-2003.                |
 | All Rights Reserved.                                                         |
 |==============================================================================|
 | Contributor(s):                                                              |
@@ -116,9 +116,6 @@ type
 
 implementation
 
-const
-  CRLF = #13#10;
-
 constructor TPOP3Send.Create;
 begin
   inherited Create;
@@ -126,7 +123,7 @@ begin
   FPOP3cap := TStringList.Create;
   FSock := TTCPBlockSocket.Create;
   FSock.CreateSocket;
-  FSock.ConvertLineEnd := True;
+  FSock.ConvertLineEnd := true;
   FTimeout := 300000;
   FTargetPort := cPop3Protocol;
   FUsername := '';
@@ -161,6 +158,9 @@ begin
       s := FSock.RecvString(FTimeout);
       if s = '.' then
         Break;
+      if s <> '' then
+        if s[1] = '.' then
+          Delete(s, 1, 1);
       FFullResult.Add(s);
     until FSock.LastError <> 0;
   FResultCode := Result;
@@ -203,7 +203,6 @@ end;
 function TPOP3Send.Capability: Boolean;
 begin
   FPOP3cap.Clear;
-  Result := False;
   FSock.SendString('CAPA' + CRLF);
   Result := ReadResult(True) = 1;
   if Result then

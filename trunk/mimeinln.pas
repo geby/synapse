@@ -1,9 +1,9 @@
 {==============================================================================|
-| Project : Delphree - Synapse                                   | 001.000.003 |
+| Project : Delphree - Synapse                                   | 001.000.005 |
 |==============================================================================|
 | Content: Inline MIME support procedures and functions                        |
 |==============================================================================|
-| Copyright (c)1999-2002, Lukas Gebauer                                        |
+| Copyright (c)1999-2003, Lukas Gebauer                                        |
 | All rights reserved.                                                         |
 |                                                                              |
 | Redistribution and use in source and binary forms, with or without           |
@@ -33,7 +33,7 @@
 | DAMAGE.                                                                      |
 |==============================================================================|
 | The Initial Developer of the Original Code is Lukas Gebauer (Czech Republic).|
-| Portions created by Lukas Gebauer are Copyright (c)2000,2001.                |
+| Portions created by Lukas Gebauer are Copyright (c)2000-2003.                |
 | All Rights Reserved.                                                         |
 |==============================================================================|
 | Contributor(s):                                                              |
@@ -64,7 +64,7 @@ implementation
 
 function InlineDecode(const Value: string; CP: TMimeChar): string;
 var
-  s, su: string;
+  s, su, v: string;
   x, y, z, n: Integer;
   ichar: TMimeChar;
   c: Char;
@@ -88,12 +88,17 @@ var
   end;
 
 begin
-  Result := Value;
-  x := Pos('=?', Result);
-  y := SearchEndInline(Result, x);
-  while (y > x) and (x > 0) do  //fix by Marcus Moennig (minibbjd@gmx.de)
+  Result := '';
+  v := Value;
+  x := Pos('=?', v);
+  y := SearchEndInline(v, x);
+  while (y > x) and (x > 0) do
   begin
-    s := Copy(Result, x, y - x + 2);
+    s := Copy(v, 1, x - 1);
+    if Trim(s) <> '' then
+      Result := Result + s;
+    s := Copy(v, x, y - x + 2);
+    Delete(v, 1, y + 1);
     su := Copy(s, 3, Length(s) - 4);
     ichar := GetCPFromID(su);
     z := Pos('?', su);
@@ -118,11 +123,11 @@ begin
         s := CharsetConversion(s, ichar, CP);
       end;
     end;
-    Result := Copy(Result, 1, x - 1) + s +
-      Copy(Result, y + 2, Length(Result) - y - 1);
-    x := Pos('=?', Result);
-    y := SearchEndInline(Result, x);
+    Result := Result + s;
+    x := Pos('=?', v);
+    y := SearchEndInline(v, x);
   end;
+  Result := Result + v;
 end;
 
 {==============================================================================}

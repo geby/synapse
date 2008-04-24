@@ -1,9 +1,9 @@
 {==============================================================================|
-| Project : Delphree - Synapse                                   | 001.006.000 |
+| Project : Delphree - Synapse                                   | 001.007.000 |
 |==============================================================================|
 | Content: SSL support                                                         |
 |==============================================================================|
-| Copyright (c)1999-2002, Lukas Gebauer                                        |
+| Copyright (c)1999-2003, Lukas Gebauer                                        |
 | All rights reserved.                                                         |
 |                                                                              |
 | Redistribution and use in source and binary forms, with or without           |
@@ -33,7 +33,7 @@
 | DAMAGE.                                                                      |
 |==============================================================================|
 | The Initial Developer of the Original Code is Lukas Gebauer (Czech Republic).|
-| Portions created by Lukas Gebauer are Copyright (c)2002.                     |
+| Portions created by Lukas Gebauer are Copyright (c)2002-2003.                |
 | All Rights Reserved.                                                         |
 |==============================================================================|
 | Contributor(s):                                                              |
@@ -63,8 +63,8 @@ const
   DLLSSLName = 'libssl.so';
   DLLUtilName = 'libcrypto.so';
 {$ELSE}
-  DLLSSLName = 'libssl32.dll';
-  DLLSSLName2 = 'ssleay32.dll';
+  DLLSSLName = 'ssleay32.dll';
+  DLLSSLName2 = 'libssl32.dll';
   DLLUtilName = 'libeay32.dll';
 {$ENDIF}
 
@@ -94,6 +94,7 @@ const
 var
   SSLLibHandle: Integer = 0;
   SSLUtilHandle: Integer = 0;
+  SSLLibName: string = '';
 
 // libssl.dll
   SslGetError : function(s: PSSL; ret_code: Integer):Integer cdecl = nil;
@@ -155,11 +156,16 @@ begin
     begin
 {$IFDEF LINUX}
       SSLLibHandle := HMODULE(dlopen(DLLSSLName, RTLD_GLOBAL));
+      SSLLibName := DLLSSLName;
       SSLUtilHandle := HMODULE(dlopen(DLLUtilName, RTLD_GLOBAL));
 {$ELSE}
       SSLLibHandle := LoadLibrary(PChar(DLLSSLName));
+      SSLLibName := DLLSSLName;
       if (SSLLibHandle = 0) then
+      begin
         SSLLibHandle := LoadLibrary(PChar(DLLSSLName2));
+        SSLLibName := DLLSSLName2;
+      end;
       SSLUtilHandle := LoadLibrary(PChar(DLLUtilName));
 {$ENDIF}
       if (SSLLibHandle <> 0) and (SSLUtilHandle <> 0) then

@@ -1,9 +1,9 @@
 {==============================================================================|
-| Project : Delphree - Synapse                                   | 003.002.001 |
+| Project : Delphree - Synapse                                   | 003.003.000 |
 |==============================================================================|
 | Content: support procedures and functions                                    |
 |==============================================================================|
-| Copyright (c)1999-2002, Lukas Gebauer                                        |
+| Copyright (c)1999-2003, Lukas Gebauer                                        |
 | All rights reserved.                                                         |
 |                                                                              |
 | Redistribution and use in source and binary forms, with or without           |
@@ -33,7 +33,7 @@
 | DAMAGE.                                                                      |
 |==============================================================================|
 | The Initial Developer of the Original Code is Lukas Gebauer (Czech Republic).|
-| Portions created by Lukas Gebauer are Copyright (c) 1999-2002.               |
+| Portions created by Lukas Gebauer are Copyright (c) 1999-2003.               |
 | Portions created by Hernan Sanchez are Copyright (c) 2000.                   |
 | All Rights Reserved.                                                         |
 |==============================================================================|
@@ -90,7 +90,7 @@ function IntToBin(Value: Integer; Digits: Byte): string;
 function BinToInt(const Value: string): Integer;
 function ParseURL(URL: string; var Prot, User, Pass, Host, Port, Path,
   Para: string): string;
-function StringReplace(Value, Search, Replace: string): string;
+function ReplaceString(Value, Search, Replace: string): string;
 function RPosEx(const Sub, Value: string; From: integer): Integer;
 function RPos(const Sub, Value: String): Integer;
 function Fetch(var Value: string; const Delimiter: string): string;
@@ -98,6 +98,7 @@ function IsBinaryString(const Value: string): Boolean;
 function PosCRLF(const Value: string; var Terminator: string): integer;
 Procedure StringsTrim(const value: TStrings);
 function PosFrom(const SubStr, Value: String; From: integer): integer;
+function IncPoint(const p: pointer; Value: integer): pointer;
 
 implementation
 
@@ -308,7 +309,7 @@ begin
   x := rpos(':', Value);
   if (x > 0) and ((Length(Value) - x) > 2) then
     Value := Copy(Value, 1, x + 2);
-  Value := StringReplace(Value, ':', TimeSeparator);
+  Value := ReplaceString(Value, ':', TimeSeparator);
   Result := 0;
   try
     Result := StrToTime(Value);
@@ -370,9 +371,9 @@ begin
   month := 0;
   year := 0;
   zone := 0;
-  Value := StringReplace(Value, ' -', ' #');
-  Value := StringReplace(Value, '-', ' ');
-  Value := StringReplace(Value, ' #', ' -');
+  Value := ReplaceString(Value, ' -', ' #');
+  Value := ReplaceString(Value, '-', ' ');
+  Value := ReplaceString(Value, ' #', ' -');
   while Value <> '' do
   begin
     s := Fetch(Value, ' ');
@@ -419,6 +420,8 @@ begin
     if y > 0 then
       month := y;
   end;
+  if year = 0 then
+    year := 1980;
   if (month < 1) or (month > 12) then
     month := 1;
   if (day < 1) or (day > 31) then
@@ -826,7 +829,7 @@ end;
 function ParseURL(URL: string; var Prot, User, Pass, Host, Port, Path,
   Para: string): string;
 var
-  x: Integer;
+  x, y: Integer;
   sURL: string;
   s: string;
   s1, s2: string;
@@ -850,7 +853,8 @@ begin
   if UpperCase(Prot) = 'FTP' then
     Port := '21';
   x := Pos('@', sURL);
-  if (x > 0) and (x < Pos('/', sURL)) then
+  y := Pos('/', sURL);
+  if (x > 0) and ((x < y) or (y < 1))then
   begin
     s := SeparateLeft(sURL, '@');
     sURL := SeparateRight(sURL, '@');
@@ -897,7 +901,7 @@ end;
 
 {==============================================================================}
 
-function StringReplace(Value, Search, Replace: string): string;
+function ReplaceString(Value, Search, Replace: string): string;
 var
   x, l, ls, lr: Integer;
 begin
@@ -1057,6 +1061,13 @@ begin
     else
       inc(from);
   end;
+end;
+
+{==============================================================================}
+
+function IncPoint(const p: pointer; Value: integer): pointer;
+begin
+  Result := pointer(integer(p) + Value);
 end;
 
 {==============================================================================}
