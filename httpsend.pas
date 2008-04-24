@@ -1,5 +1,5 @@
 {==============================================================================|
-| Project : Delphree - Synapse                                   | 003.006.004 |
+| Project : Ararat Synapse                                       | 003.006.007 |
 |==============================================================================|
 | Content: HTTP client                                                         |
 |==============================================================================|
@@ -42,7 +42,14 @@
 |          (Found at URL: http://www.ararat.cz/synapse/)                       |
 |==============================================================================}
 
-unit HTTPSend;
+//RFC-1867, RFC-1947, RFC-2388, RFC-2616 
+
+{$IFDEF FPC}
+  {$MODE DELPHI}
+{$ENDIF}
+{$H+}
+
+unit httpsend;
 
 interface
 
@@ -51,7 +58,7 @@ uses
   {$IFDEF STREAMSEC}
   TlsInternalServer, TlsSynaSock,
   {$ENDIF}
-  blcksock, SynaUtil, SynaCode;
+  blcksock, synautil, synacode;
 
 const
   cHttpProtocol = '80';
@@ -530,7 +537,7 @@ end;
 
 procedure THTTPSend.Abort;
 begin
-  FSock.CloseSocket;
+  FSock.AbortSocket;
 end;
 
 {==============================================================================}

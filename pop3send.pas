@@ -1,5 +1,5 @@
 {==============================================================================|
-| Project : Delphree - Synapse                                   | 002.001.008 |
+| Project : Ararat Synapse                                       | 002.001.010 |
 |==============================================================================|
 | Content: POP3 client                                                         |
 |==============================================================================|
@@ -42,13 +42,14 @@
 |          (Found at URL: http://www.ararat.cz/synapse/)                       |
 |==============================================================================}
 
-//RFC-1734
-//RFC-1939
-//RFC-2195
-//RFC-2449
-//RFC-2595
+//RFC-1734, RFC-1939, RFC-2195, RFC-2449, RFC-2595
 
-unit POP3send;
+{$IFDEF FPC}
+  {$MODE DELPHI}
+{$ENDIF}
+{$H+}
+
+unit pop3send;
 
 interface
 
@@ -57,7 +58,7 @@ uses
   {$IFDEF STREAMSEC}
   TlsInternalServer, TlsSynaSock,
   {$ENDIF}
-  blcksock, SynaUtil, SynaCode;
+  blcksock, synautil, synacode;
 
 const
   cPop3Protocol = 'pop3';

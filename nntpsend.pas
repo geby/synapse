@@ -1,5 +1,5 @@
 {==============================================================================|
-| Project : Delphree - Synapse                                   | 001.003.001 |
+| Project : Ararat Synapse                                       | 001.003.003 |
 |==============================================================================|
 | Content: NNTP client                                                         |
 |==============================================================================|
@@ -42,7 +42,14 @@
 |          (Found at URL: http://www.ararat.cz/synapse/)                       |
 |==============================================================================}
 
-unit NNTPsend;
+//RFC-977, RFC-2980
+
+{$IFDEF FPC}
+  {$MODE DELPHI}
+{$ENDIF}
+{$H+}
+
+unit nntpsend;
 
 interface
 
@@ -51,7 +58,7 @@ uses
   {$IFDEF STREAMSEC}
   TlsInternalServer, TlsSynaSock,
   {$ENDIF}
-  blcksock, SynaUtil, SynaCode;
+  blcksock, synautil, synacode;
 
 const
   cNNTPProtocol = 'nntp';

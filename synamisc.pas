@@ -1,5 +1,5 @@
 {==============================================================================|
-| Project : Delphree - Synapse                                   | 001.000.006 |
+| Project : Ararat Synapse                                       | 001.001.002 |
 |==============================================================================|
 | Content: misc. procedures and functions                                      |
 |==============================================================================|
@@ -42,9 +42,13 @@
 |          (Found at URL: http://www.ararat.cz/synapse/)                       |
 |==============================================================================}
 
+{$IFDEF FPC}
+  {$MODE DELPHI}
+{$ENDIF}
 {$Q-}
+{$H+}
 
-unit SynaMisc;
+unit synamisc;
 
 interface
 
@@ -57,11 +61,16 @@ interface
 {$ENDIF}
 
 uses
-  SynaUtil, blcksock, SysUtils, Classes,
+  synautil, blcksock, SysUtils, Classes,
 {$IFDEF LINUX}
   Libc;
 {$ELSE}
-  Windows, Wininet;
+{$IFDEF FPC}
+  winver,
+{$ELSE}
+  Wininet,
+{$ENDIF}
+  Windows;
 {$ENDIF}
 
 Type
@@ -258,6 +267,13 @@ begin
   Result.Bypass := '';
 end;
 {$ELSE}
+{$IFDEF FPC}
+begin
+  Result.Host := '';
+  Result.Port := '';
+  Result.Bypass := '';
+end;
+{$ELSE}
 var
   ProxyInfo: PInternetProxyInfo;
   Err: Boolean;
@@ -307,6 +323,7 @@ begin
     FreeMem(ProxyInfo);
   end;
 end;
+{$ENDIF}
 {$ENDIF}
 
 {==============================================================================}

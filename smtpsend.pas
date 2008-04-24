@@ -1,5 +1,5 @@
 {==============================================================================|
-| Project : Delphree - Synapse                                   | 003.002.008 |
+| Project : Ararat Synapse                                       | 003.002.011 |
 |==============================================================================|
 | Content: SMTP client                                                         |
 |==============================================================================|
@@ -42,7 +42,15 @@
 |          (Found at URL: http://www.ararat.cz/synapse/)                       |
 |==============================================================================}
 
-unit SMTPsend;
+//RFC-1869, RFC-1870, RFC-1893, RFC-2034, RFC-2104, RFC-2195, RFC-2487,
+//RFC-2554, RFC-2821
+
+{$IFDEF FPC}
+  {$MODE DELPHI}
+{$ENDIF}
+{$H+}
+
+unit smtpsend;
 
 interface
 
@@ -51,7 +59,7 @@ uses
   {$IFDEF STREAMSEC}
   TlsInternalServer, TlsSynaSock,
   {$ENDIF}
-  blcksock, SynaUtil, SynaCode;
+  blcksock, synautil, synacode;
 
 const
   cSmtpProtocol = 'smtp';
@@ -561,7 +569,7 @@ begin
       begin
         s := MailTo;
         repeat
-          t := GetEmailAddr(fetch(s, ','));
+          t := GetEmailAddr(FetchEx(s, ',', '"'));
           if t <> '' then
             Result := SMTP.MailTo(t);
           if not Result then

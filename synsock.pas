@@ -1,5 +1,5 @@
 {==============================================================================|
-| Project : Delphree - Synapse                                   | 003.001.003 |
+| Project : Ararat Synapse                                       | 004.001.000 |
 |==============================================================================|
 | Content: Socket Independent Platform Layer                                   |
 |==============================================================================|
@@ -56,12 +56,16 @@ On Linux is level 2.2 always used!
 //{$DEFINE FORCEOLDAPI}
 {Note about define FORCEOLDAPI:
 If you activate this compiler directive, then is allways used old socket API
-for name resolution. If you leave this directive inactive, then when new API
+for name resolution. If you leave this directive inactive, then the new API
 is used, when running system allows it.
 
 For IPv6 support you must have new API!
 }
 
+{$IFDEF FPC}
+  {$MODE DELPHI}
+{$ENDIF}
+{$H+}
 {$IFDEF VER125}
   {$DEFINE BCB}
 {$ENDIF}
@@ -234,6 +238,9 @@ interface
 uses
   SyncObjs, SysUtils,
 {$IFDEF LINUX}
+  {$IFDEF FPC}
+  synafpc,
+  {$ENDIF}
   Libc;
 {$ELSE}
   Windows;
@@ -574,6 +581,15 @@ Const
 
   MSG_NOSIGNAL  = $4000;                // Do not generate SIGPIPE.
 
+  // getnameinfo constants
+  NI_MAXHOST	   = 1025;
+  NI_MAXSERV	   = 32;
+  NI_NOFQDN 	   = $4;
+  NI_NUMERICHOST = $1;
+  NI_NAMEREQD	   = $8;
+  NI_NUMERICSERV = $2;
+  NI_DGRAM       = $10;
+
 {=============================================================================}
 {$ELSE}
 Const
@@ -654,6 +670,15 @@ Const
 
   MSG_NOSIGNAL  = 0;
 
+  // getnameinfo constants
+  NI_MAXHOST	   = 1025;
+  NI_MAXSERV	   = 32;
+  NI_NOFQDN 	   = $1;
+  NI_NUMERICHOST = $2;
+  NI_NAMEREQD	   = $4;
+  NI_NUMERICSERV = $8;
+  NI_DGRAM       = $10;
+
 {$ENDIF}
 {=============================================================================}
 
@@ -720,15 +745,6 @@ const
   AI_PASSIVE     = $1;  // Socket address will be used in bind() call.
   AI_CANONNAME   = $2;  // Return canonical name in first ai_canonname.
   AI_NUMERICHOST = $4;  // Nodename must be a numeric address string.
-
-  // getnameinfo constants
-  NI_MAXHOST	   = 1025;
-  NI_MAXSERV	   = 32;
-  NI_NOFQDN 	   = $1;
-  NI_NUMERICHOST = $2;
-  NI_NAMEREQD	   = $4;
-  NI_NUMERICSERV = $8;
-  NI_DGRAM       = $10;
 
 type
 { Structure used for manipulating linger option. }
@@ -971,87 +987,133 @@ const
 {=============================================================================}
 var
   WSAStartup: function(wVersionRequired: Word; var WSData: TWSAData): Integer
-    {$IFDEF LINUX}cdecl{$ELSE}stdcall{$ENDIF} = nil;
+    {$IFNDEF FPC}{$IFDEF LINUX}cdecl{$ELSE}stdcall{$ENDIF} = nil;
+    {$ELSE}= nil;{$IFDEF LINUX}cdecl{$ELSE}stdcall{$ENDIF};{$ENDIF}
   WSACleanup: function: Integer
-    {$IFDEF LINUX}cdecl{$ELSE}stdcall{$ENDIF} = nil;
+    {$IFNDEF FPC}{$IFDEF LINUX}cdecl{$ELSE}stdcall{$ENDIF} = nil;
+    {$ELSE}= nil;{$IFDEF LINUX}cdecl{$ELSE}stdcall{$ENDIF};{$ENDIF}
   WSAGetLastError: function: Integer
-    {$IFDEF LINUX}cdecl{$ELSE}stdcall{$ENDIF} = nil;
+    {$IFNDEF FPC}{$IFDEF LINUX}cdecl{$ELSE}stdcall{$ENDIF} = nil;
+    {$ELSE}= nil;{$IFDEF LINUX}cdecl{$ELSE}stdcall{$ENDIF};{$ENDIF}
   GetServByName: function(name, proto: PChar): PServEnt
-    {$IFDEF LINUX}cdecl{$ELSE}stdcall{$ENDIF} = nil;
+    {$IFNDEF FPC}{$IFDEF LINUX}cdecl{$ELSE}stdcall{$ENDIF} = nil;
+    {$ELSE}= nil;{$IFDEF LINUX}cdecl{$ELSE}stdcall{$ENDIF};{$ENDIF}
   GetServByPort: function(port: Integer; proto: PChar): PServEnt
-    {$IFDEF LINUX}cdecl{$ELSE}stdcall{$ENDIF} = nil;
+    {$IFNDEF FPC}{$IFDEF LINUX}cdecl{$ELSE}stdcall{$ENDIF} = nil;
+    {$ELSE}= nil;{$IFDEF LINUX}cdecl{$ELSE}stdcall{$ENDIF};{$ENDIF}
   GetProtoByName: function(name: PChar): PProtoEnt
-    {$IFDEF LINUX}cdecl{$ELSE}stdcall{$ENDIF} = nil;
+    {$IFNDEF FPC}{$IFDEF LINUX}cdecl{$ELSE}stdcall{$ENDIF} = nil;
+    {$ELSE}= nil;{$IFDEF LINUX}cdecl{$ELSE}stdcall{$ENDIF};{$ENDIF}
   GetProtoByNumber: function(proto: Integer): PProtoEnt
-    {$IFDEF LINUX}cdecl{$ELSE}stdcall{$ENDIF} = nil;
+    {$IFNDEF FPC}{$IFDEF LINUX}cdecl{$ELSE}stdcall{$ENDIF} = nil;
+    {$ELSE}= nil;{$IFDEF LINUX}cdecl{$ELSE}stdcall{$ENDIF};{$ENDIF}
   GetHostByName: function(name: PChar): PHostEnt
-    {$IFDEF LINUX}cdecl{$ELSE}stdcall{$ENDIF} = nil;
+    {$IFNDEF FPC}{$IFDEF LINUX}cdecl{$ELSE}stdcall{$ENDIF} = nil;
+    {$ELSE}= nil;{$IFDEF LINUX}cdecl{$ELSE}stdcall{$ENDIF};{$ENDIF}
   GetHostByAddr: function(addr: Pointer; len, Struc: Integer): PHostEnt
-    {$IFDEF LINUX}cdecl{$ELSE}stdcall{$ENDIF} = nil;
+    {$IFNDEF FPC}{$IFDEF LINUX}cdecl{$ELSE}stdcall{$ENDIF} = nil;
+    {$ELSE}= nil;{$IFDEF LINUX}cdecl{$ELSE}stdcall{$ENDIF};{$ENDIF}
   GetHostName: function(name: PChar; len: Integer): Integer
-    {$IFDEF LINUX}cdecl{$ELSE}stdcall{$ENDIF} = nil;
+    {$IFNDEF FPC}{$IFDEF LINUX}cdecl{$ELSE}stdcall{$ENDIF} = nil;
+    {$ELSE}= nil;{$IFDEF LINUX}cdecl{$ELSE}stdcall{$ENDIF};{$ENDIF}
   Shutdown: function(s: TSocket; how: Integer): Integer
-    {$IFDEF LINUX}cdecl{$ELSE}stdcall{$ENDIF} = nil;
+    {$IFNDEF FPC}{$IFDEF LINUX}cdecl{$ELSE}stdcall{$ENDIF} = nil;
+    {$ELSE}= nil;{$IFDEF LINUX}cdecl{$ELSE}stdcall{$ENDIF};{$ENDIF}
   SetSockOpt: function(s: TSocket; level, optname: Integer; optval: PChar;
-    optlen: Integer): Integer {$IFDEF LINUX}cdecl{$ELSE}stdcall{$ENDIF} = nil;
+    optlen: Integer): Integer
+    {$IFNDEF FPC}{$IFDEF LINUX}cdecl{$ELSE}stdcall{$ENDIF} = nil;
+    {$ELSE}= nil;{$IFDEF LINUX}cdecl{$ELSE}stdcall{$ENDIF};{$ENDIF}
   GetSockOpt: function(s: TSocket; level, optname: Integer; optval: PChar;
-    var optlen: Integer): Integer {$IFDEF LINUX}cdecl{$ELSE}stdcall{$ENDIF} = nil;
-  SendTo: function(s: TSocket; var Buf; len, flags: Integer; addrto: PSockAddr;
-    tolen: Integer): Integer {$IFDEF LINUX}cdecl{$ELSE}stdcall{$ENDIF} = nil;
-  Send: function(s: TSocket; var Buf; len, flags: Integer): Integer
-    {$IFDEF LINUX}cdecl{$ELSE}stdcall{$ENDIF} = nil;
+    var optlen: Integer): Integer
+    {$IFNDEF FPC}{$IFDEF LINUX}cdecl{$ELSE}stdcall{$ENDIF} = nil;
+    {$ELSE}= nil;{$IFDEF LINUX}cdecl{$ELSE}stdcall{$ENDIF};{$ENDIF}
+  SendTo: function(s: TSocket; const Buf; len, flags: Integer; addrto: PSockAddr;
+    tolen: Integer): Integer
+    {$IFNDEF FPC}{$IFDEF LINUX}cdecl{$ELSE}stdcall{$ENDIF} = nil;
+    {$ELSE}= nil;{$IFDEF LINUX}cdecl{$ELSE}stdcall{$ENDIF};{$ENDIF}
+  Send: function(s: TSocket; const Buf; len, flags: Integer): Integer
+    {$IFNDEF FPC}{$IFDEF LINUX}cdecl{$ELSE}stdcall{$ENDIF} = nil;
+    {$ELSE}= nil;{$IFDEF LINUX}cdecl{$ELSE}stdcall{$ENDIF};{$ENDIF}
   Recv: function(s: TSocket; var Buf; len, flags: Integer): Integer
-    {$IFDEF LINUX}cdecl{$ELSE}stdcall{$ENDIF} = nil;
+    {$IFNDEF FPC}{$IFDEF LINUX}cdecl{$ELSE}stdcall{$ENDIF} = nil;
+    {$ELSE}= nil;{$IFDEF LINUX}cdecl{$ELSE}stdcall{$ENDIF};{$ENDIF}
   RecvFrom: function(s: TSocket; var Buf; len, flags: Integer; from: PSockAddr;
-    var fromlen: Integer): Integer {$IFDEF LINUX}cdecl{$ELSE}stdcall{$ENDIF} = nil;
+    var fromlen: Integer): Integer
+    {$IFNDEF FPC}{$IFDEF LINUX}cdecl{$ELSE}stdcall{$ENDIF} = nil;
+    {$ELSE}= nil;{$IFDEF LINUX}cdecl{$ELSE}stdcall{$ENDIF};{$ENDIF}
   ntohs: function(netshort: u_short): u_short
-    {$IFDEF LINUX}cdecl{$ELSE}stdcall{$ENDIF} = nil;
+    {$IFNDEF FPC}{$IFDEF LINUX}cdecl{$ELSE}stdcall{$ENDIF} = nil;
+    {$ELSE}= nil;{$IFDEF LINUX}cdecl{$ELSE}stdcall{$ENDIF};{$ENDIF}
   ntohl: function(netlong: u_long): u_long
-    {$IFDEF LINUX}cdecl{$ELSE}stdcall{$ENDIF} = nil;
+    {$IFNDEF FPC}{$IFDEF LINUX}cdecl{$ELSE}stdcall{$ENDIF} = nil;
+    {$ELSE}= nil;{$IFDEF LINUX}cdecl{$ELSE}stdcall{$ENDIF};{$ENDIF}
   Listen: function(s: TSocket; backlog: Integer): Integer
-    {$IFDEF LINUX}cdecl{$ELSE}stdcall{$ENDIF} = nil;
+    {$IFNDEF FPC}{$IFDEF LINUX}cdecl{$ELSE}stdcall{$ENDIF} = nil;
+    {$ELSE}= nil;{$IFDEF LINUX}cdecl{$ELSE}stdcall{$ENDIF};{$ENDIF}
   IoctlSocket: function(s: TSocket; cmd: DWORD; var arg: u_long): Integer
-    {$IFDEF LINUX}cdecl{$ELSE}stdcall{$ENDIF} = nil;
+    {$IFNDEF FPC}{$IFDEF LINUX}cdecl{$ELSE}stdcall{$ENDIF} = nil;
+    {$ELSE}= nil;{$IFDEF LINUX}cdecl{$ELSE}stdcall{$ENDIF};{$ENDIF}
   Inet_ntoa: function(inaddr: TInAddr): PChar
-    {$IFDEF LINUX}cdecl{$ELSE}stdcall{$ENDIF} = nil;
+    {$IFNDEF FPC}{$IFDEF LINUX}cdecl{$ELSE}stdcall{$ENDIF} = nil;
+    {$ELSE}= nil;{$IFDEF LINUX}cdecl{$ELSE}stdcall{$ENDIF};{$ENDIF}
   Inet_addr: function(cp: PChar): u_long
-    {$IFDEF LINUX}cdecl{$ELSE}stdcall{$ENDIF} = nil;
+    {$IFNDEF FPC}{$IFDEF LINUX}cdecl{$ELSE}stdcall{$ENDIF} = nil;
+    {$ELSE}= nil;{$IFDEF LINUX}cdecl{$ELSE}stdcall{$ENDIF};{$ENDIF}
   htons: function(hostshort: u_short): u_short
-    {$IFDEF LINUX}cdecl{$ELSE}stdcall{$ENDIF} = nil;
+    {$IFNDEF FPC}{$IFDEF LINUX}cdecl{$ELSE}stdcall{$ENDIF} = nil;
+    {$ELSE}= nil;{$IFDEF LINUX}cdecl{$ELSE}stdcall{$ENDIF};{$ENDIF}
   htonl: function(hostlong: u_long): u_long
-    {$IFDEF LINUX}cdecl{$ELSE}stdcall{$ENDIF} = nil;
+    {$IFNDEF FPC}{$IFDEF LINUX}cdecl{$ELSE}stdcall{$ENDIF} = nil;
+    {$ELSE}= nil;{$IFDEF LINUX}cdecl{$ELSE}stdcall{$ENDIF};{$ENDIF}
   GetSockName: function(s: TSocket; name: PSockAddr; var namelen: Integer): Integer
-    {$IFDEF LINUX}cdecl{$ELSE}stdcall{$ENDIF} = nil;
+    {$IFNDEF FPC}{$IFDEF LINUX}cdecl{$ELSE}stdcall{$ENDIF} = nil;
+    {$ELSE}= nil;{$IFDEF LINUX}cdecl{$ELSE}stdcall{$ENDIF};{$ENDIF}
   GetPeerName: function(s: TSocket; name: PSockAddr; var namelen: Integer): Integer
-    {$IFDEF LINUX}cdecl{$ELSE}stdcall{$ENDIF} = nil;
+    {$IFNDEF FPC}{$IFDEF LINUX}cdecl{$ELSE}stdcall{$ENDIF} = nil;
+    {$ELSE}= nil;{$IFDEF LINUX}cdecl{$ELSE}stdcall{$ENDIF};{$ENDIF}
   Connect: function(s: TSocket; name: PSockAddr; namelen: Integer): Integer
-    {$IFDEF LINUX}cdecl{$ELSE}stdcall{$ENDIF} = nil;
+    {$IFNDEF FPC}{$IFDEF LINUX}cdecl{$ELSE}stdcall{$ENDIF} = nil;
+    {$ELSE}= nil;{$IFDEF LINUX}cdecl{$ELSE}stdcall{$ENDIF};{$ENDIF}
   CloseSocket: function(s: TSocket): Integer
-    {$IFDEF LINUX}cdecl{$ELSE}stdcall{$ENDIF} = nil;
+    {$IFNDEF FPC}{$IFDEF LINUX}cdecl{$ELSE}stdcall{$ENDIF} = nil;
+    {$ELSE}= nil;{$IFDEF LINUX}cdecl{$ELSE}stdcall{$ENDIF};{$ENDIF}
   Bind: function(s: TSocket; addr: PSockAddr; namelen: Integer): Integer
-    {$IFDEF LINUX}cdecl{$ELSE}stdcall{$ENDIF} = nil;
+    {$IFNDEF FPC}{$IFDEF LINUX}cdecl{$ELSE}stdcall{$ENDIF} = nil;
+    {$ELSE}= nil;{$IFDEF LINUX}cdecl{$ELSE}stdcall{$ENDIF};{$ENDIF}
   Accept: function(s: TSocket; addr: PSockAddr; var addrlen: Integer): TSocket
-    {$IFDEF LINUX}cdecl{$ELSE}stdcall{$ENDIF} = nil;
+    {$IFNDEF FPC}{$IFDEF LINUX}cdecl{$ELSE}stdcall{$ENDIF} = nil;
+    {$ELSE}= nil;{$IFDEF LINUX}cdecl{$ELSE}stdcall{$ENDIF};{$ENDIF}
   Socket: function(af, Struc, Protocol: Integer): TSocket
-    {$IFDEF LINUX}cdecl{$ELSE}stdcall{$ENDIF} = nil;
+    {$IFNDEF FPC}{$IFDEF LINUX}cdecl{$ELSE}stdcall{$ENDIF} = nil;
+    {$ELSE}= nil;{$IFDEF LINUX}cdecl{$ELSE}stdcall{$ENDIF};{$ENDIF}
   Select: function(nfds: Integer; readfds, writefds, exceptfds: PFDSet;
-    timeout: PTimeVal): Longint {$IFDEF LINUX}cdecl{$ELSE}stdcall{$ENDIF} = nil;
+    timeout: PTimeVal): Longint
+    {$IFNDEF FPC}{$IFDEF LINUX}cdecl{$ELSE}stdcall{$ENDIF} = nil;
+    {$ELSE}= nil;{$IFDEF LINUX}cdecl{$ELSE}stdcall{$ENDIF};{$ENDIF}
 
   GetAddrInfo: function(NodeName: PChar; ServName: PChar; Hints: PAddrInfo;
     var Addrinfo: PAddrInfo): integer
-    {$IFDEF LINUX}cdecl{$ELSE}stdcall{$ENDIF} = nil;
+    {$IFNDEF FPC}{$IFDEF LINUX}cdecl{$ELSE}stdcall{$ENDIF} = nil;
+    {$ELSE}= nil;{$IFDEF LINUX}cdecl{$ELSE}stdcall{$ENDIF};{$ENDIF}
   FreeAddrInfo: procedure(ai: PAddrInfo)
-    {$IFDEF LINUX}cdecl{$ELSE}stdcall{$ENDIF} = nil;
+    {$IFNDEF FPC}{$IFDEF LINUX}cdecl{$ELSE}stdcall{$ENDIF} = nil;
+    {$ELSE}= nil;{$IFDEF LINUX}cdecl{$ELSE}stdcall{$ENDIF};{$ENDIF}
   GetNameInfo: function( addr: PSockAddr; namelen: Integer; host: PChar;
     hostlen: DWORD; serv: PChar; servlen: DWORD; flags: integer): integer
-    {$IFDEF LINUX}cdecl{$ELSE}stdcall{$ENDIF} = nil;
+    {$IFNDEF FPC}{$IFDEF LINUX}cdecl{$ELSE}stdcall{$ENDIF} = nil;
+    {$ELSE}= nil;{$IFDEF LINUX}cdecl{$ELSE}stdcall{$ENDIF};{$ENDIF}
 
 {$IFNDEF LINUX}
-  __WSAFDIsSet: function (s: TSocket; var FDSet: TFDSet): Bool stdcall = nil;
+  __WSAFDIsSet: function (s: TSocket; var FDSet: TFDSet): Bool
+    {$IFNDEF FPC}stdcall = nil;
+    {$ELSE}= nil; stdcall;{$ENDIF}
+
   WSAIoctl: function (s: TSocket; dwIoControlCode: DWORD; lpvInBuffer: Pointer;
     cbInBuffer: DWORD; lpvOutBuffer: Pointer; cbOutBuffer: DWORD;
     lpcbBytesReturned: PDWORD; lpOverlapped: Pointer;
-    lpCompletionRoutine: pointer): u_int stdcall = nil;
+    lpCompletionRoutine: pointer): u_int
+    {$IFNDEF FPC}stdcall = nil;
+    {$ELSE}= nil; stdcall;{$ENDIF}
 {$ENDIF}
 
 {$IFDEF LINUX}
@@ -1061,9 +1123,23 @@ function LSWSAGetLastError: Integer; cdecl;
 {$ENDIF}
 
 var
-  SynSockCS: TCriticalSection;
+  SynSockCS: SyncObjs.TCriticalSection;
   SockEnhancedApi: Boolean;
   SockWship6Api: Boolean;
+
+type
+  TVarSin = packed record
+    case sin_family: u_short of
+      AF_INET: (sin_port: u_short;
+                sin_addr: TInAddr;
+                sin_zero: array[0..7] of Char);
+      AF_INET6: (sin6_port:     u_short;
+            		sin6_flowinfo: u_long;
+      		      sin6_addr:     TInAddr6;
+      		      sin6_scope_id: u_long);
+  end;
+
+function SizeOfVarSin(sin: TVarSin): integer;
 
 const
 {$IFDEF LINUX}
@@ -1132,7 +1208,11 @@ end;
 {=============================================================================}
 {$IFDEF LINUX}
 var
+{$IFNDEF FPC}
   errno_loc: function: PInteger cdecl = nil;
+{$ELSE}
+  errno_loc: function: PInteger = nil; cdecl;
+{$ENDIF}
 
 function LSWSAStartup(wVersionRequired: Word; var WSData: TWSAData): Integer;
 begin
@@ -1154,8 +1234,11 @@ begin
 end;
 
 function LSWSAGetLastError: Integer;
+var
+  p: PInteger;
 begin
-  Result := errno_loc^;
+  p := errno_loc;
+  Result := p^;
 end;
 
 function __FDELT(Socket: TSocket): Integer;
@@ -1237,6 +1320,19 @@ end;
 
 {=============================================================================}
 
+function SizeOfVarSin(sin: TVarSin): integer;
+begin
+  case sin.sin_family of
+    AF_INET:
+            Result := SizeOf(TSockAddrIn);
+    AF_INET6:
+            Result := SizeOf(TSockAddrIn6);
+  else
+    Result := 0;
+  end;
+end;
+{=============================================================================}
+
 function InitSocketInterface(stack: string): Boolean;
 begin
   Result := False;
@@ -1251,10 +1347,8 @@ begin
       SockWship6Api := False;
 {$IFDEF LINUX}
       Libc.Signal(Libc.SIGPIPE, TSignalHandler(Libc.SIG_IGN));
-      LibHandle := HMODULE(dlopen(PChar(Stack), RTLD_GLOBAL));
-{$ELSE}
-      LibHandle := LoadLibrary(PChar(Stack));
 {$ENDIF}
+      LibHandle := LoadLibrary(PChar(Stack));
       if LibHandle <> 0 then
       begin
 {$IFDEF LINUX}
@@ -1362,7 +1456,7 @@ end;
 
 initialization
 begin
-  SynSockCS:= TCriticalSection.Create;
+  SynSockCS := SyncObjs.TCriticalSection.Create;
   SET_IN6_IF_ADDR_ANY (@in6addr_any);
   SET_LOOPBACK_ADDR6  (@in6addr_loopback);
 end;

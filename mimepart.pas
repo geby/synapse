@@ -1,5 +1,5 @@
 {==============================================================================|
-| Project : Delphree - Synapse                                   | 002.003.004 |
+| Project : Ararat Synapse                                       | 002.004.008 |
 |==============================================================================|
 | Content: MIME support procedures and functions                               |
 |==============================================================================|
@@ -42,16 +42,25 @@
 |          (Found at URL: http://www.ararat.cz/synapse/)                       |
 |==============================================================================}
 
-unit MIMEpart;
+{$IFDEF FPC}
+  {$MODE DELPHI}
+{$ENDIF}
+{$H+}
+
+unit mimepart;
 
 interface
 
 uses
   SysUtils, Classes,
-{$IFNDEF LINUX}
+{$IFDEF LINUX}
+  {$IFDEF FPC}
+  synafpc,
+  {$ENDIF}
+{$ELSE}
   Windows,
 {$ENDIF}
-  SynaChar, SynaCode, SynaUtil, MIMEinLn;
+  synachar, synacode, synautil, mimeinln;
 
 type
 
@@ -89,9 +98,13 @@ type
     FSubParts: TList;
     FOnWalkPart: THookWalkPart;
     FMaxLineLength: integer;
+    FSubLevel: integer;
+    FMaxSubLevel: integer;
+    FAttachInside: boolean;
     procedure SetPrimary(Value: string);
     procedure SetEncoding(Value: string);
     procedure SetCharset(Value: string);
+    function IsUUcode(Value: string): boolean;
   public
     constructor Create;
     destructor Destroy; override;
@@ -111,6 +124,7 @@ type
     procedure DecomposeParts;
     procedure ComposeParts;
     procedure WalkPart;
+    function CanSubPart: boolean;
   published
     property Primary: string read FPrimary write SetPrimary;
     property Encoding: string read FEncoding write SetEncoding;
@@ -132,6 +146,9 @@ type
     property PrePart: TStringList read FPrePart;
     property PostPart: TStringList read FPostPart;
     property DecodedLines: TMemoryStream read FDecodedLines;
+    property SubLevel: integer read FSubLevel write FSubLevel;
+    property MaxSubLevel: integer read FMaxSubLevel write FMaxSubLevel;
+    property AttachInside: boolean read FAttachInside;
     property OnWalkPart: THookWalkPart read FOnWalkPart write FOnWalkPart;
     property MaxLineLength: integer read FMaxLineLength Write FMaxLineLength;
   end;
@@ -216,6 +233,9 @@ begin
   FTargetCharset := GetCurCP;
   FDefaultCharset := 'US-ASCII';
   FMaxLineLength := 78;
+  FSubLevel := 0;
+  FMaxSubLevel := -1;
+  FAttachInside := false;
 end;
 
 destructor TMIMEPart.Destroy;
@@ -248,6 +268,7 @@ begin
   FDescription := '';
   FBoundary := '';
   FFileName := '';
+  FAttachInside := False;
   FPartBody.Clear;
   FHeaders.Clear;
   FPrePart.Clear;
@@ -280,6 +301,7 @@ begin
   PrePart.Assign(Value.PrePart);
   PostPart.Assign(Value.PostPart);
   MaxLineLength := Value.MaxLineLength;
+  FAttachInside := Value.AttachInside;
 end;
 
 {==============================================================================}
@@ -342,6 +364,7 @@ begin
   Result := TMimePart.Create;
   Result.DefaultCharset := FDefaultCharset;
   FSubParts.Add(Result);
+  Result.SubLevel := FSubLevel + 1;
 end;
 
 {==============================================================================}
@@ -374,7 +397,6 @@ begin
       Break;
     FHeaders.Add(s);
   end;
-  StringsTrim(FHeaders);
   DecodePartHeader;
   //extract prepart
   if FPrimaryCode = MP_MULTIPART then
@@ -387,29 +409,39 @@ begin
       if s = '--' + FBoundary then
         Break;
       FPrePart.Add(s);
+      if not FAttachInside then
+        FAttachInside := IsUUcode(s);
     end;
-    StringsTrim(FPrePart);
   end;
   //extract body part
   if FPrimaryCode = MP_MULTIPART then
   begin
     repeat
-      Mime := AddSubPart;
-      while FLines.Count > x do
+      if CanSubPart then
+      begin
+        Mime := AddSubPart;
+        while FLines.Count > x do
+        begin
+          s := FLines[x];
+          Inc(x);
+          if Pos('--' + FBoundary, s) = 1 then
+            Break;
+          Mime.Lines.Add(s);
+        end;
+        StringsTrim(Mime.Lines);
+        Mime.DecomposeParts;
+      end
+      else
       begin
         s := FLines[x];
         Inc(x);
-        if Pos('--' + FBoundary, s) = 1 then
-          Break;
-        Mime.Lines.Add(s);
+        FPartBody.Add(s);
       end;
-      StringsTrim(Mime.Lines);
-      Mime.DecomposeParts;
       if x >= FLines.Count then
         break;
     until s = '--' + FBoundary + '--';
   end;
-  if FPrimaryCode = MP_MESSAGE then
+  if (FPrimaryCode = MP_MESSAGE) and CanSubPart then
   begin
     Mime := AddSubPart;
     SkipEmpty;
@@ -430,6 +462,8 @@ begin
       s := TrimRight(FLines[x]);
       Inc(x);
       FPartBody.Add(s);
+      if not FAttachInside then
+        FAttachInside := IsUUcode(s);
     end;
     StringsTrim(FPartBody);
   end;
@@ -442,6 +476,8 @@ begin
       s := TrimRight(FLines[x]);
       Inc(x);
       FPostPart.Add(s);
+      if not FAttachInside then
+        FAttachInside := IsUUcode(s);
     end;
     StringsTrim(FPostPart);
   end;
@@ -502,14 +538,12 @@ begin
   if FPrimaryCode = MP_MULTIPART then
   begin
     Flines.AddStrings(FPrePart);
-    Flines.Add('');
     for n := 0 to GetSubPartCount - 1 do
     begin
       Flines.Add('--' + FBoundary);
       mime := GetSubPart(n);
       mime.ComposeParts;
       FLines.AddStrings(mime.Lines);
-      Flines.Add('');
     end;
     Flines.Add('--' + FBoundary + '--');
     Flines.AddStrings(FPostPart);
@@ -522,70 +556,43 @@ begin
       mime := GetSubPart(0);
       mime.ComposeParts;
       FLines.AddStrings(mime.Lines);
-      Flines.Add('');
     end;
   end
   else
   //if normal part
   begin
     FLines.AddStrings(FPartBody);
-    Flines.Add('');
   end;
 end;
 
 {==============================================================================}
 
 procedure TMIMEPart.DecodePart;
-const
-  CRLF = #13#10;
 var
   n: Integer;
   s: string;
 begin
   FDecodedLines.Clear;
-  for n := 0 to FPartBody.Count - 1 do
-  begin
-    s := FPartBody[n];
-    case FEncodingCode of
-      ME_7BIT:
-        begin
-          if FPrimaryCode = MP_TEXT then
-            s := CharsetConversion(s, FCharsetCode, FTargetCharset);
-          s := s + CRLF;
-        end;
-      ME_8BIT:
-        begin
-          if FPrimaryCode = MP_TEXT then
-            s := CharsetConversion(s, FCharsetCode, FTargetCharset);
-          s := s + CRLF;
-        end;
-      ME_QUOTED_PRINTABLE:
-        begin
-          if s = '' then
-            s := CRLF
+  case FEncodingCode of
+    ME_QUOTED_PRINTABLE:
+      s := DecodeQuotedPrintable(FPartBody.Text);
+    ME_BASE64:
+      s := DecodeBase64(FPartBody.Text);
+    ME_UU, ME_XX:
+      begin
+        s := '';
+        for n := 0 to FPartBody.Count - 1 do
+          if FEncodingCode = ME_UU then
+            s := s + DecodeUU(FPartBody[n])
           else
-            if s[Length(s)] <> '=' then
-              s := s + CRLF;
-          s := DecodeQuotedPrintable(s);
-          if FPrimaryCode = MP_TEXT then
-            s := CharsetConversion(s, FCharsetCode, FTargetCharset);
-        end;
-      ME_BASE64:
-        begin
-          if s <> '' then
-            s := DecodeBase64(s);
-          if FPrimaryCode = MP_TEXT then
-            s := CharsetConversion(s, FCharsetCode, FTargetCharset);
-        end;
-      ME_UU:
-        if s <> '' then
-          s := DecodeUU(s);
-      ME_XX:
-        if s <> '' then
-          s := DecodeXX(s);
-    end;
-    FDecodedLines.Write(Pointer(s)^, Length(s));
+            s := s + DecodeXX(FPartBody[n]);
+      end;
+  else
+    s := FPartBody.Text;
   end;
+  if FPrimaryCode = MP_TEXT then
+    s := CharsetConversion(s, FCharsetCode, FTargetCharset);
+  FDecodedLines.Write(Pointer(s)^, Length(s));
   FDecodedLines.Seek(0, soFromBeginning);
 end;
 
@@ -647,9 +654,9 @@ begin
       if Pos('CONTENT-ID:', su) = 1 then
         FContentID := SeparateRight(s, ':');
     end;
-  if (PrimaryCode = MP_BINARY) and (FFileName = '') then
+  if FFileName = '' then
     FFileName := fn;
-  FFileName := InlineDecode(FFileName, getCurCP);
+  FFileName := InlineDecode(FFileName, FTargetCharset);
   FFileName := ExtractFileName(FFileName);
 end;
 
@@ -687,7 +694,15 @@ begin
         end
         else
         begin
-          l.LoadFromStream(FDecodedLines);
+          if FPrimaryCode = MP_BINARY then
+          begin
+            SetLength(s, FDecodedLines.Size);
+            x := FDecodedLines.Read(pointer(s)^, FDecodedLines.Size);
+            Setlength(s, x);
+            l.Add(s);
+          end
+          else
+            l.LoadFromStream(FDecodedLines);
           for n := 0 to l.Count - 1 do
           begin
             s := l[n];
@@ -695,8 +710,10 @@ begin
               s := CharsetConversion(s, FTargetCharset, FCharsetCode);
             if FEncodingCode = ME_QUOTED_PRINTABLE then
             begin
-              s := EncodeTriplet(s, '=', [Char(1)..Char(31), '=', Char(128)..Char(255)]);
-//              s := EncodeQuotedPrintable(s);
+              if FPrimaryCode = MP_BINARY then
+                s := EncodeQuotedPrintable(s)
+              else
+                s := EncodeTriplet(s, '=', [Char(0)..Char(31), '=', Char(127)..Char(255)]);
               repeat
                 if Length(s) < FMaxLineLength then
                 begin
@@ -717,7 +734,7 @@ begin
                   if x = 0 then
                     x := FMaxLineLength;
                   t := Copy(s, 1, x);
-                  s := Copy(s, x + 1, Length(s) - x);
+                  Delete(s, 1, x);
                   if s <> '' then
                     t := t + '=';
                 end;
@@ -727,6 +744,9 @@ begin
             else
               FPartBody.Add(s);
           end;
+          if (FPrimaryCode = MP_BINARY)
+            and (FEncodingCode = ME_QUOTED_PRINTABLE) then
+            FPartBody[FPartBody.Count - 1] := FPartBody[FPartBody.Count - 1] + '=';
         end;
     end;
   finally
@@ -758,7 +778,7 @@ begin
   begin
     s := '';
     if FFileName <> '' then
-      s := '; FileName="' + InlineCode(FFileName) + '"';
+      s := '; FileName="' + InlineCodeEx(FileName, FTargetCharset) + '"';
     FHeaders.Insert(0, 'Content-Disposition: ' + LowerCase(FDisposition) + s);
   end;
   if FContentID <> '' then
@@ -783,11 +803,11 @@ begin
       s := FPrimary + '/' + FSecondary + '; charset=' + GetIDfromCP(FCharsetCode);
     MP_MULTIPART:
       s := FPrimary + '/' + FSecondary + '; boundary="' + FBoundary + '"';
-    MP_MESSAGE:
-      s := FPrimary + '/' + FSecondary + '';
-    MP_BINARY:
-      s := FPrimary + '/' + FSecondary + '; name="' + FFileName + '"';
+    MP_MESSAGE, MP_BINARY:
+      s := FPrimary + '/' + FSecondary;
   end;
+  if FFileName <> '' then
+    s := s + '; name="' + InlineCodeEx(FileName, FTargetCharset) + '"';
   FHeaders.Insert(0, 'Content-type: ' + s);
 end;
 
@@ -878,16 +898,35 @@ begin
   FCharsetCode := GetCPFromID(Value);
 end;
 
+function TMIMEPart.CanSubPart: boolean;
+begin
+  Result := True;
+  if FMaxSubLevel <> -1 then
+    Result := FMaxSubLevel > FSubLevel;
+end;
+
+function TMIMEPart.IsUUcode(Value: string): boolean;
+begin
+  Value := UpperCase(Value);
+  Result := (pos('BEGIN ', Value) = 1) and (SeparateRight(Value, ' ') <> '');
+end;
+
 {==============================================================================}
 
 function GenerateBoundary: string;
 var
-  x: Integer;
+  x, y: Integer;
 begin
-  Sleep(1);
+  y := GetTick;
+  x := y;
+  while TickDelta(y, x) = 0 do
+  begin
+    Sleep(1);
+    x := GetTick;
+  end;
   Randomize;
-  x := Random(MaxInt);
-  Result := IntToHex(x, 8) + '_Synapse_message_boundary';
+  y := Random(MaxInt);
+  Result := IntToHex(x, 8) + '_' + IntToHex(y, 8) + '_Synapse_boundary';
 end;
 
 end.

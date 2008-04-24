@@ -1,5 +1,5 @@
 {==============================================================================|
-| Project : Delphree - Synapse                                   | 003.000.002 |
+| Project : Ararat Synapse                                       | 003.001.005 |
 |==============================================================================|
 | Content: PING sender                                                         |
 |==============================================================================|
@@ -42,10 +42,14 @@
 |          (Found at URL: http://www.ararat.cz/synapse/)                       |
 |==============================================================================}
 
+{$IFDEF FPC}
+  {$MODE DELPHI}
+{$ENDIF}
 {$Q-}
 {$R-}
+{$H+}
 
-unit PINGsend;
+unit pingsend;
 
 interface
 
@@ -56,13 +60,18 @@ uses
   Windows,
 {$ENDIF}
   SysUtils,
-  synsock, blcksock, SynaUtil;
+  synsock, blcksock, synautil;
 
 const
   ICMP_ECHO = 8;
   ICMP_ECHOREPLY = 0;
+  ICMP_UNREACH = 3;
+  ICMP_TIME_EXCEEDED = 11;
+//rfc-2292
   ICMP6_ECHO = 128;
   ICMP6_ECHOREPLY = 129;
+  ICMP6_UNREACH = 1;
+  ICMP6_TIME_EXCEEDED = 3;
 
 type
   TIcmpEchoHeader = record
@@ -84,6 +93,17 @@ type
     proto: Byte;
   end;
 
+  TICMPError = (
+    IE_NoError,
+    IE_Other,
+    IE_TTLExceed,
+    IE_UnreachOther,
+    IE_UnreachRoute,
+    IE_UnreachAdmin,
+    IE_UnreachAddr,
+    IE_UnreachPort
+    );
+
   TPINGSend = class(TSynaClient)
   private
     FSock: TICMPBlockSocket;
@@ -94,9 +114,16 @@ type
     FPingTime: Integer;
     FIcmpEcho: Byte;
     FIcmpEchoReply: Byte;
+    FIcmpUnreach: Byte;
+    FReplyFrom: string;
+    FReplyType: byte;
+    FReplyCode: byte;
+    FReplyError: TICMPError;
+    FReplyErrorDesc: string;
     function Checksum(Value: string): Word;
     function Checksum6(Value: string): Word;
     function ReadPacket: Boolean;
+    procedure TranslateError;
   public
     function Ping(const Host: string): Boolean;
     constructor Create;
@@ -104,10 +131,16 @@ type
   published
     property PacketSize: Integer read FPacketSize Write FPacketSize;
     property PingTime: Integer read FPingTime;
+    property ReplyFrom: string read FReplyFrom;
+    property ReplyType: byte read FReplyType;
+    property ReplyCode: byte read FReplyCode;
+    property ReplyError: TICMPError read FReplyError;
+    property ReplyErrorDesc: string read FReplyErrorDesc;
     property Sock: TICMPBlockSocket read FSock;
   end;
 
 function PingHost(const Host: string): Integer;
+function TraceRouteHost(const Host: string): string;
 
 implementation
 
@@ -140,11 +173,16 @@ var
   IPHeadPtr: ^TIPHeader;
   IpHdrLen: Integer;
   IcmpEchoHeaderPtr: ^TICMPEchoHeader;
-  n: Integer;
   t: Boolean;
+  x: cardinal;
 begin
   Result := False;
   FPingTime := -1;
+  FReplyFrom := '';
+  FReplyType := 0;
+  FReplyCode := 0;
+  FReplyError := IE_NoError;
+  FReplyErrorDesc := '';
   FSock.Bind(FIPInterface, cAnyPort);
   FSock.Connect(Host, '0');
   if FSock.LastError <> 0 then
@@ -154,32 +192,33 @@ begin
   begin
     FIcmpEcho := ICMP6_ECHO;
     FIcmpEchoReply := ICMP6_ECHOREPLY;
+    FIcmpUnreach := ICMP6_UNREACH;
   end
   else
   begin
     FIcmpEcho := ICMP_ECHO;
     FIcmpEchoReply := ICMP_ECHOREPLY;
+    FIcmpUnreach := ICMP_UNREACH;
   end;
-  FBuffer := StringOfChar(#0, SizeOf(TICMPEchoHeader) + FPacketSize);
+  FBuffer := StringOfChar(#55, SizeOf(TICMPEchoHeader) + FPacketSize);
   IcmpEchoHeaderPtr := Pointer(FBuffer);
   with IcmpEchoHeaderPtr^ do
   begin
     i_type := FIcmpEcho;
     i_code := 0;
     i_CheckSum := 0;
-    FId := Random(32767);
+    FId := System.Random(32767);
     i_Id := FId;
     TimeStamp := GetTick;
     Inc(FSeq);
     i_Seq := FSeq;
-    for n := Succ(SizeOf(TIcmpEchoHeader)) to Length(FBuffer) do
-      FBuffer[n] := #$55;
+    if fSock.IP6used then
+      i_CheckSum := CheckSum6(FBuffer)
+    else
+      i_CheckSum := CheckSum(FBuffer);
   end;
-  if fSock.IP6used then
-    IcmpEchoHeaderPtr^.i_CheckSum := CheckSum6(FBuffer)
-  else
-    IcmpEchoHeaderPtr^.i_CheckSum := CheckSum(FBuffer);
   FSock.SendString(FBuffer);
+  x := GetTick;
   repeat
     t := ReadPacket;
     if not t then
@@ -200,31 +239,35 @@ begin
       IpHdrLen := (IPHeadPtr^.VerLen and $0F) * 4;
       IcmpEchoHeaderPtr := @FBuffer[IpHdrLen + 1];
     end;
-  until (IcmpEchoHeaderPtr^.i_type <> FIcmpEcho) and (IcmpEchoHeaderPtr^.i_id = FId);
+  until (IcmpEchoHeaderPtr^.i_type <> FIcmpEcho)
+    and ((IcmpEchoHeaderPtr^.i_id = FId) or (IcmpEchoHeaderPtr^.i_id = 0));
   //it discard sometimes possible 'echoes' of previosly sended packet...
   if t then
-    if (IcmpEchoHeaderPtr^.i_type = FIcmpEchoReply) then
     begin
-      FPingTime := TickDelta(IcmpEchoHeaderPtr^.TimeStamp, GetTick);
+      FPingTime := TickDelta(x, GetTick);
+      FReplyFrom := FSock.GetRemoteSinIP;
+      FReplyType := IcmpEchoHeaderPtr^.i_type;
+      FReplyCode := IcmpEchoHeaderPtr^.i_code;
+      TranslateError;
       Result := True;
     end;
 end;
 
 function TPINGSend.Checksum(Value: string): Word;
-type
-  TWordArray = array[0..0] of Word;
 var
-  WordArr: ^TWordArray;
   CkSum: DWORD;
   Num, Remain: Integer;
-  n: Integer;
+  n, i: Integer;
 begin
   Num := Length(Value) div 2;
   Remain := Length(Value) mod 2;
-  WordArr := Pointer(Value);
   CkSum := 0;
+  i := 1;
   for n := 0 to Num - 1 do
-    CkSum := CkSum + WordArr^[n];
+  begin
+    CkSum := CkSum + Synsock.HtoNs(DecodeInt(Value, i));
+    inc(i, 2);
+  end;
   if Remain <> 0 then
     CkSum := CkSum + Ord(Value[Length(Value)]);
   CkSum := (CkSum shr 16) + (CkSum and $FFFF);
@@ -252,17 +295,87 @@ begin
   s := StringOfChar(#0, SizeOf(TICMP6Packet)) + Value;
   ICMP6Ptr := Pointer(s);
   x := synsock.WSAIoctl(FSock.Socket, SIO_ROUTING_INTERFACE_QUERY,
-    @FSock.RemoteSin.IP6, SizeOf(FSock.RemoteSin.IP6),
+    @FSock.RemoteSin, SizeOf(FSock.RemoteSin),
     @ip6, SizeOf(ip6), @b, nil, nil);
   if x <> -1 then
     ICMP6Ptr^.in_dest := ip6.sin6_addr
   else
-    ICMP6Ptr^.in_dest := FSock.LocalSin.IP6.sin6_addr;
-  ICMP6Ptr^.in_source := FSock.RemoteSin.IP6.sin6_addr;
+    ICMP6Ptr^.in_dest := FSock.LocalSin.sin6_addr;
+  ICMP6Ptr^.in_source := FSock.RemoteSin.sin6_addr;
   ICMP6Ptr^.Length := synsock.htonl(Length(Value));
   ICMP6Ptr^.proto := IPPROTO_ICMPV6;
   Result := Checksum(s);
 {$ENDIF}
+end;
+
+procedure TPINGSend.TranslateError;
+begin
+  if fSock.IP6used then
+  begin
+    case FReplyType of
+      ICMP6_ECHOREPLY:
+        FReplyError := IE_NoError;
+      ICMP6_TIME_EXCEEDED:
+        FReplyError := IE_TTLExceed;
+      ICMP6_UNREACH:
+        case FReplyCode of
+          0:
+            FReplyError := IE_UnreachRoute;
+          3:
+            FReplyError := IE_UnreachAddr;
+          4:
+            FReplyError := IE_UnreachPort;
+          1:
+            FReplyError := IE_UnreachAdmin;
+        else
+          FReplyError := IE_UnreachOther;
+        end;
+    else
+      FReplyError := IE_Other;
+    end;
+  end
+  else
+  begin
+    case FReplyType of
+      ICMP_ECHOREPLY:
+        FReplyError := IE_NoError;
+      ICMP_TIME_EXCEEDED:
+        FReplyError := IE_TTLExceed;
+      ICMP_UNREACH:
+        case FReplyCode of
+          0:
+            FReplyError := IE_UnreachRoute;
+          1:
+            FReplyError := IE_UnreachAddr;
+          3:
+            FReplyError := IE_UnreachPort;
+          13:
+            FReplyError := IE_UnreachAdmin;
+        else
+          FReplyError := IE_UnreachOther;
+        end;
+    else
+      FReplyError := IE_Other;
+    end;
+  end;
+  case FReplyError of
+    IE_NoError:
+      FReplyErrorDesc := '';
+    IE_Other:
+      FReplyErrorDesc := 'Unknown error';
+    IE_TTLExceed:
+      FReplyErrorDesc := 'TTL Exceeded';
+    IE_UnreachOther:
+      FReplyErrorDesc := 'Unknown unreachable';
+    IE_UnreachRoute:
+      FReplyErrorDesc := 'No route to destination';
+    IE_UnreachAdmin:
+      FReplyErrorDesc := 'Administratively prohibited';
+    IE_UnreachAddr:
+      FReplyErrorDesc := 'Address unreachable';
+    IE_UnreachPort:
+      FReplyErrorDesc := 'Port unreachable';
+  end;
 end;
 
 {==============================================================================}
@@ -271,10 +384,44 @@ function PingHost(const Host: string): Integer;
 begin
   with TPINGSend.Create do
   try
-    Ping(Host);
-    Result := PingTime;
+    Result := -1;
+    if Ping(Host) then
+      if ReplyError = IE_NoError then
+        Result := PingTime;
   finally
     Free;
+  end;
+end;
+
+function TraceRouteHost(const Host: string): string;
+var
+  Ping: TPingSend;
+  ttl : byte;
+begin
+  Result := '';
+  Ping := TPINGSend.Create;
+  try
+    ttl := 1;
+    repeat
+      ping.Sock.TTL := ttl;
+      inc(ttl);
+      if ttl > 30 then
+        Break;
+      if not ping.Ping(Host) then
+      begin
+        Result := Result + cAnyHost+ ' Timeout' + CRLF;
+        continue;
+      end;
+      if (ping.ReplyError <> IE_NoError)
+        and (ping.ReplyError <> IE_TTLExceed) then
+      begin
+        Result := Result + Ping.ReplyFrom + ' ' + Ping.ReplyErrorDesc + CRLF;
+        break;
+      end;
+      Result := Result + Ping.ReplyFrom + ' ' + IntToStr(Ping.PingTime) + CRLF;
+    until ping.ReplyError = IE_NoError;
+  finally
+    Ping.Free;
   end;
 end;
 

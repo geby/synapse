@@ -1,5 +1,5 @@
 {==============================================================================|
-| Project : Delphree - Synapse                                   | 002.002.002 |
+| Project : Ararat Synapse                                       | 002.003.004 |
 |==============================================================================|
 | Content: DNS client                                                          |
 |==============================================================================|
@@ -44,15 +44,19 @@
 
 // RFC-1035, RFC-1183, RFC1706, RFC1712, RFC2163, RFC2230
 
+{$IFDEF FPC}
+  {$MODE DELPHI}
+{$ENDIF}
 {$Q-}
+{$H+}
 
-unit DNSsend;
+unit dnssend;
 
 interface
 
 uses
   SysUtils, Classes,
-  blcksock, SynaUtil, synsock;
+  blcksock, synautil, synsock;
 
 const
   cDnsProtocol = 'domain';
@@ -89,7 +93,7 @@ const
   QTYPE_LOC = 29; // RFC-1876
   QTYPE_NXT = 30; // RFC-2065
 
-  QTYPE_SRV = 33; // RFC-2052
+  QTYPE_SRV = 33;
   QTYPE_NAPTR = 35; // RFC-2168
   QTYPE_KX = 36;
 
@@ -294,7 +298,7 @@ function TDNSSend.DecodeResource(var i: Integer; const Info: TStringList;
   QType: Integer): string;
 var
   Rname: string;
-  RType, Len, j, x, n: Integer;
+  RType, Len, j, x, y, z, n: Integer;
   R: string;
   t1, t2, ttl: integer;
   ip6: TSockAddrIn6;
@@ -313,7 +317,7 @@ begin
   Inc(i, 2); // i point to begin of data
   j := i;
   i := i + len; // i point to next record
-  if Length(FBuffer) >= i then
+  if Length(FBuffer) >= (i - 1) then
     case RType of
       QTYPE_A:
         begin
@@ -401,6 +405,20 @@ begin
           R := R + ',' + DecodeLabels(j);
           R := R + ',' + DecodeLabels(j);
         end;
+      QTYPE_SRV:
+      // Author: Dan <ml@mutox.org>
+        begin
+          x := DecodeInt(FBuffer, j);
+          Inc(j, 2);
+          y := DecodeInt(FBuffer, j);
+          Inc(j, 2);
+          z := DecodeInt(FBuffer, j);
+          Inc(j, 2);
+          R := IntToStr(x);                     // Priority
+          R := R + ',' + IntToStr(y);           // Weight
+          R := R + ',' + IntToStr(z);           // Port
+          R := R + ',' + DecodeLabels(j);       // Server DNS Name
+        end;
     end;
   if R <> '' then
     Info.Add(RName + ',' + IntToStr(RType) + ',' + IntToStr(ttl) + ',' + R);
@@ -433,6 +451,7 @@ begin
   FAuthoritative := False;
   if (Length(Buf) > 13) and (FID = DecodeInt(Buf, 1)) then
   begin
+    Result := True;
     flag := DecodeInt(Buf, 3);
     FRCode := Flag and $000F;
     FAuthoritative := (Flag and $0400) > 0;
@@ -463,7 +482,6 @@ begin
       if (arcount > 0) and (Length(Buf) > i) then // decode additional info
         for n := 1 to arcount do
           DecodeResource(i, FAdditionalInfo, QType);
-      Result := True;
     end;
   end;
 end;

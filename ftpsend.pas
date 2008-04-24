@@ -1,5 +1,5 @@
 {==============================================================================|
-| Project : Delphree - Synapse                                   | 002.006.006 |
+| Project : Ararat Synapse                                       | 002.007.000 |
 |==============================================================================|
 | Content: FTP client                                                          |
 |==============================================================================|
@@ -43,13 +43,23 @@
 |          (Found at URL: http://www.ararat.cz/synapse/)                       |
 |==============================================================================}
 
-unit FTPsend;
+// RFC-959, RFC-2228, RFC-2428
+
+{$IFDEF FPC}
+  {$MODE DELPHI}
+{$ENDIF}
+{$H+}
+
+unit ftpsend;
 
 interface
 
 uses
   SysUtils, Classes,
-  blcksock, SynaUtil, SynaCode;
+  {$IFDEF STREAMSEC}
+  TlsInternalServer, TlsSynaSock,
+  {$ENDIF}
+  blcksock, synautil, synacode;
 
 const
   cFtpProtocol = 'ftp';
@@ -88,8 +98,14 @@ type
   TFTPSend = class(TSynaClient)
   private
     FOnStatus: TFTPStatus;
+    {$IFDEF STREAMSEC}
+    FSock: TSsTCPBlockSocket;
+    FDSock: TSsTCPBlockSocket;
+    FTLSServer: TCustomTLSInternalServer;
+    {$ELSE}
     FSock: TTCPBlockSocket;
     FDSock: TTCPBlockSocket;
+    {$ENDIF}
     FResultCode: Integer;
     FResultString: string;
     FFullResult: TStringList;
@@ -113,6 +129,8 @@ type
     FBinaryMode: Boolean;
     FAutoTLS: Boolean;
     FIsTLS: Boolean;
+    FIsDataTLS: Boolean;
+    FTLSonData: Boolean;
     FFullSSL: Boolean;
     function Auth(Mode: integer): Boolean;
     function Connect: Boolean;
@@ -160,8 +178,14 @@ type
     property FWUsername: string read FFWUsername Write FFWUsername;
     property FWPassword: string read FFWPassword Write FFWPassword;
     property FWMode: integer read FFWMode Write FFWMode;
+{$IFDEF STREAMSEC}
+    property Sock: TSsTCPBlockSocket read FSock;
+    property DSock: TSsTCPBlockSocket read FDSock;
+    property TLSServer: TCustomTLSInternalServer read FTLSServer write FTLSServer;
+{$ELSE}
     property Sock: TTCPBlockSocket read FSock;
     property DSock: TTCPBlockSocket read FDSock;
+{$ENDIF}
     property DataStream: TMemoryStream read FDataStream;
     property DataIP: string read FDataIP;
     property DataPort: string read FDataPort;
@@ -176,6 +200,8 @@ type
     property AutoTLS: Boolean read FAutoTLS Write FAutoTLS;
     property FullSSL: Boolean read FFullSSL Write FFullSSL;
     property IsTLS: Boolean read FIsTLS;
+    property IsDataTLS: Boolean read FIsDataTLS;
+    property TLSonData: Boolean read FTLSonData write FTLSonData;
   end;
 
 function FtpGetFile(const IP, Port, FileName, LocalFile,
@@ -193,9 +219,18 @@ begin
   inherited Create;
   FFullResult := TStringList.Create;
   FDataStream := TMemoryStream.Create;
+{$IFDEF STREAMSEC}
+  FTLSServer := GlobalTLSInternalServer;
+  FSock := TSsTCPBlockSocket.Create;
+  FSock.BlockingRead := True;
+  FSock.ConvertLineEnd := True;
+  FDSock := TSsTCPBlockSocket.Create;
+  FDSock.BlockingRead := True;
+{$ELSE}
   FSock := TTCPBlockSocket.Create;
   FSock.ConvertLineEnd := True;
   FDSock := TTCPBlockSocket.Create;
+{$ENDIF}
   FFtpList := TFTPList.Create;
   FTimeout := 300000;
   FTargetPort := cFtpProtocol;
@@ -214,6 +249,8 @@ begin
   FAutoTLS := False;
   FFullSSL := False;
   FIsTLS := False;
+  FIsDataTLS := False;
+  FTLSonData := True;
 end;
 
 destructor TFTPSend.Destroy;
@@ -447,8 +484,23 @@ function TFTPSend.Connect: Boolean;
 begin
   FSock.CloseSocket;
   FSock.Bind(FIPInterface, cAnyPort);
+{$IFDEF STREAMSEC}
+  if FFullSSL then
+  begin
+    if assigned(FTLSServer) then
+      FSock.TLSServer := FTLSServer
+    else
+    begin
+      result := False;
+      Exit;
+    end;
+  end
+  else
+    FSock.TLSServer := nil;
+{$ELSE}
   if FFullSSL then
     FSock.SSLEnabled := True;
+{$ENDIF}
   if FSock.LastError = 0 then
     if FFWHost = '' then
       FSock.Connect(FTargetHost, FTargetPort)
@@ -464,19 +516,37 @@ begin
   if not Connect then
     Exit;
   FIsTLS := FFullSSL;
+  FIsDataTLS := False;
   if (ReadResult div 100) <> 2 then
     Exit;
   if FAutoTLS and not(FIsTLS) then
     if (FTPCommand('AUTH TLS') div 100) = 2 then
     begin
+{$IFDEF STREAMSEC}
+      if Assigned(FTLSServer) then
+      begin
+        Fsock.TLSServer := FTLSServer;
+        Fsock.Connect('','');
+        FIsTLS := FSock.LastError = 0;
+      end
+      else
+        Result := False;
+{$ELSE}
       FSock.SSLDoConnect;
-      FIsTLS := True;
+      FIsTLS := FSock.LastError = 0;
+      FDSock.SSLCertificateFile := FSock.SSLCertificateFile;
+      FDSock.SSLPrivateKeyFile := FSock.SSLPrivateKeyFile;
+      FDSock.SSLCertCAFile := FSock.SSLCertCAFile;
+{$ENDIF}
     end;
   if not Auth(FFWMode) then
     Exit;
   if FIsTLS then
   begin
-    FTPCommand('PROT P');
+    if FTLSonData then
+      FIsDataTLS := (FTPCommand('PROT P') div 100) = 2;
+    if not FIsDataTLS then
+      FTPCommand('PROT C');
     FTPCommand('PBSZ 0');
   end;
   FTPCommand('TYPE I');
@@ -627,8 +697,22 @@ begin
       Result := True;
     end;
   end;
-  if FIsTLS then
+  if Result and FIsDataTLS then
+  begin
+{$IFDEF STREAMSEC}
+    if Assigned(FTLSServer) then
+    begin
+      FDSock.TLSServer := FTLSServer;
+      FDSock.Connect('','');
+      Result := FDSock.LastError = 0;
+    end
+    else
+      Result := False;
+{$ELSE}
     FDSock.SSLDoConnect;
+    Result := FDSock.LastError = 0;
+{$ENDIF}
+  end;
 end;
 
 function TFTPSend.DataRead(const DestStream: TStream): Boolean;
@@ -908,7 +992,7 @@ end;
 
 procedure TFTPSend.Abort;
 begin
-  FDSock.CloseSocket;
+  FDSock.AbortSocket;
 end;
 
 {==============================================================================}
@@ -1072,6 +1156,10 @@ begin
                        else Exit;
                        if (year = 0) or (month = 0) or (mday = 0) then
                            Exit;
+                       // for date 2-29 find last leap year. (fix for non-existent year)
+                       if (month = 2) and (mday = 29) then
+                         while not IsLeapYear(year) do
+                           Dec(year);
                        flr.FileTime := t + Encodedate(year, month, mday);
                      end;
                  3 : begin

@@ -1,5 +1,5 @@
 {==============================================================================|
-| Project : Delphree - Synapse                                   | 002.001.003 |
+| Project : Ararat Synapse                                       | 002.002.003 |
 |==============================================================================|
 | Content: MIME message object                                                 |
 |==============================================================================|
@@ -42,13 +42,18 @@
 |          (Found at URL: http://www.ararat.cz/synapse/)                       |
 |==============================================================================}
 
-unit MIMEmess;
+{$IFDEF FPC}
+  {$MODE DELPHI}
+{$ENDIF}
+{$H+}
+
+unit mimemess;
 
 interface
 
 uses
   Classes, SysUtils,
-  MIMEpart, SynaChar, SynaUtil, MIMEinLn;
+  mimepart, synachar, synautil, mimeinln;
 
 type
   TMessHeader = class(TObject)
@@ -61,6 +66,7 @@ type
     FCustomHeaders: TStringList;
     FDate: TDateTime;
     FXMailer: string;
+    FCharsetCode: TMimeChar;
   public
     constructor Create;
     destructor Destroy; override;
@@ -78,6 +84,7 @@ type
     property CustomHeaders: TStringList read FCustomHeaders;
     property Date: TDateTime read FDate Write FDate;
     property XMailer: string read FXMailer Write FXMailer;
+    property CharsetCode: TMimeChar read FCharsetCode Write FCharsetCode;
   end;
 
   TMimeMess = class(TObject)
@@ -117,6 +124,7 @@ begin
   FToList := TStringList.Create;
   FCCList := TStringList.Create;
   FCustomHeaders := TStringList.Create;
+  FCharsetCode := GetCurCP;
 end;
 
 destructor TMessHeader.Destroy;
@@ -157,27 +165,27 @@ begin
     Value.Insert(0, 'X-mailer: ' + FXMailer);
   Value.Insert(0, 'MIME-Version: 1.0 (produced by Synapse)');
   if FOrganization <> '' then
-    Value.Insert(0, 'Organization: ' + InlineCode(FOrganization));
+    Value.Insert(0, 'Organization: ' + InlineCodeEx(FOrganization, FCharsetCode));
   s := '';
   for n := 0 to FCCList.Count - 1 do
     if s = '' then
-      s := InlineEmail(FCCList[n])
+      s := InlineEmailEx(FCCList[n], FCharsetCode)
     else
-      s := s + ' , ' + InlineEmail(FCCList[n]);
+      s := s + ' , ' + InlineEmailEx(FCCList[n], FCharsetCode);
   if s <> '' then
     Value.Insert(0, 'CC: ' + s);
   Value.Insert(0, 'Date: ' + Rfc822DateTime(FDate));
   if FSubject <> '' then
-    Value.Insert(0, 'Subject: ' + InlineCode(FSubject));
+    Value.Insert(0, 'Subject: ' + InlineCodeEx(FSubject, FCharsetCode));
   s := '';
   for n := 0 to FToList.Count - 1 do
     if s = '' then
-      s := InlineEmail(FToList[n])
+      s := InlineEmailEx(FToList[n], FCharsetCode)
     else
-      s := s + ' , ' + InlineEmail(FToList[n]);
+      s := s + ' , ' + InlineEmailEx(FToList[n], FCharsetCode);
   if s <> '' then
     Value.Insert(0, 'To: ' + s);
-  Value.Insert(0, 'From: ' + InlineEmail(FFrom));
+  Value.Insert(0, 'From: ' + InlineEmailEx(FFrom, FCharsetCode));
 end;
 
 procedure TMessHeader.DecodeHeaders(const Value: TStrings);
@@ -186,7 +194,7 @@ var
   x: Integer;
   cp: TMimeChar;
 begin
-  cp := GetCurCP;
+  cp := FCharsetCode;
   Clear;
   x := 0;
   while Value.Count > x do
@@ -218,7 +226,7 @@ begin
     begin
       s := SeparateRight(s, ':');
       repeat
-        t := InlineDecode(fetch(s, ','), cp);
+        t := InlineDecode(FetchEx(s, ',', '"'), cp);
         if t <> '' then
           FToList.Add(t);
       until s = '';
@@ -228,7 +236,7 @@ begin
     begin
       s := SeparateRight(s, ':');
       repeat
-        t := InlineDecode(fetch(s, ','), cp);
+        t := InlineDecode(FetchEx(s, ',', '"'), cp);
         if t <> '' then
           FCCList.Add(t);
       until s = '';

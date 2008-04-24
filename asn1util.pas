@@ -1,5 +1,5 @@
 {==============================================================================|
-| Project : Delphree - Synapse                                   | 001.003.006 |
+| Project : Ararat Synapse                                       | 001.004.002 |
 |==============================================================================|
 | Content: support for ASN.1 BER coding and decoding                           |
 |==============================================================================|
@@ -45,20 +45,27 @@
 |==============================================================================}
 
 {$Q-}
+{$H+}
+{$IFDEF FPC}
+  {$MODE DELPHI}
+{$ENDIF}
 
-unit ASN1Util;
+unit asn1util;
 
 interface
 
 uses
-  SysUtils;
+  SysUtils, Classes;
 
 const
+  ASN1_BOOL = $01;
   ASN1_INT = $02;
   ASN1_OCTSTR = $04;
   ASN1_NULL = $05;
   ASN1_OBJID = $06;
+  ASN1_ENUM = $0a;
   ASN1_SEQ = $30;
+  ASN1_SETOF = $31;
   ASN1_IPADDR = $40;
   ASN1_COUNTER = $41;
   ASN1_GAUGE = $42;
@@ -77,6 +84,7 @@ function ASNItem(var Start: Integer; const Buffer: string;
 function MibToId(Mib: string): string;
 function IdToMib(const Id: string): string;
 function IntMibToStr(const Value: string): string;
+function ASNdump(const Value: string): string;
 
 implementation
 
@@ -233,10 +241,11 @@ begin
   if (Start + ASNSize - 1) > l then
     Exit;
   if (ASNType and $20) > 0 then
-    Result := '$' + IntToHex(ASNType, 2)
+//    Result := '$' + IntToHex(ASNType, 2)
+    Result := Copy(Buffer, Start, ASNSize)
   else
     case ASNType of
-      ASN1_INT:
+      ASN1_INT, ASN1_ENUM, ASN1_BOOL:
         begin
           y := 0;
           neg := False;
@@ -297,10 +306,20 @@ begin
           end;
           Result := s;
         end;
-    else // NULL
+      ASN1_NULL:
+        begin
+          Result := '';
+          Start := Start + ASNSize;
+        end;
+    else // unknown
       begin
-        Result := '';
-        Start := Start + ASNSize;
+        for n := 1 to ASNSize do
+        begin
+          c := Char(Buffer[Start]);
+          Inc(Start);
+          s := s + c;
+        end;
+        Result := s;
       end;
     end;
 end;
@@ -370,6 +389,75 @@ begin
   for n := 1 to Length(Value) - 1 do
     y := y * 256 + Ord(Value[n]);
   Result := IntToStr(y);
+end;
+
+{==============================================================================}
+function ASNdump(const Value: string): string;
+var
+  i, at, x, n: integer;
+  s, indent: string;
+  il: TStringList;
+begin
+  il := TStringList.Create;
+  try
+    Result := '';
+    i := 1;
+    indent := '';
+    while i < Length(Value) do
+    begin
+      for n := il.Count - 1 downto 0 do
+      begin
+        x := StrToIntDef(il[n], 0);
+        if x <= i then
+        begin
+          il.Delete(n);
+          Delete(indent, 1, 2);
+        end;
+      end;
+      s := ASNItem(i, Value, at);
+      Result := Result + indent + '$' + IntToHex(at, 2);
+      if (at and $20) > 0 then
+      begin
+        x := Length(s);
+        Result := Result + ' constructed: length ' + IntToStr(x);
+        indent := indent + '  ';
+        il.Add(IntToStr(x + i - 1));
+      end
+      else
+      begin
+        case at of
+          ASN1_BOOL:
+            Result := Result + ' BOOL: ';
+          ASN1_INT:
+            Result := Result + ' INT: ';
+          ASN1_ENUM:
+            Result := Result + ' ENUM: ';
+          ASN1_COUNTER:
+            Result := Result + ' COUNTER: ';
+          ASN1_GAUGE:
+            Result := Result + ' GAUGE: ';
+          ASN1_TIMETICKS:
+            Result := Result + ' TIMETICKS: ';
+          ASN1_OCTSTR:
+            Result := Result + ' OCTSTR: ';
+          ASN1_OPAQUE:
+            Result := Result + ' OPAQUE: ';
+          ASN1_OBJID:
+            Result := Result + ' OBJID: ';
+          ASN1_IPADDR:
+            Result := Result + ' IPADDR: ';
+          ASN1_NULL:
+            Result := Result + ' NULL: ';
+        else // other
+          Result := Result + ' unknown: ';
+        end;
+        Result := Result + s;
+      end;
+      Result := Result + #$0d + #$0a;
+    end;
+  finally
+    il.Free;
+  end;
 end;
 
 {==============================================================================}

@@ -1,5 +1,5 @@
 {==============================================================================|
-| Project : Delphree - Synapse                                   | 001.000.007 |
+| Project : Ararat Synapse                                       | 001.001.002 |
 |==============================================================================|
 | Content: Inline MIME support procedures and functions                        |
 |==============================================================================|
@@ -42,18 +42,27 @@
 |          (Found at URL: http://www.ararat.cz/synapse/)                       |
 |==============================================================================}
 
-unit MIMEinLn;
+//RFC-1522
+
+{$IFDEF FPC}
+  {$MODE DELPHI}
+{$ENDIF}
+{$H+}
+
+unit mimeinln;
 
 interface
 
 uses
   SysUtils, Classes,
-  SynaChar, SynaCode, SynaUtil;
+  synachar, synacode, synautil;
 
 function InlineDecode(const Value: string; CP: TMimeChar): string;
 function InlineEncode(const Value: string; CP, MimeP: TMimeChar): string;
 function NeedInline(const Value: string): boolean;
+function InlineCodeEx(const Value: string; FromCP: TMimeChar): string;
 function InlineCode(const Value: string): string;
+function InlineEmailEx(const Value: string; FromCP: TMimeChar): string;
 function InlineEmail(const Value: string): string;
 
 implementation
@@ -166,16 +175,16 @@ end;
 
 {==============================================================================}
 
-function InlineCode(const Value: string): string;
+function InlineCodeEx(const Value: string; FromCP: TMimeChar): string;
 var
   c: TMimeChar;
 begin
   if NeedInline(Value) then
   begin
-    c := IdealCharsetCoding(Value, GetCurCP,
+    c := IdealCharsetCoding(Value, FromCP,
       [ISO_8859_1, ISO_8859_2, ISO_8859_3, ISO_8859_4, ISO_8859_5,
       ISO_8859_6, ISO_8859_7, ISO_8859_8, ISO_8859_9, ISO_8859_10]);
-    Result := InlineEncode(Value, GetCurCP, c);
+    Result := InlineEncode(Value, FromCP, c);
   end
   else
     Result := Value;
@@ -183,7 +192,14 @@ end;
 
 {==============================================================================}
 
-function InlineEmail(const Value: string): string;
+function InlineCode(const Value: string): string;
+begin
+  Result := InlineCodeEx(Value, GetCurCP);
+end;
+
+{==============================================================================}
+
+function InlineEmailEx(const Value: string; FromCP: TMimeChar): string;
 var
   sd, se: string;
 begin
@@ -192,7 +208,14 @@ begin
   if sd = '' then
     Result := se
   else
-    Result := '"' + InlineCode(sd) + '"<' + se + '>';
+    Result := '"' + InlineCodeEx(sd, FromCP) + '"<' + se + '>';
+end;
+
+{==============================================================================}
+
+function InlineEmail(const Value: string): string;
+begin
+  Result := InlineEmailEx(Value, GetCurCP);
 end;
 
 end.

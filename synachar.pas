@@ -1,5 +1,5 @@
 {==============================================================================|
-| Project : Delphree - Synapse                                   | 004.000.005 |
+| Project : Ararat Synapse                                       | 004.000.008 |
 |==============================================================================|
 | Content: Charset conversion support                                          |
 |==============================================================================|
@@ -42,9 +42,13 @@
 |          (Found at URL: http://www.ararat.cz/synapse/)                       |
 |==============================================================================}
 
+{$IFDEF FPC}
+  {$MODE DELPHI}
+{$ENDIF}
 {$Q-}
+{$H+}
 
-unit SynaChar;
+unit synachar;
 
 interface
 
@@ -644,7 +648,7 @@ const
     (0);
 
   //remove diakritics from Czech
-  Replace_Czech: array[0..55] of Word =
+ Replace_Czech: array[0..59] of Word =
     (
       $00E1, $0061,
       $010D, $0063,
@@ -653,6 +657,7 @@ const
       $00E9, $0065,
       $011B, $0065,
       $00ED, $0069,
+      $0148, $006E,
       $00F3, $006F,
       $0159, $0072,
       $0161, $0073,
@@ -666,10 +671,11 @@ const
       $00C9, $0045,
       $011A, $0045,
       $00CD, $0049,
+      $0147, $004E,
       $00D3, $004F,
       $0158, $0052,
       $0160, $0053,
-      $0164, $0053,
+      $0164, $0054,
       $00DA, $0055,
       $016E, $0055,
       $00DD, $0059,
@@ -701,7 +707,7 @@ uses
   Windows,
 {$ENDIF}
   SysUtils,
-  SynaUtil, SynaCode;
+  synautil, synacode;
 
 const
   NotFoundChar = '_';

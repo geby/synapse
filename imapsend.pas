@@ -1,5 +1,5 @@
 {==============================================================================|
-| Project : Delphree - Synapse                                   | 002.003.005 |
+| Project : Ararat Synapse                                       | 002.004.002 |
 |==============================================================================|
 | Content: IMAP4rev1 client                                                    |
 |==============================================================================|
@@ -42,10 +42,14 @@
 |          (Found at URL: http://www.ararat.cz/synapse/)                       |
 |==============================================================================}
 
-//RFC-2060
-//RFC-2595
+//RFC-2060, RFC-2595
 
-unit IMAPsend;
+{$IFDEF FPC}
+  {$MODE DELPHI}
+{$ENDIF}
+{$H+}
+
+unit imapsend;
 
 interface
 
@@ -54,7 +58,7 @@ uses
   {$IFDEF STREAMSEC}
   TlsInternalServer, TlsSynaSock,
   {$ENDIF}
-  blcksock, SynaUtil, SynaCode;
+  blcksock, synautil, synacode;
 
 const
   cIMAPProtocol = '143';
@@ -121,6 +125,8 @@ type
     function SearchMess(Criteria: string; const FoundMess: TStrings): Boolean;
     function SetFlagsMess(MessID: integer; Flags: string): Boolean;
     function GetFlagsMess(MessID: integer; var Flags: string): Boolean;
+    function AddFlagsMess(MessID: integer; Flags: string): Boolean;
+    function DelFlagsMess(MessID: integer; Flags: string): Boolean;
     function StartTLS: Boolean;
     function GetUID(MessID: integer; var UID : Integer): Boolean;
     function FindCap(const Value: string): string;
@@ -556,7 +562,8 @@ begin
     ProcessLiterals;
     for n := 0 to FFullResult.Count - 1 do
     begin
-      s := UpperCase(FFullResult[n]);
+      s := FFullResult[n];
+//      s := UpperCase(FFullResult[n]);
       if (Pos('* ', s) = 1) and (Pos(FolderName, s) >= 1) and (Pos(Value, s) > 0 ) then
       begin
         t := SeparateRight(s, Value);
@@ -669,6 +676,26 @@ var
   s: string;
 begin
   s := 'STORE ' + IntToStr(MessID) + ' FLAGS.SILENT (' + Flags + ')';
+  if FUID then
+    s := 'UID ' + s;
+  Result := IMAPcommand(s) = 'OK';
+end;
+
+function TIMAPSend.AddFlagsMess(MessID: integer; Flags: string): Boolean;
+var
+  s: string;
+begin
+  s := 'STORE ' + IntToStr(MessID) + ' +FLAGS.SILENT (' + Flags + ')';
+  if FUID then
+    s := 'UID ' + s;
+  Result := IMAPcommand(s) = 'OK';
+end;
+
+function TIMAPSend.DelFlagsMess(MessID: integer; Flags: string): Boolean;
+var
+  s: string;
+begin
+  s := 'STORE ' + IntToStr(MessID) + ' -FLAGS.SILENT (' + Flags + ')';
   if FUID then
     s := 'UID ' + s;
   Result := IMAPcommand(s) = 'OK';
