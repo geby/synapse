@@ -1,5 +1,5 @@
 {==============================================================================|
-| Project : Delphree - Synapse                                   | 002.000.000 |
+| Project : Delphree - Synapse                                   | 002.001.000 |
 |==============================================================================|
 | Content: SMTP client                                                         |
 |==============================================================================|
@@ -41,6 +41,7 @@ type
   public
     timeout:integer;
     SMTPHost:string;
+    SMTPPort:string;
     ResultCode:integer;
     ResultString:string;
     FullResult:TStringList;
@@ -54,10 +55,14 @@ type
     EnhCode1:integer;
     EnhCode2:integer;
     EnhCode3:integer;
+    SystemName:string;
     Constructor Create;
     Destructor Destroy; override;
     function AuthLogin:Boolean;
     function AuthCram:Boolean;
+    function Connect:Boolean;
+    function Helo:Boolean;
+    function Ehlo:Boolean;
     function login:Boolean;
     procedure logout;
     function reset:Boolean;
@@ -68,6 +73,7 @@ type
     function etrn(Value:string):Boolean;
     function verify(Value:string):Boolean;
     function EnhCodeString:string;
+    function FindCap(value:string):string;
   end;
 
 function SendtoRaw (mailfrom,mailto,SMTPHost:string;maildata:TStrings;Username,Password:string):Boolean;
@@ -86,8 +92,10 @@ begin
   sock.CreateSocket;
   timeout:=300000;
   SMTPhost:='localhost';
+  SMTPPort:='smtp';
   Username:='';
   Password:='';
+  SystemName:=sock.localname;
 end;
 
 {TSMTPSend.Destroy}
@@ -181,11 +189,47 @@ begin
   Result:=True;
 end;
 
+{TSMTPSend.Connect}
+function TSMTPSend.Connect:Boolean;
+begin
+  Result:=false;
+  sock.CloseSocket;
+  sock.CreateSocket;
+  sock.Connect(SMTPHost,SMTPPort);
+  if sock.lasterror<>0 then Exit;
+  Result:=True;
+end;
+
+{TSMTPSend.Helo}
+function TSMTPSend.Helo:Boolean;
+var
+  x:integer;
+begin
+  Result:=false;
+  Sock.SendString('HELO '+SystemName+CRLF);
+  x:=ReadResult;
+  if (x<250) or (x>259) then Exit;
+  Result:=True;
+end;
+
+{TSMTPSend.Ehlo}
+function TSMTPSend.Ehlo:Boolean;
+var
+  x:integer;
+begin
+  Result:=false;
+  Sock.SendString('EHLO '+SystemName+CRLF);
+  x:=ReadResult;
+  if (x<250) or (x>259) then Exit;
+  Result:=True;
+end;
+
 {TSMTPSend.login}
 function TSMTPSend.login:Boolean;
 var
   n:integer;
   auths:string;
+  s:string;
 begin
   Result:=False;
   ESMTP:=true;
@@ -193,15 +237,12 @@ begin
   ESMTPcap.clear;
   ESMTPSize:=false;
   MaxSize:=0;
-  sock.Connect(SMTPHost,'smtp');
-  if sock.lasterror<>0 then Exit;
+  if not Connect then Exit;
   if readresult<>220 then Exit;
-  Sock.SendString('EHLO '+sock.LocalName+CRLF);
-  if readresult<>250 then
+  if not Ehlo then
     begin
       ESMTP:=false;
-      Sock.SendString('HELO '+sock.LocalName+CRLF);
-      if readresult<>250 then Exit;
+      if not Helo then exit;
     end;
   Result:=True;
   if ESMTP then
@@ -209,30 +250,27 @@ begin
       for n:=1 to FullResult.count-1 do
         ESMTPcap.add(Copy(FullResult[n],5,length(Fullresult[n])-4));
       if not ((Username='') and (Password='')) then
-        for n:=0 to ESMTPcap.count-1 do
-          begin
-            auths:=uppercase(ESMTPcap[n]);
-            if pos('AUTH ',auths)=1 then
-              begin
-                if pos('CRAM-MD5',auths)>0 then
-                  begin
-                    AuthDone:=AuthCram;
-                    break;
-                  end;
-                if pos('LOGIN',auths)>0 then
-                  begin
-                    AuthDone:=AuthLogin;
-                    break;
-                  end;
-              end;
-          end;
-      for n:=0 to ESMTPcap.count-1 do
-        if pos('SIZE',uppercase(ESMTPcap[n]))=1 then
-          begin
-            ESMTPsize:=true;
-            MaxSize:=StrToIntDef(copy(ESMTPcap[n],6,length(ESMTPcap[n])-5),0);
-            break;
-          end;
+        begin
+          s:=FindCap('AUTH ');
+          if s=''
+            then s:=FindCap('AUTH=');
+          auths:=uppercase(s);
+          if s<>'' then
+            begin
+              if pos('CRAM-MD5',auths)>0
+                then AuthDone:=AuthCram;
+              if (pos('LOGIN',auths)>0) and (not authDone)
+                then AuthDone:=AuthLogin;
+            end;
+          if AuthDone
+            then Ehlo;
+        end;
+      s:=FindCap('SIZE');
+      if s<>'' then
+        begin
+          ESMTPsize:=true;
+          MaxSize:=StrToIntDef(copy(s,6,length(s)-5),0);
+        end;
     end;
 end;
 
@@ -309,19 +347,25 @@ end;
 
 {TSMTPSend.etrn}
 function TSMTPSend.etrn(Value:string):Boolean;
+var
+  x:integer;
 begin
   Result:=false;
   Sock.SendString('ETRN '+Value+CRLF);
-  if (readresult<250) or (readresult>259) then Exit;
+  x:=ReadResult;
+  if (x<250) or (x>259) then Exit;
   Result:=True;
 end;
 
 {TSMTPSend.verify}
 function TSMTPSend.verify(Value:string):Boolean;
+var
+  x:integer;
 begin
   Result:=false;
   Sock.SendString('VRFY '+Value+CRLF);
-  if (readresult<250) or (readresult>259) then Exit;
+  x:=ReadResult;
+  if (x<250) or (x>259) then Exit;
   Result:=True;
 end;
 
@@ -388,6 +432,21 @@ begin
   result:=s+t;
 end;
 
+{TSMTPSend.FindCap}
+function TSMTPSend.FindCap(value:string):string;
+var
+  n:integer;
+  s:string;
+begin
+  s:=uppercase(value);
+  result:='';
+  for n:=0 to ESMTPcap.count-1 do
+    if pos(s,uppercase(ESMTPcap[n]))=1 then
+      begin
+        result:=ESMTPcap[n];
+        break;
+      end;
+end;
 
 {==============================================================================}
 

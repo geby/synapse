@@ -1,5 +1,5 @@
 {==============================================================================|
-| Project : Delphree - Synapse                                   | 001.002.000 |
+| Project : Delphree - Synapse                                   | 002.000.000 |
 |==============================================================================|
 | Content: HTTP client                                                         |
 |==============================================================================|
@@ -33,11 +33,26 @@ const
   CRLF=#13+#10;
 
 type
+  TTransferEncoding=(TE_UNKNOWN,
+                     TE_IDENTITY,
+                     TE_CHUNKED);
+
   THTTPSend = class
   private
     Sock:TTCPBlockSocket;
+    TransferEncoding:TTransferEncoding;
+    AliveHost:string;
+    AlivePort:string;
+    function ReadUnknown:boolean;
+    function ReadIdentity(size:integer):boolean;
+    function ReadChunked:boolean;
   public
-    timeout:integer;
+    headers:TStringlist;
+    Document:TMemoryStream;
+    MimeType:string;
+    Protocol:string;
+    KeepAlive:boolean;
+    Timeout:integer;
     HTTPHost:string;
     HTTPPort:string;
     ProxyHost:string;
@@ -45,15 +60,17 @@ type
     ProxyUser:string;
     ProxyPass:string;
     ResultCode:integer;
+    ResultString:string;
     Constructor Create;
     Destructor Destroy; override;
-    function Request(Query,Response:TStrings):Boolean;
-    function DoMethod(method,URL:string;Content,Response:TStrings):boolean;
+    procedure clear;
+    procedure DecodeStatus(value:string);
+    function HTTPmethod(method,URL:string):boolean;
   end;
 
-function SimpleGet(URL:string;Response:TStrings):Boolean;
-function Get(URL:string;Response:TStrings):Boolean;
-function Post(URL:string;Value,Response:TStrings):Boolean;
+function HttpGetText(URL:string;Response:TStrings):Boolean;
+function HttpGetBinary(URL:string;Response:TStream):Boolean;
+function HttpPostBinary(URL:string;Data:TStream):Boolean;
 
 implementation
 
@@ -61,8 +78,11 @@ implementation
 Constructor THTTPSend.Create;
 begin
   inherited Create;
+  Headers:=TStringList.create;
+  Document:=TMemoryStream.Create;
   sock:=TTCPBlockSocket.create;
-  sock.CreateSocket;
+  sock.SizeRecvBuffer:=65536;
+  sock.SizeSendBuffer:=65536;
   timeout:=300000;
   HTTPhost:='localhost';
   HTTPPort:='80';
@@ -70,147 +90,333 @@ begin
   ProxyPort:='8080';
   ProxyUser:='';
   ProxyPass:='';
+  AliveHost:='';
+  AlivePort:='';
+  Protocol:='1.1';
+  KeepAlive:=true;
+  Clear;
 end;
 
 {THTTPSend.Destroy}
 Destructor THTTPSend.Destroy;
 begin
   Sock.free;
+  Document.free;
+  headers.free;
   inherited destroy;
 end;
 
-{THTTPSend.Request}
-function THTTPSend.Request(Query,Response:TStrings):Boolean;
-var
-  s:string;
-  n:integer;
+{THTTPSend.Clear}
+procedure THTTPSend.Clear;
 begin
-  Result:=False;
-  sock.Connect(HTTPHost,HTTPPort);
-  if sock.lasterror<>0 then Exit;
-  for n:=0 to Query.Count-1 do
-    Sock.SendString(Query[n]+CRLF);
-  if Query[query.Count-1]<>'' then
-    Sock.SendString(CRLF);
-  if sock.lasterror<>0 then Exit;
-  repeat
-    s:=sock.recvstring(timeout);
-    Response.Add(s);
-  until sock.lasterror<>0;
-  Result:=True;
+  Document.Clear;
+  Headers.Clear;
+  MimeType:='text/html';
 end;
 
-{THTTPSend.DoMethod}
-function THTTPSend.DoMethod(method,URL:string;Content,Response:TStrings):boolean;
+{THTTPSend.DecodeStatus}
+procedure THTTPSend.DecodeStatus(value:string);
 var
-  Prot,User,Pass,Host,Port,Path,Para:string;
-  Query:TstringList;
+  s,su:string;
+begin
+  s:=separateright(value,' ');
+  su:=separateleft(s,' ');
+  ResultCode:=StrToIntDef(su,0);
+  ResultString:=separateright(s,' ');
+  if ResultString=s
+    then ResultString:='';
+end;
+
+{THTTPSend.HTTPmethod}
+function THTTPSend.HTTPmethod(method,URL:string):boolean;
+var
+  sending,receiving:boolean;
+  status100:boolean;
+  status100error:string;
+  ToClose:boolean;
   size:integer;
+  Prot,User,Pass,Host,Port,Path,Para,URI:string;
+  n:integer;
+  s,su:string;
+begin
+  {initial values}
+  result:=false;
+  ResultCode:=500;
+  ResultString:='';
+
+  URI:=ParseURL(URL,Prot,User,Pass,Host,Port,Path,Para);
+  sending:=Document.Size>0;
+  {headers for sending data}
+  status100:=sending and (protocol='1.1');
+  if status100
+    then Headers.insert(0,'Expect: 100-continue');
+  if sending then
+    begin
+      Headers.insert(0,'Content-Length: '+inttostr(Document.size));
+      if MimeType<>''
+        then Headers.insert(0,'Content-Type: '+MimeType);
+    end;
+  {seting KeepAlives}
+  if not KeepAlive
+    then Headers.insert(0,'Connection: close');
+  {set target servers/proxy, authorisations, etc...}
+  if User<>''
+    then Headers.insert(0,'Authorization: Basic '+EncodeBase64(user+':'+pass));
+  if (proxyhost<>'') and (proxyUser<>'')
+    then Headers.insert(0,'Proxy-Authorization: Basic '+EncodeBase64(Proxyuser+':'+Proxypass));
+  Headers.insert(0,'Host: '+host+':'+port);
+  if proxyHost<>''
+    then URI:=prot+'://'+host+':'+port+URI;
+  if URI='/*'
+    then URI:='*';
+  if protocol='0.9'
+    then Headers.insert(0,uppercase(method)+' '+URI)
+    else Headers.insert(0,uppercase(method)+' '+URI+' HTTP/'+protocol);
+  if proxyhost=''
+    then
+      begin
+        HttpHost:=host;
+        HttpPort:=port;
+      end
+    else
+      begin
+        HttpHost:=Proxyhost;
+        HttpPort:=Proxyport;
+      end;
+  if headers[headers.count-1]<>''
+    then headers.add('');
+
+  {connect}
+  if (Alivehost<>HTTPhost) or (AlivePort<>HTTPport)
+    then
+      begin
+        sock.CloseSocket;
+        sock.CreateSocket;
+        sock.Connect(HTTPHost,HTTPPort);
+        if sock.lasterror<>0 then Exit;
+        Alivehost:=HTTPhost;
+        AlivePort:=HTTPport;
+      end
+    else
+      begin
+        if sock.canread(0) then
+          begin
+            sock.CloseSocket;
+            sock.createsocket;
+            sock.Connect(HTTPHost,HTTPPort);
+            if sock.lasterror<>0 then Exit;
+          end;
+      end;
+
+  {send headers}
+  Sock.SendString(Headers[0]+CRLF);
+  if protocol<>'0.9' then
+    for n:=1 to Headers.Count-1 do
+      Sock.SendString(Headers[n]+CRLF);
+  if sock.lasterror<>0 then Exit;
+
+  {reading Status}
+  Status100Error:='';
+  if status100 then
+    begin
+      repeat
+        s:=sock.recvstring(timeout);
+        if s<>'' then break;
+      until sock.lasterror<>0;
+      DecodeStatus(s);
+      if (ResultCode>=100) and (ResultCode<200)
+        then
+          begin
+            repeat
+              s:=sock.recvstring(timeout);
+              if s='' then break;
+            until sock.lasterror<>0;
+          end
+        else
+          begin
+           sending:=false;
+           Status100Error:=s;
+          end;
+    end;
+
+  {send document}
+  if sending then
+    begin
+      Sock.SendBuffer(Document.memory,Document.size);
+      if sock.lasterror<>0 then Exit;
+    end;
+
+  clear;
+  size:=-1;
+  TransferEncoding:=TE_UNKNOWN;
+
+  {read status}
+  If Status100Error=''
+    then
+      begin
+        repeat
+          s:=sock.recvstring(timeout);
+          if s<>'' then break;
+        until sock.lasterror<>0;
+        if pos('HTTP/',uppercase(s))=1
+          then
+            begin
+              Headers.add(s);
+              decodeStatus(s);
+            end
+          else
+            begin
+              {old HTTP 0.9 and some buggy servers not send result}
+              s:=s+CRLF;
+              document.Write(pointer(s)^,length(s));
+              ResultCode:=0;
+            end;
+      end
+    else Headers.add(Status100Error);
+
+  {if need receive hedaers, receive and parse it}
+  ToClose:=protocol<>'1.1';
+  if Headers.count>0 then
+    repeat
+      s:=sock.recvstring(timeout);
+      Headers.Add(s);
+      if s=''
+        then break;
+      su:=uppercase(s);
+      if pos('CONTENT-LENGTH:',su)=1 then
+        begin
+          size:=strtointdef(separateright(s,' '),-1);
+          TransferEncoding:=TE_IDENTITY;
+        end;
+      if pos('CONTENT-TYPE:',su)=1 then
+        MimeType:=separateright(s,' ');
+      if pos('TRANSFER-ENCODING:',su)=1 then
+        begin
+          s:=separateright(su,' ');
+          if pos('CHUNKED',s)>0 then
+            TransferEncoding:=TE_CHUNKED;
+        end;
+      if pos('CONNECTION: CLOSE',su)=1 then
+        ToClose:=true;
+    until sock.lasterror<>0;
+
+  {if need receive response body, read it}
+  Receiving:=Method<>'HEAD';
+  Receiving:=Receiving and (ResultCode<>204);
+  Receiving:=Receiving and (ResultCode<>304);
+  if Receiving then
+    case TransferEncoding of
+      TE_UNKNOWN : readunknown;
+      TE_IDENTITY: readidentity(size);
+      TE_CHUNKED : readChunked;
+    end;
+
+  Document.Seek(0,soFromBeginning);
+  result:=true;
+  if ToClose then
+    begin
+      sock.closesocket;
+      Alivehost:='';
+      AlivePort:='';
+    end;
+end;
+
+{THTTPSend.ReadUnknown}
+function THTTPSend.ReadUnknown:boolean;
+var
   s:string;
 begin
   result:=false;
-  Query:=TstringList.create;
-  try
-    parseURL(URL,Prot,User,Pass,Host,Port,Path,Para);
-    if content<>nil
-      then query.AddStrings(content);
-    size:=length(query.text);
-    query.insert(0,'');
-    query.insert(0,'User-Agent: Synapse/1.1');
-    query.insert(0,'Connection: close');
-    query.insert(0,'Accept-Encoding: identity');
-    if User<>''
-      then query.insert(0,'Authorization: Basic '+EncodeBase64(user+':'+pass));
-    if (proxyhost<>'') and (proxyUser<>'')
-      then query.insert(0,'Proxy-Authorization: Basic '+EncodeBase64(Proxyuser+':'+Proxypass));
-    if size>0
-      then query.insert(0,'Content-Length: '+inttostr(size));
-    query.insert(0,'Host: '+host+':'+port);
+  repeat
+    s:=sock.recvstring(timeout);
+    s:=s+CRLF;
+    document.Write(pointer(s)^,length(s));
+  until sock.lasterror<>0;
+  result:=true;
+end;
 
-    if para=''
-      then s:=''
-      else s:='?'+para;
-    s:=path+s;
-    if proxyHost<>''
-      then s:=prot+'://'+host+':'+port+s;
-    query.insert(0,uppercase(method)+' '+s+' HTTP/1.0');
-    if proxyhost=''
-      then
-        begin
-          HttpHost:=host;
-          HttpPort:=port;
-        end
-      else
-        begin
-          HttpHost:=Proxyhost;
-          HttpPort:=Proxyport;
-        end;
-    result:=request(query,response);
-    ResultCode:=0;
-    if response.count>0
-      then if pos('HTTP/',uppercase(response[0]))=1
-        then
-          begin
-            s:=separateright(response[0],' ');
-            s:=separateleft(s,' ');
-            ResultCode:=StrToIntDef(s,0);
-          end;
+{THTTPSend.ReadIdentity}
+function THTTPSend.ReadIdentity(size:integer):boolean;
+var
+  mem:TMemoryStream;
+begin
+  mem:=TMemoryStream.create;
+  try
+    mem.SetSize(size);
+    sock.RecvBufferEx(mem.memory,size,timeout);
+    result:=sock.lasterror=0;
+    document.CopyFrom(mem,0);
   finally
-    Query.free;
+    mem.free;
   end;
+end;
+
+{THTTPSend.ReadChunked}
+function THTTPSend.ReadChunked:boolean;
+var
+  s:string;
+  size:integer;
+begin
+  repeat
+    repeat
+      s:=sock.recvstring(timeout);
+    until s<>'';
+    if sock.lasterror<>0
+      then break;
+    s:=separateleft(s,' ');
+    size:=strtointdef('$'+s,0);
+    if size=0 then break;
+    ReadIdentity(size);
+  until false;
+  result:=sock.lasterror=0;
 end;
 
 {==============================================================================}
 
-{SimpleGet}
-function SimpleGet(URL:string;Response:TStrings):Boolean;
+{HttpGetText}
+function HttpGetText(URL:string;Response:TStrings):Boolean;
 var
   HTTP:THTTPSend;
-  Query:TStringList;
-  Prot,User,Pass,Host,Port,Path,Para:string;
-begin
-  parseURL(URL,Prot,User,Pass,Host,Port,Path,Para);
-  if para<>''
-    then path:=path+'?'+para;
-  Result:=False;
-  HTTP:=THTTPSend.Create;
-  Query:=TStringList.create;
-  try
-    HTTP.HTTPhost:=Host;
-    Query.Add('GET '+Path);
-    if not HTTP.Request(Query,Response) then Exit;
-  finally
-    Query.Free;
-    HTTP.Free;
-  end;
-  Result:=True;
-end;
-
-{get}
-function Get(URL:string;Response:TStrings):Boolean;
-var
-  HTTP:THTTPSend;
-  Prot,User,Pass,Host,Port,Path,Para:string;
 begin
   Result:=False;
   HTTP:=THTTPSend.Create;
   try
-    result:=HTTP.DoMethod('GET',URL,nil,Response);
+    Result:=HTTP.HTTPmethod('GET',URL);
+    response.LoadFromStream(HTTP.document);
   finally
     HTTP.Free;
   end;
 end;
 
-{post}
-function Post(URL:string;Value,Response:TStrings):Boolean;
+{HttpGetBinary}
+function HttpGetBinary(URL:string;Response:TStream):Boolean;
 var
   HTTP:THTTPSend;
-  Prot,User,Pass,Host,Port,Path,Para:string;
 begin
   Result:=False;
   HTTP:=THTTPSend.Create;
   try
-    result:=HTTP.DoMethod('POST',URL,Value,Response);
+    Result:=HTTP.HTTPmethod('GET',URL);
+    Response.Seek(0,soFromBeginning);
+    Response.CopyFrom(HTTP.document,0);
+  finally
+    HTTP.Free;
+  end;
+end;
+
+{HttpPostBinary}
+function HttpPostBinary(URL:string;Data:TStream):Boolean;
+var
+  HTTP:THTTPSend;
+begin
+  Result:=False;
+  HTTP:=THTTPSend.Create;
+  try
+    HTTP.Document.CopyFrom(data,0);
+    HTTP.MimeType:='Application/octet-stream';
+    Result:=HTTP.HTTPmethod('POST',URL);
+    data.Seek(0,soFromBeginning);
+    data.CopyFrom(HTTP.document,0);
   finally
     HTTP.Free;
   end;

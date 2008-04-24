@@ -1,5 +1,5 @@
 {==============================================================================|
-| Project : Delphree - Synapse                                   | 001.007.000 |
+| Project : Delphree - Synapse                                   | 001.008.000 |
 |==============================================================================|
 | Content: support procedures and functions                                    |
 |==============================================================================|
@@ -47,7 +47,8 @@ function GetEmailDesc(value:string):string;
 function StrToHex(value:string):string;
 function IntToBin(value:integer;digits:byte):string;
 function BinToInt(value:string):integer;
-procedure ParseURL(URL:string; var Prot,User,Pass,Host,Port,Path,Para:string);
+function ParseURL(URL:string; var Prot,User,Pass,Host,Port,Path,Para:string):string;
+function StringReplace(value,search,replace:string):string;
 
 implementation
 
@@ -338,7 +339,7 @@ end;
 
 {==============================================================================}
 {ParseURL}
-procedure ParseURL(URL:string; var Prot,User,Pass,Host,Port,Path,Para:string);
+function ParseURL(URL:string; var Prot,User,Pass,Host,Port,Path,Para:string):string;
 var
   x:integer;
   sURL:string;
@@ -389,6 +390,7 @@ begin
       port:=separateright(s1,':');
     end
     else host:=s1;
+  result:='/'+s2;
   x:=pos('?',s2);
   if x>0 then
     begin
@@ -398,6 +400,37 @@ begin
     else path:='/'+s2;
   if host=''
     then host:='localhost';
+end;
+
+{==============================================================================}
+{StringReplace}
+function StringReplace(value,search,replace:string):string;
+var
+  x,l,ls,lr:integer;
+begin
+  if (value='') or (Search='') then
+    begin
+      result:=value;
+      Exit;
+    end;
+  ls:=length(search);
+  lr:=length(replace);
+  result:='';
+  x:=pos(search,value);
+  while x>0 do
+    begin
+      l:=length(result);
+      setlength(result,l+x-1);
+      Move(pointer(value)^,Pointer(@result[l+1])^, x-1);
+//      result:=result+copy(value,1,x-1);
+      l:=length(result);
+      setlength(result,l+lr);
+      Move(pointer(replace)^,Pointer(@result[l+1])^, lr);
+//      result:=result+replace;
+      delete(value,1,x-1+ls);
+      x:=pos(search,value);
+    end;
+  result:=result+value;
 end;
 
 {==============================================================================}
