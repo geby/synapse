@@ -1,5 +1,5 @@
 {==============================================================================|
-| Project : Ararat Synapse                                       | 002.006.002 |
+| Project : Ararat Synapse                                       | 002.006.003 |
 |==============================================================================|
 | Content: MIME support procedures and functions                               |
 |==============================================================================|
@@ -668,9 +668,7 @@ begin
         begin
           x := Pos(' ', Copy(s, 2, Length(s) - 1));
           if x < 1 then
-            x := Length(s)
-          else
-            inc(x);
+            x := Length(s);
         end
         else
           if d1 > 0 then

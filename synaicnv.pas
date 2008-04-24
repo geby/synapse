@@ -1,5 +1,5 @@
 {==============================================================================|
-| Project : Ararat Synapse                                       | 001.000.000 |
+| Project : Ararat Synapse                                       | 001.000.001 |
 |==============================================================================|
 | Content: ICONV support for Win32, Linux and .NET                             |
 |==============================================================================|
@@ -169,7 +169,7 @@ end;
 
 function SynaIconvOpenTranslit (const tocode, fromcode: string): iconv_t;
 begin
-  Result := SynaIconvOpen(tocode + '//TRANSLIT', fromcode);
+  Result := SynaIconvOpen(tocode + '//IGNORE//TRANSLIT', fromcode);
 end;
 
 function SynaIconvOpenIgnore (const tocode, fromcode: string): iconv_t;

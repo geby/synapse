@@ -1,5 +1,5 @@
 {==============================================================================|
-| Project : Ararat Synapse                                       | 001.004.000 |
+| Project : Ararat Synapse                                       | 001.004.001 |
 |==============================================================================|
 | Content: NNTP client                                                         |
 |==============================================================================|
@@ -410,7 +410,7 @@ begin
   s := 'STAT';
   if Value <> '' then
     s := s + ' ' + Value;
-  Result := DoCommandRead(s);
+  Result := DoCommand(s);
 end;
 
 function TNNTPSend.SelectGroup(const Value: string): Boolean;

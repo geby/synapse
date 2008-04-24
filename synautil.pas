@@ -1,5 +1,5 @@
 {==============================================================================|
-| Project : Ararat Synapse                                       | 004.006.004 |
+| Project : Ararat Synapse                                       | 004.006.009 |
 |==============================================================================|
 | Content: support procedures and functions                                    |
 |==============================================================================|
@@ -387,7 +387,7 @@ var
 begin
   DecodeDate(t, wYear, wMonth, wDay);
   Result := Format('%s, %d %s %s %s', [MyDayNames[DayOfWeek(t)], wDay,
-    MyMonthNames[1, wMonth], FormatDateTime('yyyy hh:nn:ss', t), TimeZone]);
+    MyMonthNames[1, wMonth], FormatDateTime('yyyy hh":"nn":"ss', t), TimeZone]);
 end;
 
 {==============================================================================}
@@ -398,7 +398,7 @@ var
 begin
   DecodeDate(t, wYear, wMonth, wDay);
   Result:= Format('%s %2d %s', [MyMonthNames[1, wMonth], wDay,
-    FormatDateTime('hh:nn:ss', t)]);
+    FormatDateTime('hh":"nn":"ss', t)]);
 end;
 
 {==============================================================================}
@@ -416,7 +416,7 @@ var
 begin
   DecodeDate(t, wYear, wMonth, wDay);
   Result := Format('%s %s %d %s', [MyDayNames[DayOfWeek(t)], MyMonthNames[1, wMonth],
-    wDay, FormatDateTime('hh:nn:ss yyyy ', t)]);
+    wDay, FormatDateTime('hh":"nn":"ss yyyy ', t)]);
 end;
 
 {==============================================================================}
@@ -628,12 +628,15 @@ begin
       end
       else
       begin
-        year := x;
-        if year < 32 then
-          year := year + 2000;
-        if year < 1000 then
-         year := year + 1900;
-        continue;
+        if (year = 0) and ((month > 0) or (x > 12)) then
+        begin
+          year := x;
+          if year < 32 then
+            year := year + 2000;
+          if year < 1000 then
+           year := year + 1900;
+          continue;
+        end;
       end;
     // time
     if rpos(':', s) > Pos(':', s) then
@@ -651,7 +654,7 @@ begin
     end;
     // month
     y := GetMonthNumber(s);
-    if y > 0 then
+    if (y > 0) and (month = 0) then
       month := y;
   end;
   if year = 0 then
@@ -700,10 +703,12 @@ begin
 var
   TV: TTimeVal;
   TZ: Ttimezone;
+  PZ: PTimeZone;
 begin
   TZ.tz_minuteswest := 0;
   TZ.tz_dsttime := 0;
-  gettimeofday(TV, TZ);
+  PZ := @TZ;
+  gettimeofday(TV, PZ);
   Result := UnixDateDelta + (TV.tv_sec + TV.tv_usec / 1000000) / 86400;
 {$ENDIF}
 end;
@@ -738,11 +743,13 @@ var
   TV: TTimeVal;
   d: double;
   TZ: Ttimezone;
+  PZ: PTimeZone;
 begin
   Result := false;
   TZ.tz_minuteswest := 0;
   TZ.tz_dsttime := 0;
-  gettimeofday(TV, TZ);
+  PZ := @TZ;
+  gettimeofday(TV, PZ);
   d := (newdt - UnixDateDelta) * 86400;
   TV.tv_sec := trunc(d);
   TV.tv_usec := trunc(frac(d) * 1000000);
@@ -821,7 +828,7 @@ function CodeLongInt(Value: Longint): Ansistring;
 var
   x, y: word;
 begin
-  // this is fix for negative numbers on systems where longint = integer 
+  // this is fix for negative numbers on systems where longint = integer
   x := (Value shr 16) and integer($ffff);
   y := Value and integer($ffff);
   setlength(result, 4);
@@ -1436,7 +1443,6 @@ begin
       Delete(Value, 1, 1);
     end;
   end;
-  Result := Result;
 end;
 
 {==============================================================================}
@@ -1589,6 +1595,16 @@ var
   LText: PChar;
   {$ENDIF}
 begin
+  if Value = '' then
+  begin
+    Result := '';
+    Exit;
+  end;
+  if Value = Quote + Quote then
+  begin
+    Result := '';
+    Exit;
+  end;
   //workaround for bug in AnsiExtractQuotedStr
   //...if string begin by Quote, but not ending by Quote, then it eat last char.
   if length(Value) > 1 then

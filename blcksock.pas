@@ -1,5 +1,5 @@
 {==============================================================================|
-| Project : Ararat Synapse                                       | 008.003.005 |
+| Project : Ararat Synapse                                       | 008.003.007 |
 |==============================================================================|
 | Content: Library base                                                        |
 |==============================================================================|
@@ -107,7 +107,7 @@ uses
 
 const
 
-  SynapseRelease = '34';
+  SynapseRelease = '35';
 
   cLocalhost = '127.0.0.1';
   cAnyHost = '0.0.0.0';
@@ -2504,9 +2504,13 @@ end;
 
 procedure TBlockSocket.Purge;
 begin
-  repeat
-    RecvPacket(0);
-  until FLastError <> 0;
+  try
+    repeat
+      RecvPacket(0);
+    until FLastError <> 0;
+  except
+    on exception do;
+  end;
   FLastError := 0;
 end;
 
@@ -3920,7 +3924,11 @@ end;
 procedure TTCPBlockSocket.CloseSocket;
 begin
   if SSLEnabled then
-    SSLDoShutdown;
+  begin
+    if assigned(FSsl) then
+      sslshutdown(FSsl);
+    FSSLEnabled := false;
+  end;
   if FSocket <> INVALID_SOCKET then
   begin
     Synsock.Shutdown(FSocket, 1);

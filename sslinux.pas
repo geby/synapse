@@ -1,5 +1,5 @@
 {==============================================================================|
-| Project : Ararat Synapse                                       | 002.000.002 |
+| Project : Ararat Synapse                                       | 002.000.003 |
 |==============================================================================|
 | Content: Socket Independent Platform Layer - Linux definition include        |
 |==============================================================================|
@@ -73,7 +73,7 @@ function DestroySocketInterface: Boolean;
 
 const
   WinsockLevel = $0202;
-  
+
 type
   u_char = Char;
   u_short = Word;
@@ -698,7 +698,7 @@ end;
 
 {=============================================================================}
 var
-{$IFNDEF FPC}
+{$IFNDEF VER1_0}  //FTP version 1.0.x
   errno_loc: function: PInteger cdecl = nil;
 {$ELSE}
   errno_loc: function: PInteger = nil; cdecl;
