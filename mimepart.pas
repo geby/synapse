@@ -1,5 +1,5 @@
 {==============================================================================|
-| Project : Delphree - Synapse                                   | 001.002.000 |
+| Project : Delphree - Synapse                                   | 001.003.000 |
 |==============================================================================|
 | Content: MIME support procedures and functions                               |
 |==============================================================================|
@@ -14,7 +14,7 @@
 | The Original Code is Synapse Delphi Library.                                 |
 |==============================================================================|
 | The Initial Developer of the Original Code is Lukas Gebauer (Czech Republic).|
-| Portions created by Lukas Gebauer are Copyright (c)2000.                     |
+| Portions created by Lukas Gebauer are Copyright (c)2000,2001.                |
 | All Rights Reserved.                                                         |
 |==============================================================================|
 | Contributor(s):                                                              |
@@ -60,6 +60,7 @@ TMimePart=class
     TargetCharset:TMimeChar;
     secondary:string;
     description:string;
+    disposition:string;
     boundary:string;
     FileName:string;
     Lines:TStringList;
@@ -174,6 +175,7 @@ begin
   CharsetCode:=ISO_8859_1;
   TargetCharset:=GetCurCP;
   secondary:='';
+  disposition:='';
   description:='';
   boundary:='';
   FileName:='';
@@ -258,6 +260,8 @@ begin
           end;
         if pos('CONTENT-DISPOSITION:',su)=1 then
           begin
+            disposition:=separateright(su,':');
+            disposition:=trim(separateleft(disposition,';'));
             fn:=getparameter(s,'filename=');
           end;
       end;
@@ -447,6 +451,15 @@ begin
       end;
     if description<>''
       then lines.insert(0,'Content-Description: '+Description);
+    if disposition<>'' then
+      begin
+        s:='';
+        if filename<>''
+          then s:='; filename="'+filename+'"';
+        lines.insert(0,'Content-Disposition: '+lowercase(disposition)+s);
+      end;
+
+
     case EncodingCode of
       ME_7BIT:              s:='7bit';
       ME_8BIT:              s:='8bit';
@@ -478,7 +491,7 @@ var
 begin
   primary:='';
   secondary:='';
-  s:=uppercase(separateright(value,'.'));
+  s:=uppercase(extractfileext(value));
   if s=''
     then s:=uppercase(value);
   for n:=0 to MaxMimeType do
