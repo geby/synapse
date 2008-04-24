@@ -1,5 +1,5 @@
 {==============================================================================|
-| Project : Ararat Synapse                                       | 002.001.001 |
+| Project : Ararat Synapse                                       | 002.001.002 |
 |==============================================================================|
 | Content: Coding and decoding support                                         |
 |==============================================================================|
@@ -810,8 +810,8 @@ end;
 
 function UpdateCrc32(Value: Byte; Crc32: Integer): Integer;
 begin
-  Result := ((Crc32 shr 8) and Integer($00FFFFFF)) xor
-    crc32tab[Byte(Crc32 xor Integer(Value)) and Integer($000000FF)];
+  Result := (Crc32 shr 8)
+    xor crc32tab[Byte(Value xor (Crc32 and Integer($000000FF)))];
 end;
 
 {==============================================================================}
@@ -823,6 +823,7 @@ begin
   Result := Integer($FFFFFFFF);
   for n := 1 to Length(Value) do
     Result := UpdateCrc32(Ord(Value[n]), Result);
+  Result := not Result;
 end;
 
 {==============================================================================}
@@ -1047,7 +1048,7 @@ begin
     BufAnsiChar[P] := $80;
     Inc(P);
     Cnt := 64 - 1 - Cnt;
-    if Cnt > 0 then
+    if Cnt >= 0 then
       if Cnt < 8 then
       begin
         for n := 0 to cnt - 1 do

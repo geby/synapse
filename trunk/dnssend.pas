@@ -1,5 +1,5 @@
 {==============================================================================|
-| Project : Ararat Synapse                                       | 002.005.001 |
+| Project : Ararat Synapse                                       | 002.006.000 |
 |==============================================================================|
 | Content: DNS client                                                          |
 |==============================================================================|
@@ -123,6 +123,7 @@ type
     FNameserverInfo: TStringList;
     FAdditionalInfo: TStringList;
     FAuthoritative: Boolean;
+    FTruncated: Boolean;
     function ReverseIP(Value: AnsiString): AnsiString;
     function ReverseIP6(Value: AnsiString): AnsiString;
     function CompressName(const Value: AnsiString): AnsiString;
@@ -177,6 +178,9 @@ type
 
     {:@True, if ansfer is authoritative.}
     property Authoritative: Boolean read FAuthoritative;
+
+    {:@True, if ansfer is truncated to 512 bytes.}
+    property Truncated: Boolean read FTRuncated;
 
     {:Detailed informations from name server reply. One record per line. Record
      have comma delimited entries with type number, TTL and data filelds.
@@ -450,7 +454,11 @@ begin
           R := R + ',' + DecodeLabels(j);
         end;
       QTYPE_TXT:
-        R := DecodeString(j);
+        begin
+          R := '';
+          while j < i do
+            R := R + DecodeString(j);
+        end;
       QTYPE_GPOS:
         begin
           R := DecodeLabels(j);
@@ -515,6 +523,7 @@ begin
     flag := DecodeInt(Buf, 3);
     FRCode := Flag and $000F;
     FAuthoritative := (Flag and $0400) > 0;
+    FTruncated := (Flag and $0200) > 0;
     if FRCode = 0 then
     begin
       qdcount := DecodeInt(Buf, 5);

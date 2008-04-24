@@ -1,5 +1,5 @@
 {==============================================================================|
-| Project : Ararat Synapse                                       | 008.003.004 |
+| Project : Ararat Synapse                                       | 008.003.005 |
 |==============================================================================|
 | Content: Library base                                                        |
 |==============================================================================|
@@ -107,7 +107,7 @@ uses
 
 const
 
-  SynapseRelease = '33';
+  SynapseRelease = '34';
 
   cLocalhost = '127.0.0.1';
   cAnyHost = '0.0.0.0';
@@ -4169,7 +4169,7 @@ end;
 
 function TTCPBlockSocket.SSLCheck: Boolean;
 var
-  ErrBuf: array[0..255] of Char;
+  ErrBuf: String;
 begin
   Result := true;
   FSSLLastErrorDesc := '';
@@ -4178,8 +4178,8 @@ begin
   if FSSLLastError <> 0 then
   begin
     Result := False;
-    ErrErrorString(FSSLLastError, ErrBuf);
-    FSSLLastErrorDesc := ErrBuf;
+    ErrBuf := StringOfChar(#0, 256);
+    FSSLLastErrorDesc := ErrErrorString(FSSLLastError, ErrBuf);
   end;
 end;
 
