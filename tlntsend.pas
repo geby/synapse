@@ -42,7 +42,10 @@
 |          (Found at URL: http://www.ararat.cz/synapse/)                       |
 |==============================================================================}
 
-//RFC-854
+{:@abstract(Telnet script client)
+
+Used RFC: RFC-854
+}
 
 {$IFDEF FPC}
   {$MODE DELPHI}
@@ -79,9 +82,14 @@ const
   TLNT_IAC                = #255;
 
 type
+  {:@abstract(State of telnet protocol). Used internaly by TTelnetSend.}
   TTelnetState =(tsDATA, tsIAC, tsIAC_SB, tsIAC_WILL, tsIAC_DO, tsIAC_WONT,
      tsIAC_DONT, tsIAC_SBIAC, tsIAC_SBDATA, tsSBDATA_IAC);
 
+  {:@abstract(Class with implementation of Telnet script client.)
+
+   Note: Are you missing properties for specify server address and port? Look to
+   parent @link(TSynaClient) too!}
   TTelnetSend = class(TSynaClient)
   private
     FSock: TTCPBlockSocket;
@@ -97,15 +105,34 @@ type
   public
     constructor Create;
     destructor Destroy; override;
+
+    {:Connects to Telnet server.}
     function Login: Boolean;
+
+    {:Logout from telnet server.}
     procedure Logout;
+
+    {:Send this data to telnet server.}
     procedure Send(const Value: string);
+
+    {:Reading data from telnet server until Value is readed. If it is not readed
+     until timeout, result is @false. Otherwise result is @true.}
     function WaitFor(const Value: string): Boolean;
+
+    {:Read data terminated by terminator from telnet server.}
     function RecvTerminated(const Terminator: string): string;
+
+    {:Read string from telnet server.}
     function RecvString: string;
   published
+    {:Socket object used for TCP/IP operation. Good for seting OnStatus hook, etc.}
     property Sock: TTCPBlockSocket read FSock;
+
+    {:all readed datas in this session (from connect) is stored in this large
+     string.}
     property SessionLog: string read FSessionLog write FSessionLog;
+
+    {:Terminal type indentification. By default is 'SYNAPSE'.}
     property TermType: string read FTermType write FTermType;
   end;
 

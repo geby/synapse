@@ -1,9 +1,9 @@
 {==============================================================================|
-| Project : Ararat Synapse                                       | 002.003.004 |
+| Project : Ararat Synapse                                       | 002.005.001 |
 |==============================================================================|
 | Content: DNS client                                                          |
 |==============================================================================|
-| Copyright (c)1999-2003, Lukas Gebauer                                        |
+| Copyright (c)1999-2004, Lukas Gebauer                                        |
 | All rights reserved.                                                         |
 |                                                                              |
 | Redistribution and use in source and binary forms, with or without           |
@@ -33,7 +33,7 @@
 | DAMAGE.                                                                      |
 |==============================================================================|
 | The Initial Developer of the Original Code is Lukas Gebauer (Czech Republic).|
-| Portions created by Lukas Gebauer are Copyright (c)2000-2003.                |
+| Portions created by Lukas Gebauer are Copyright (c)2000-2004.                |
 | All Rights Reserved.                                                         |
 |==============================================================================|
 | Contributor(s):                                                              |
@@ -41,8 +41,12 @@
 | History: see HISTORY.HTM from distribution package                           |
 |          (Found at URL: http://www.ararat.cz/synapse/)                       |
 |==============================================================================}
+{: @abstract(DNS client by UDP or TCP)
+Support for sending DNS queries by UDP or TCP protocol. It can retrieve zone
+ transfers too!
 
-// RFC-1035, RFC-1183, RFC1706, RFC1712, RFC2163, RFC2230
+Used RFC: RFC-1035, RFC-1183, RFC1706, RFC1712, RFC2163, RFC2230
+}
 
 {$IFDEF FPC}
   {$MODE DELPHI}
@@ -103,11 +107,15 @@ const
   QTYPE_ALL = 255;
 
 type
+  {:@abstract(Implementation of DNS protocol by UDP or TCP protocol.)
+
+   Note: Are you missing properties for specify server address and port? Look to
+   parent @link(TSynaClient) too!}
   TDNSSend = class(TSynaClient)
   private
     FID: Word;
     FRCode: Integer;
-    FBuffer: string;
+    FBuffer: AnsiString;
     FSock: TUDPBlockSocket;
     FTCPSock: TTCPBlockSocket;
     FUseTCP: Boolean;
@@ -115,35 +123,84 @@ type
     FNameserverInfo: TStringList;
     FAdditionalInfo: TStringList;
     FAuthoritative: Boolean;
-    function ReverseIP(Value: string): string;
-    function ReverseIP6(Value: string): string;
-    function CompressName(const Value: string): string;
-    function CodeHeader: string;
-    function CodeQuery(const Name: string; QType: Integer): string;
-    function DecodeLabels(var From: Integer): string;
-    function DecodeString(var From: Integer): string;
+    function ReverseIP(Value: AnsiString): AnsiString;
+    function ReverseIP6(Value: AnsiString): AnsiString;
+    function CompressName(const Value: AnsiString): AnsiString;
+    function CodeHeader: AnsiString;
+    function CodeQuery(const Name: AnsiString; QType: Integer): AnsiString;
+    function DecodeLabels(var From: Integer): AnsiString;
+    function DecodeString(var From: Integer): AnsiString;
     function DecodeResource(var i: Integer; const Info: TStringList;
-      QType: Integer): string;
-    function RecvTCPResponse(const WorkSock: TBlockSocket): string;
-    function DecodeResponse(const Buf: string; const Reply: TStrings;
+      QType: Integer): AnsiString;
+    function RecvTCPResponse(const WorkSock: TBlockSocket): AnsiString;
+    function DecodeResponse(const Buf: AnsiString; const Reply: TStrings;
       QType: Integer):boolean;
   public
     constructor Create;
     destructor Destroy; override;
-    function DNSQuery(Name: string; QType: Integer;
+
+    {:Query a DNSHost for QType resources correspond to a name. Supported QType
+     values are: Qtype_A, Qtype_NS, Qtype_MD, Qtype_MF, Qtype_CNAME, Qtype_SOA,
+     Qtype_MB, Qtype_MG, Qtype_MR, Qtype_NULL, Qtype_PTR, Qtype_HINFO,
+     Qtype_MINFO, Qtype_MX, Qtype_TXT, Qtype_RP, Qtype_AFSDB, Qtype_X25,
+     Qtype_ISDN, Qtype_RT, Qtype_NSAP, Qtype_NSAPPTR, Qtype_PX, Qtype_GPOS,
+     Qtype_KX.
+
+     Type for zone transfers QTYPE_AXFR is supported too, but only in TCP mode!
+
+     "Name" is domain name or host name for queried resource. If "name" is
+     IP address, automatically convert to reverse domain form (.in-addr.arpa).
+
+     If result is @true, Reply contains resource records. One record on one line.
+     If Resource record have multiple fields, they are stored on line divided by
+     comma. (example: MX record contains value 'rs.cesnet.cz' with preference
+     number 10, string in Reply is: '10,rs.cesnet.cz'). All numbers or IP address
+     in resource are converted to string form.}
+    function DNSQuery(Name: AnsiString; QType: Integer;
       const Reply: TStrings): Boolean;
   published
+
+    {:Socket object used for UDP operation. Good for seting OnStatus hook, etc.}
     property Sock: TUDPBlockSocket read FSock;
+
+    {:Socket object used for TCP operation. Good for seting OnStatus hook, etc.}
     property TCPSock: TTCPBlockSocket read FTCPSock;
+
+    {:if @true, then is used TCP protocol instead UDP. It is needed for zone
+     transfers, etc.}
     property UseTCP: Boolean read FUseTCP Write FUseTCP;
+
+    {:After DNS operation contains ResultCode of DNS operation.
+      Values are: 0-no error, 1-format error, 2-server failure, 3-name error,
+      4-not implemented, 5-refused.}
     property RCode: Integer read FRCode;
+
+    {:@True, if ansfer is authoritative.}
     property Authoritative: Boolean read FAuthoritative;
+
+    {:Detailed informations from name server reply. One record per line. Record
+     have comma delimited entries with type number, TTL and data filelds.
+     This information contains detailed information about query reply.}
     property AnsferInfo: TStringList read FAnsferInfo;
+
+    {:Detailed informations from name server reply. One record per line. Record
+     have comma delimited entries with type number, TTL and data filelds.
+     This information contains detailed information about nameserver.}
     property NameserverInfo: TStringList read FNameserverInfo;
+
+    {:Detailed informations from name server reply. One record per line. Record
+     have comma delimited entries with type number, TTL and data filelds.
+     This information contains detailed additional information.}
     property AdditionalInfo: TStringList read FAdditionalInfo;
   end;
 
-function GetMailServers(const DNSHost, Domain: string;
+{:A very useful function, and example of it's use is found in the TDNSSend object.
+ This function is used to get mail servers for a domain and sort them by
+ preference numbers. "Servers" contains only the domain names of the mail
+ servers in the right order (without preference number!). The first domain name
+ will always be the highest preferenced mail server. Returns boolean @TRUE if
+ all went well.}
+function GetMailServers(const DNSHost, Domain: AnsiString;
   const Servers: TStrings): Boolean;
 
 implementation
@@ -172,7 +229,7 @@ begin
   inherited Destroy;
 end;
 
-function TDNSSend.ReverseIP(Value: string): string;
+function TDNSSend.ReverseIP(Value: AnsiString): AnsiString;
 var
   x: Integer;
 begin
@@ -187,7 +244,7 @@ begin
       Delete(Result, 1, 1);
 end;
 
-function TDNSSend.ReverseIP6(Value: string): string;
+function TDNSSend.ReverseIP6(Value: AnsiString): AnsiString;
 var
   ip6: TSockAddrIn6;
 begin
@@ -210,10 +267,10 @@ begin
     + '.' + ip6.sin6_addr.S_un_b.s_b1;
 end;
 
-function TDNSSend.CompressName(const Value: string): string;
+function TDNSSend.CompressName(const Value: AnsiString): AnsiString;
 var
   n: Integer;
-  s: string;
+  s: AnsiString;
 begin
   Result := '';
   if Value = '' then
@@ -235,7 +292,7 @@ begin
   end;
 end;
 
-function TDNSSend.CodeHeader: string;
+function TDNSSend.CodeHeader: AnsiString;
 begin
   FID := Random(32767);
   Result := CodeInt(FID); // ID
@@ -246,14 +303,14 @@ begin
   Result := Result + CodeInt(0); // ARCount
 end;
 
-function TDNSSend.CodeQuery(const Name: string; QType: Integer): string;
+function TDNSSend.CodeQuery(const Name: AnsiString; QType: Integer): AnsiString;
 begin
   Result := CompressName(Name);
   Result := Result + CodeInt(QType);
   Result := Result + CodeInt(1); // Type INTERNET
 end;
 
-function TDNSSend.DecodeString(var From: Integer): string;
+function TDNSSend.DecodeString(var From: Integer): AnsiString;
 var
   Len: integer;
 begin
@@ -263,7 +320,7 @@ begin
   Inc(From, Len);
 end;
 
-function TDNSSend.DecodeLabels(var From: Integer): string;
+function TDNSSend.DecodeLabels(var From: Integer): AnsiString;
 var
   l, f: Integer;
 begin
@@ -295,11 +352,11 @@ begin
 end;
 
 function TDNSSend.DecodeResource(var i: Integer; const Info: TStringList;
-  QType: Integer): string;
+  QType: Integer): AnsiString;
 var
-  Rname: string;
+  Rname: AnsiString;
   RType, Len, j, x, y, z, n: Integer;
-  R: string;
+  R: AnsiString;
   t1, t2, ttl: integer;
   ip6: TSockAddrIn6;
 begin
@@ -331,24 +388,27 @@ begin
         end;
       QTYPE_AAAA:
         begin
-          FillChar(ip6, SizeOf(ip6), 0);
-          ip6.sin6_addr.S_un_b.s_b1 := FBuffer[j];
-          ip6.sin6_addr.S_un_b.s_b2 := FBuffer[j + 1];
-          ip6.sin6_addr.S_un_b.s_b3 := FBuffer[j + 2];
-          ip6.sin6_addr.S_un_b.s_b4 := FBuffer[j + 3];
-          ip6.sin6_addr.S_un_b.s_b5 := FBuffer[j + 4];
-          ip6.sin6_addr.S_un_b.s_b6 := FBuffer[j + 5];
-          ip6.sin6_addr.S_un_b.s_b7 := FBuffer[j + 6];
-          ip6.sin6_addr.S_un_b.s_b8 := FBuffer[j + 7];
-          ip6.sin6_addr.S_un_b.s_b9 := FBuffer[j + 8];
-          ip6.sin6_addr.S_un_b.s_b10 := FBuffer[j + 9];
-          ip6.sin6_addr.S_un_b.s_b11 := FBuffer[j + 10];
-          ip6.sin6_addr.S_un_b.s_b12 := FBuffer[j + 11];
-          ip6.sin6_addr.S_un_b.s_b13 := FBuffer[j + 12];
-          ip6.sin6_addr.S_un_b.s_b14 := FBuffer[j + 13];
-          ip6.sin6_addr.S_un_b.s_b15 := FBuffer[j + 14];
-          ip6.sin6_addr.S_un_b.s_b16 := FBuffer[j + 15];
-          ip6.sin6_family := AF_INET6;
+//          FillChar(ip6, SizeOf(ip6), 0);
+          ip6.sin6_addr.S_un_b.s_b1 := Char(FBuffer[j]);
+          ip6.sin6_addr.S_un_b.s_b2 := Char(FBuffer[j + 1]);
+          ip6.sin6_addr.S_un_b.s_b3 := Char(FBuffer[j + 2]);
+          ip6.sin6_addr.S_un_b.s_b4 := Char(FBuffer[j + 3]);
+          ip6.sin6_addr.S_un_b.s_b5 := Char(FBuffer[j + 4]);
+          ip6.sin6_addr.S_un_b.s_b6 := Char(FBuffer[j + 5]);
+          ip6.sin6_addr.S_un_b.s_b7 := Char(FBuffer[j + 6]);
+          ip6.sin6_addr.S_un_b.s_b8 := Char(FBuffer[j + 7]);
+          ip6.sin6_addr.S_un_b.s_b9 := Char(FBuffer[j + 8]);
+          ip6.sin6_addr.S_un_b.s_b10 := Char(FBuffer[j + 9]);
+          ip6.sin6_addr.S_un_b.s_b11 := Char(FBuffer[j + 10]);
+          ip6.sin6_addr.S_un_b.s_b12 := Char(FBuffer[j + 11]);
+          ip6.sin6_addr.S_un_b.s_b13 := Char(FBuffer[j + 12]);
+          ip6.sin6_addr.S_un_b.s_b14 := Char(FBuffer[j + 13]);
+          ip6.sin6_addr.S_un_b.s_b15 := Char(FBuffer[j + 14]);
+          ip6.sin6_addr.S_un_b.s_b16 := Char(FBuffer[j + 15]);
+          ip6.sin6_family := word(AF_INET6);
+          ip6.sin6_port := 0;
+          ip6.sin6_flowinfo := 0;
+          ip6.sin6_scope_id := 0;
           R := FSock.IP6ToStr(ip6);
         end;
       QTYPE_NS, QTYPE_MD, QTYPE_MF, QTYPE_CNAME, QTYPE_MB,
@@ -426,7 +486,7 @@ begin
     Result := R;
 end;
 
-function TDNSSend.RecvTCPResponse(const WorkSock: TBlockSocket): string;
+function TDNSSend.RecvTCPResponse(const WorkSock: TBlockSocket): AnsiString;
 var
   l: integer;
 begin
@@ -436,12 +496,12 @@ begin
     Result := WorkSock.RecvBufferStr(l, FTimeout);
 end;
 
-function TDNSSend.DecodeResponse(const Buf: string; const Reply: TStrings;
+function TDNSSend.DecodeResponse(const Buf: AnsiString; const Reply: TStrings;
   QType: Integer):boolean;
 var
   n, i: Integer;
   flag, qdcount, ancount, nscount, arcount: Integer;
-  s: string;
+  s: AnsiString;
 begin
   Result := False;
   Reply.Clear;
@@ -486,7 +546,7 @@ begin
   end;
 end;
 
-function TDNSSend.DNSQuery(Name: string; QType: Integer;
+function TDNSSend.DNSQuery(Name: AnsiString; QType: Integer;
   const Reply: TStrings): Boolean;
 var
   WorkSock: TBlockSocket;
@@ -497,7 +557,7 @@ begin
   if IsIP(Name) then
     Name := ReverseIP(Name) + '.in-addr.arpa';
   if IsIP6(Name) then
-    Name := ReverseIP6(Name) + '.ip6.int';
+    Name := ReverseIP6(Name) + '.ip6.arpa';
   FBuffer := CodeHeader + CodeQuery(Name, QType);
   if FUseTCP then
     WorkSock := FTCPSock
@@ -543,7 +603,7 @@ end;
 
 {==============================================================================}
 
-function GetMailServers(const DNSHost, Domain: string;
+function GetMailServers(const DNSHost, Domain: AnsiString;
   const Servers: TStrings): Boolean;
 var
   DNS: TDNSSend;

@@ -1,9 +1,9 @@
 {==============================================================================|
-| Project : Ararat Synapse                                       | 003.002.011 |
+| Project : Ararat Synapse                                       | 003.003.001 |
 |==============================================================================|
 | Content: SMTP client                                                         |
 |==============================================================================|
-| Copyright (c)1999-2003, Lukas Gebauer                                        |
+| Copyright (c)1999-2004, Lukas Gebauer                                        |
 | All rights reserved.                                                         |
 |                                                                              |
 | Redistribution and use in source and binary forms, with or without           |
@@ -33,7 +33,7 @@
 | DAMAGE.                                                                      |
 |==============================================================================|
 | The Initial Developer of the Original Code is Lukas Gebauer (Czech Republic).|
-| Portions created by Lukas Gebauer are Copyright (c) 1999-2003.          |
+| Portions created by Lukas Gebauer are Copyright (c) 1999-2004.          |
 | All Rights Reserved.                                                         |
 |==============================================================================|
 | Contributor(s):                                                              |
@@ -42,8 +42,11 @@
 |          (Found at URL: http://www.ararat.cz/synapse/)                       |
 |==============================================================================}
 
-//RFC-1869, RFC-1870, RFC-1893, RFC-2034, RFC-2104, RFC-2195, RFC-2487,
-//RFC-2554, RFC-2821
+{:@abstract(SMTP client)
+
+Used RFC: RFC-1869, RFC-1870, RFC-1893, RFC-2034, RFC-2104, RFC-2195, RFC-2487,
+ RFC-2554, RFC-2821
+}
 
 {$IFDEF FPC}
   {$MODE DELPHI}
@@ -65,6 +68,14 @@ const
   cSmtpProtocol = 'smtp';
 
 type
+  {:@abstract(Implementation of SMTP and ESMTP procotol),
+   include some ESMTP extensions, include SSL/TLS too.
+
+   Note: Are you missing properties for setting Username and Password for ESMTP?
+   Look to parent @link(TSynaClient) object!
+
+   Are you missing properties for specify server address and port? Look to
+   parent @link(TSynaClient) too!}
   TSMTPSend = class(TSynaClient)
   private
     {$IFDEF STREAMSEC}
@@ -78,8 +89,6 @@ type
     FFullResult: TStringList;
     FESMTPcap: TStringList;
     FESMTP: Boolean;
-    FUsername: string;
-    FPassword: string;
     FAuthDone: Boolean;
     FESMTPSize: Boolean;
     FMaxSize: Integer;
@@ -99,47 +108,159 @@ type
   public
     constructor Create;
     destructor Destroy; override;
+
+    {:Connects to SMTP server (defined in @link(TSynaClient.TargetHost)) and
+     begin SMTP session. (First try ESMTP EHLO, next old HELO handshake). Parses
+     ESMTP capabilites and if you specified Username and password and remote
+     server can handle AUTH command, try login by AUTH command. Preffered login
+     method is CRAM-MD5 (if safer!). If all OK, result is @true, else result is
+     @false.}
     function Login: Boolean;
-    procedure Logout;
+
+    {:Close SMTP session (QUIT command) and disconnect from SMTP server.}
+    function Logout: Boolean;
+
+    {:Send RSET SMTP command for reset SMTP session. If all OK, result is @true,
+     else result is @false.}
     function Reset: Boolean;
+
+    {:Send NOOP SMTP command for keep SMTP session. If all OK, result is @true,
+     else result is @false.}
     function NoOp: Boolean;
+
+    {:Send MAIL FROM SMTP command for set sender e-mail address. If sender's
+     e-mail address is empty string, transmited message is error message.
+
+     If size not 0 and remote server can handle SIZE parameter, append SIZE
+     parameter to request. If all OK, result is @true, else result is @false.}
     function MailFrom(const Value: string; Size: Integer): Boolean;
+
+    {:Send RCPT TO SMTP command for set receiver e-mail address. It cannot be an
+     empty string. If all OK, result is @true, else result is @false.}
     function MailTo(const Value: string): Boolean;
+
+    {:Send DATA SMTP command and transmit message data. If all OK, result is
+     @true, else result is @false.}
     function MailData(const Value: Tstrings): Boolean;
+
+    {:Send ETRN SMTP command for start sending of remote queue for domain in
+     Value. If all OK, result is @true, else result is @false.}
     function Etrn(const Value: string): Boolean;
+
+    {:Send VRFY SMTP command for check receiver e-mail address. It cannot be
+     an empty string. If all OK, result is @true, else result is @false.}
     function Verify(const Value: string): Boolean;
+
+    {:Call STARTTLS command for upgrade connection to SSL/TLS mode.}
     function StartTLS: Boolean;
+
+    {:Return string descriptive text for enhanced result codes stored in
+     @link(EnhCode1), @link(EnhCode2) and @link(EnhCode3).}
     function EnhCodeString: string;
+
+    {:Try to find specified capability in ESMTP response.}
     function FindCap(const Value: string): string;
   published
+    {:result code of last SMTP command.}
     property ResultCode: Integer read FResultCode;
+
+    {:result string of last SMTP command (begin with string representation of
+     result code).}
     property ResultString: string read FResultString;
+
+    {:All result strings of last SMTP command (result is maybe multiline!).}
     property FullResult: TStringList read FFullResult;
+
+    {:List of ESMTP capabilites of remote ESMTP server. (If you connect to ESMTP
+     server only!).}
     property ESMTPcap: TStringList read FESMTPcap;
+
+    {:@TRUE if you successfuly logged to ESMTP server.}
     property ESMTP: Boolean read FESMTP;
-    property Username: string read FUsername Write FUsername;
-    property Password: string read FPassword Write FPassword;
+
+    {:@TRUE if you successfuly pass authorisation to remote server.}
     property AuthDone: Boolean read FAuthDone;
+
+    {:@TRUE if remote server can handle SIZE parameter.}
     property ESMTPSize: Boolean read FESMTPSize;
+
+    {:When @link(ESMTPsize) is @TRUE, contains max length of message that remote
+     server can handle.}
     property MaxSize: Integer read FMaxSize;
+
+    {:First digit of Enhanced result code. If last operation does not have
+     enhanced result code, values is 0.}
     property EnhCode1: Integer read FEnhCode1;
+
+    {:Second digit of Enhanced result code. If last operation does not have
+     enhanced result code, values is 0.}
     property EnhCode2: Integer read FEnhCode2;
+
+    {:Third digit of Enhanced result code. If last operation does not have
+     enhanced result code, values is 0.}
     property EnhCode3: Integer read FEnhCode3;
+
+    {:name of our system used in HELO and EHLO command. Implicit value is
+     internet address of your machine.}
     property SystemName: string read FSystemName Write FSystemName;
+
+    {:If is set to true, then upgrade to SSL/TLS mode if remote server support it.}
     property AutoTLS: Boolean read FAutoTLS Write FAutoTLS;
+
+    {:SSL/TLS mode is used from first contact to server. Servers with full
+     SSL/TLS mode usualy using non-standard TCP port!}
     property FullSSL: Boolean read FFullSSL Write FFullSSL;
 {$IFDEF STREAMSEC}
     property Sock: TSsTCPBlockSocket read FSock;
     property TLSServer: TCustomTLSInternalServer read FTLSServer write FTLSServer;
 {$ELSE}
+    {:Socket object used for TCP/IP operation. Good for seting OnStatus hook, etc.}
     property Sock: TTCPBlockSocket read FSock;
 {$ENDIF}
   end;
 
+{:A very useful function and example of its use would be found in the TSMTPsend
+ object. Send maildata (text of e-mail with all SMTP headers! For example when
+ text of message is created by @link(TMimemess) object) from "MailFrom" e-mail
+ address to "MailTo" e-mail address (If you need more then one receiver, then
+ separate their addresses by comma).
+
+ Function sends e-mail to a SMTP server defined in "SMTPhost" parameter.
+ Username and password are used for authorization to the "SMTPhost". If you
+ don't want authorization, set "Username" and "Password" to empty strings. If
+ e-mail message is successfully sent, the result returns @true.
+
+ If you need use different port number then standard, then add this port number
+ to SMTPhost after colon. (i.e. '127.0.0.1:1025')}
 function SendToRaw(const MailFrom, MailTo, SMTPHost: string;
   const MailData: TStrings; const Username, Password: string): Boolean;
+
+{:A very useful function and example of its use would be found in the TSMTPsend
+ object. Send "Maildata" (text of e-mail without any SMTP headers!) from
+ "MailFrom" e-mail address to "MailTo" e-mail address with "Subject".  (If you
+ need more then one receiver, then separate their addresses by comma).
+
+ This function constructs all needed SMTP headers (with DATE header) and sends
+ the e-mail to the SMTP server defined in the "SMTPhost" parameter. If the
+ e-mail message is successfully sent, the result will be @TRUE.
+
+ If you need use different port number then standard, then add this port number
+ to SMTPhost after colon. (i.e. '127.0.0.1:1025')}
 function SendTo(const MailFrom, MailTo, Subject, SMTPHost: string;
   const MailData: TStrings): Boolean;
+
+{:A very useful function and example of its use would be found in the TSMTPsend
+ object. Sends "MailData" (text of e-mail without any SMTP headers!) from
+ "MailFrom" e-mail address to "MailTo" e-mail address (If you need more then one
+ receiver, then separate their addresses by comma).
+
+ This function sends the e-mail to the SMTP server defined in the "SMTPhost"
+ parameter. Username and password are used for authorization to the "SMTPhost".
+ If you dont want authorization, set "Username" and "Password" to empty Strings.
+ If the e-mail message is successfully sent, the result will be @TRUE.
+
+ If you need use different port number then standard, then add this port number
+ to SMTPhost after colon. (i.e. '127.0.0.1:1025')}
 function SendToEx(const MailFrom, MailTo, Subject, SMTPHost: string;
   const MailData: TStrings; const Username, Password: string): Boolean;
 
@@ -150,8 +271,8 @@ begin
   inherited Create;
   FFullResult := TStringList.Create;
   FESMTPcap := TStringList.Create;
-{$IFDEF STREAMSEC}           
-  FTLSServer := GlobalTLSInternalServer;     
+{$IFDEF STREAMSEC}
+  FTLSServer := GlobalTLSInternalServer;
   FSock := TSsTCPBlockSocket.Create;
   FSock.BlockingRead := True;
 {$ELSE}
@@ -160,8 +281,6 @@ begin
   FSock.ConvertLineEnd := true;
   FTimeout := 60000;
   FTargetPort := cSmtpProtocol;
-  FUsername := '';
-  FPassword := '';
   FSystemName := FSock.LocalName;
   FAutoTLS := False;
   FFullSSL := False;
@@ -184,8 +303,8 @@ begin
   FEnhCode2 := 0;
   FEnhCode3 := 0;
   s := Copy(Value, 5, Length(Value) - 4);
-  t := SeparateLeft(s, '.');
-  s := SeparateRight(s, '.');
+  t := Trim(SeparateLeft(s, '.'));
+  s := Trim(SeparateRight(s, '.'));
   if t = '' then
     Exit;
   if Length(t) > 1 then
@@ -193,14 +312,14 @@ begin
   e1 := StrToIntDef(t, 0);
   if e1 = 0 then
     Exit;
-  t := SeparateLeft(s, '.');
-  s := SeparateRight(s, '.');
+  t := Trim(SeparateLeft(s, '.'));
+  s := Trim(SeparateRight(s, '.'));
   if t = '' then
     Exit;
   if Length(t) > 3 then
     Exit;
   e2 := StrToIntDef(t, 0);
-  t := SeparateLeft(s, ' ');
+  t := Trim(SeparateLeft(s, ' '));
   if t = '' then
     Exit;
   if Length(t) > 3 then
@@ -338,6 +457,11 @@ begin
         FESMTPcap.Clear;
         for n := 1 to FFullResult.Count - 1 do
           FESMTPcap.Add(Copy(FFullResult[n], 5, Length(FFullResult[n]) - 4));
+      end
+      else
+      begin
+        Result := False;
+        Exit;
       end;
     if not ((FUsername = '') and (FPassword = '')) then
     begin
@@ -362,10 +486,10 @@ begin
   end;
 end;
 
-procedure TSMTPSend.Logout;
+function TSMTPSend.Logout: Boolean;
 begin
   FSock.SendString('QUIT' + CRLF);
-  ReadResult;
+  Result := ReadResult = 221;
   FSock.CloseSocket;
 end;
 
@@ -557,8 +681,8 @@ begin
     // SMTP.AutoTLS := True;
 // if you need support for TSL/SSL tunnel, uncomment next lines:
     // SMTP.FullSSL := True;
-    SMTP.TargetHost := SeparateLeft(SMTPHost, ':');
-    s := SeparateRight(SMTPHost, ':');
+    SMTP.TargetHost := Trim(SeparateLeft(SMTPHost, ':'));
+    s := Trim(SeparateRight(SMTPHost, ':'));
     if (s <> '') and (s <> SMTPHost) then
       SMTP.TargetPort := s;
     SMTP.Username := Username;
@@ -569,7 +693,7 @@ begin
       begin
         s := MailTo;
         repeat
-          t := GetEmailAddr(FetchEx(s, ',', '"'));
+          t := GetEmailAddr(Trim(FetchEx(s, ',', '"')));
           if t <> '' then
             Result := SMTP.MailTo(t);
           if not Result then

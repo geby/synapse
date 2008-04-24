@@ -1,5 +1,5 @@
 {==============================================================================|
-| Project : Ararat Synapse                                       | 001.001.002 |
+| Project : Ararat Synapse                                       | 001.001.003 |
 |==============================================================================|
 | Content: misc. procedures and functions                                      |
 |==============================================================================|
@@ -42,6 +42,8 @@
 |          (Found at URL: http://www.ararat.cz/synapse/)                       |
 |==============================================================================}
 
+{:@abstract(Misc. network based utilities)}
+
 {$IFDEF FPC}
   {$MODE DELPHI}
 {$ENDIF}
@@ -67,21 +69,33 @@ uses
 {$ELSE}
 {$IFDEF FPC}
   winver,
-{$ELSE}
-  Wininet,
 {$ENDIF}
   Windows;
 {$ENDIF}
 
 Type
+  {:@abstract(This record contains information about proxy setting.)}
   TProxySetting = record
     Host: string;
     Port: string;
     Bypass: string;
   end;
 
+{:By this function you can turn-on computer on network, if this computer
+ supporting Wake-on-lan feature. You need MAC number (network card indentifier)
+ of computer for turn-on. You can also assign target IP addres. If you not
+ specify it, then is used broadcast for delivery magic wake-on packet. However
+ broadcasts workinh only on your local network. When you need to wake-up
+ computer on another network, you must specify any existing IP addres on same
+ network segment as targeting computer.}
 procedure WakeOnLan(MAC, IP: string);
+
+{:Autodetect current DNS servers used by system. If is defined more then one DNS
+ server, then result is comma-delimited.}
 function GetDNS: string;
+
+{:Autodetect InternetExplorer proxy setting for given protocol. This function
+working only on windows!}
 function GetIEProxy(protocol: string): TProxySetting;
 
 implementation
@@ -267,14 +281,19 @@ begin
   Result.Bypass := '';
 end;
 {$ELSE}
-{$IFDEF FPC}
-begin
-  Result.Host := '';
-  Result.Port := '';
-  Result.Bypass := '';
-end;
-{$ELSE}
+type
+  PInternetProxyInfo = ^TInternetProxyInfo;
+  TInternetProxyInfo = packed record
+    dwAccessType: DWORD;
+    lpszProxy: LPCSTR;
+    lpszProxyBypass: LPCSTR;
+  end;
+const
+  INTERNET_OPTION_PROXY = 38;
+  INTERNET_OPEN_TYPE_PROXY = 3;
+  WininetDLL = 'WININET.DLL';
 var
+  WininetModule: THandle;
   ProxyInfo: PInternetProxyInfo;
   Err: Boolean;
   Len: DWORD;
@@ -282,48 +301,60 @@ var
   DefProxy: string;
   ProxyList: TStringList;
   n: integer;
+  InternetQueryOption: function (hInet: Pointer; dwOption: DWORD;
+    lpBuffer: Pointer; var lpdwBufferLength: DWORD): BOOL; stdcall;
 begin
   Result.Host := '';
   Result.Port := '';
   Result.Bypass := '';
-  if protocol = '' then
-    protocol := 'http';
-  Len := 4096;
-  GetMem(ProxyInfo, Len);
-  ProxyList := TStringList.Create;
+  WininetModule := LoadLibrary(WininetDLL);
+  if WininetModule = 0 then
+    exit;
   try
-    Err := InternetQueryOption(nil, INTERNET_OPTION_PROXY, ProxyInfo, Len);
-    if Err then
-      if ProxyInfo^.dwAccessType = INTERNET_OPEN_TYPE_PROXY then
-      begin
-        ProxyList.CommaText := ReplaceString(ProxyInfo^.lpszProxy, ' ', ',');
-        Proxy := '';
-        DefProxy := '';
-        for n := 0 to ProxyList.Count -1 do
+    InternetQueryOption := GetProcAddress(WininetModule,'InternetQueryOptionA');
+    if @InternetQueryOption = nil then
+      Exit;
+
+    if protocol = '' then
+      protocol := 'http';
+    Len := 4096;
+    GetMem(ProxyInfo, Len);
+    ProxyList := TStringList.Create;
+    try
+      Err := InternetQueryOption(nil, INTERNET_OPTION_PROXY, ProxyInfo, Len);
+      if Err then
+        if ProxyInfo^.dwAccessType = INTERNET_OPEN_TYPE_PROXY then
         begin
-          if Pos(lowercase(protocol) + '=', lowercase(ProxyList[n])) = 1 then
+          ProxyList.CommaText := ReplaceString(ProxyInfo^.lpszProxy, ' ', ',');
+          Proxy := '';
+          DefProxy := '';
+          for n := 0 to ProxyList.Count -1 do
           begin
-            Proxy := SeparateRight(ProxyList[n], '=');
-            break;
+            if Pos(lowercase(protocol) + '=', lowercase(ProxyList[n])) = 1 then
+            begin
+              Proxy := SeparateRight(ProxyList[n], '=');
+              break;
+            end;
+            if Pos('=', ProxyList[n]) < 1 then
+              DefProxy := ProxyList[n];
           end;
-          if Pos('=', ProxyList[n]) < 1 then
-            DefProxy := ProxyList[n];
+          if Proxy = '' then
+            Proxy := DefProxy;
+          if Proxy <> '' then
+          begin
+            Result.Host := Trim(SeparateLeft(Proxy, ':'));
+            Result.Port := Trim(SeparateRight(Proxy, ':'));
+          end;
+          Result.Bypass := ReplaceString(ProxyInfo^.lpszProxyBypass, ' ', ',');
         end;
-        if Proxy = '' then
-          Proxy := DefProxy;
-        if Proxy <> '' then
-        begin
-          Result.Host := SeparateLeft(Proxy, ':');
-          Result.Port := SeparateRight(Proxy, ':');
-        end;
-        Result.Bypass := ReplaceString(ProxyInfo^.lpszProxyBypass, ' ', ',');
-      end;
+    finally
+      ProxyList.Free;
+      FreeMem(ProxyInfo);
+    end;
   finally
-    ProxyList.Free;
-    FreeMem(ProxyInfo);
+    FreeLibrary(WininetModule);
   end;
 end;
-{$ENDIF}
 {$ENDIF}
 
 {==============================================================================}

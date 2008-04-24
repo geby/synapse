@@ -1,5 +1,5 @@
 {==============================================================================|
-| Project : Ararat Synapse                                       | 002.001.010 |
+| Project : Ararat Synapse                                       | 002.003.000 |
 |==============================================================================|
 | Content: POP3 client                                                         |
 |==============================================================================|
@@ -42,7 +42,10 @@
 |          (Found at URL: http://www.ararat.cz/synapse/)                       |
 |==============================================================================}
 
-//RFC-1734, RFC-1939, RFC-2195, RFC-2449, RFC-2595
+{:@abstract(POP3 protocol client)
+
+Used RFC: RFC-1734, RFC-1939, RFC-2195, RFC-2449, RFC-2595
+}
 
 {$IFDEF FPC}
   {$MODE DELPHI}
@@ -64,8 +67,18 @@ const
   cPop3Protocol = 'pop3';
 
 type
+
+  {:The three types of possible authorization methods for "logging in" to a POP3
+   server.}
   TPOP3AuthType = (POP3AuthAll, POP3AuthLogin, POP3AuthAPOP);
 
+  {:@abstract(Implementation of POP3 client protocol.)
+
+   Note: Are you missing properties for setting Username and Password? Look to
+   parent @link(TSynaClient) object!
+
+   Are you missing properties for specify server address and port? Look to
+   parent @link(TSynaClient) too!}
   TPOP3Send = class(TSynaClient)
   private
     {$IFDEF STREAMSEC}
@@ -77,8 +90,6 @@ type
     FResultCode: Integer;
     FResultString: string;
     FFullResult: TStringList;
-    FUsername: string;
-    FPassword: string;
     FStatCount: Integer;
     FStatSize: Integer;
     FTimeStamp: string;
@@ -93,35 +104,93 @@ type
   public
     constructor Create;
     destructor Destroy; override;
+
+    {:Call CAPA command for get POP3 server capabilites.
+     note: not all servers support this command!}
     function Capability: Boolean;
+
+    {:Connect to remote POP3 host. If all OK, result is @true.}
     function Login: Boolean;
-    procedure Logout;
+
+    {:Disconnects from POP3 server.}
+    function Logout: Boolean;
+
+    {:Send RSET command. If all OK, result is @true.}
     function Reset: Boolean;
+
+    {:Send NOOP command. If all OK, result is @true.}
     function NoOp: Boolean;
+
+    {:Send STAT command and fill @link(StatCount) and @link(StatSize) property.
+     If all OK, result is @true.}
     function Stat: Boolean;
+
+    {:Send LIST command. If Value is 0, LIST is for all messages. After
+     successful operation is listing in FullResult. If all OK, result is @True.}
     function List(Value: Integer): Boolean;
+
+    {:Send RETR command. After successful operation dowloaded message in
+     @link(FullResult). If all OK, result is @true.}
     function Retr(Value: Integer): Boolean;
+
+    {:Send DELE command for delete specified message. If all OK, result is @true.}
     function Dele(Value: Integer): Boolean;
+
+    {:Send TOP command. After successful operation dowloaded headers of message
+     and maxlines count of message in @link(FullResult). If all OK, result is
+     @true.}
     function Top(Value, Maxlines: Integer): Boolean;
+
+    {:Send UIDL command. If Value is 0, UIDL is for all messages. After
+     successful operation is listing in FullResult. If all OK, result is @True.}
     function Uidl(Value: Integer): Boolean;
+
+    {:Call STLS command for upgrade connection to SSL/TLS mode.}
     function StartTLS: Boolean;
+
+    {:Try to find given capabily in capabilty string returned from POP3 server
+     by CAPA command.}
     function FindCap(const Value: string): string;
   published
+    {:Result code of last POP3 operation. 0 - error, 1 - OK.}
     property ResultCode: Integer read FResultCode;
+
+    {:Result string of last POP3 operation.}
     property ResultString: string read FResultString;
+
+    {:Stringlist with full lines returned as result of POP3 operation. I.e. if
+     operation is LIST, this property is filled by list of messages. If
+     operation is RETR, this property have downloaded message.}
     property FullResult: TStringList read FFullResult;
-    property Username: string read FUsername Write FUsername;
-    property Password: string read FPassword Write FPassword;
+
+    {:After STAT command is there count of messages in inbox.}
     property StatCount: Integer read FStatCount;
+
+    {:After STAT command is there size of all messages in inbox.}
     property StatSize: Integer read  FStatSize;
+
+    {:If server support this, after comnnect is in this property timestamp of
+     remote server.}
     property TimeStamp: string read FTimeStamp;
+
+    {:Type of authorisation for login to POP3 server. Dafault is autodetect one
+     of possible authorisation. Autodetect do this:
+
+     If remote POP3 server support APOP, try login by APOP method. If APOP is
+     not supported, or if APOP login failed, try classic USER+PASS login method.}
     property AuthType: TPOP3AuthType read FAuthType Write FAuthType;
+
+    {:If is set to @true, then upgrade to SSL/TLS mode if remote server support it.}
     property AutoTLS: Boolean read FAutoTLS Write FAutoTLS;
+
+    {:SSL/TLS mode is used from first contact to server. Servers with full
+     SSL/TLS mode usualy using non-standard TCP port!}
     property FullSSL: Boolean read FFullSSL Write FFullSSL;
 {$IFDEF STREAMSEC}
     property Sock: TSsTCPBlockSocket read FSock;
     property TLSServer: TCustomTLSInternalServer read FTLSServer write FTLSServer;
 {$ELSE}
+    {:Socket object used for TCP/IP operation. Good for seting OnStatus hook, etc.}
     property Sock: TTCPBlockSocket read FSock;
 {$ENDIF}
   end;
@@ -143,8 +212,6 @@ begin
   FSock.ConvertLineEnd := true;
   FTimeout := 60000;
   FTargetPort := cPop3Protocol;
-  FUsername := '';
-  FPassword := '';
   FStatCount := 0;
   FStatSize := 0;
   FAuthType := POP3AuthAll;
@@ -254,7 +321,7 @@ begin
   s := SeparateRight(FResultString, '<');
   if s <> FResultString then
   begin
-    s1 := SeparateLeft(s, '>');
+    s1 := Trim(SeparateLeft(s, '>'));
     if s1 <> s then
       FTimeStamp := '<' + s1 + '>';
   end;
@@ -262,7 +329,12 @@ begin
   if Capability then
     if FAutoTLS and (Findcap('STLS') <> '') then
       if StartTLS then
-        Capability;
+        Capability
+      else
+      begin
+        Result := False;
+        Exit;
+      end;
   if (FTimeStamp <> '') and not (FAuthType = POP3AuthLogin) then
   begin
     Result := AuthApop;
@@ -278,10 +350,10 @@ begin
     Result := AuthLogin;
 end;
 
-procedure TPOP3Send.Logout;
+function TPOP3Send.Logout: Boolean;
 begin
   FSock.SendString('QUIT' + CRLF);
-  ReadResult(False);
+  Result := ReadResult(False) = 1;
   FSock.CloseSocket;
 end;
 
@@ -306,8 +378,8 @@ begin
   if ReadResult(False) <> 1 then
     Exit;
   s := SeparateRight(ResultString, '+OK ');
-  FStatCount := StrToIntDef(SeparateLeft(s, ' '), 0);
-  FStatSize := StrToIntDef(SeparateRight(s, ' '), 0);
+  FStatCount := StrToIntDef(Trim(SeparateLeft(s, ' ')), 0);
+  FStatSize := StrToIntDef(Trim(SeparateRight(s, ' ')), 0);
   Result := True;
 end;
 

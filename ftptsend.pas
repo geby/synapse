@@ -1,9 +1,9 @@
 {==============================================================================|
-| Project : Ararat Synapse                                       | 001.000.002 |
+| Project : Ararat Synapse                                       | 001.001.000 |
 |==============================================================================|
 | Content: Trivial FTP (TFTP) client and server                                |
 |==============================================================================|
-| Copyright (c)1999-2003, Lukas Gebauer                                        |
+| Copyright (c)1999-2004, Lukas Gebauer                                        |
 | All rights reserved.                                                         |
 |                                                                              |
 | Redistribution and use in source and binary forms, with or without           |
@@ -33,7 +33,7 @@
 | DAMAGE.                                                                      |
 |==============================================================================|
 | The Initial Developer of the Original Code is Lukas Gebauer (Czech Republic).|
-| Portions created by Lukas Gebauer are Copyright (c)2003.                     |
+| Portions created by Lukas Gebauer are Copyright (c)2003-2004.                |
 | All Rights Reserved.                                                         |
 |==============================================================================|
 | Contributor(s):                                                              |
@@ -42,7 +42,10 @@
 |          (Found at URL: http://www.ararat.cz/synapse/)                       |
 |==============================================================================}
 
-// RFC-1350
+{: @abstract(TFTP client and server protocol)
+
+Used RFC: RFC-1350
+}
 
 {$IFDEF FPC}
   {$MODE DELPHI}
@@ -61,7 +64,16 @@ uses
 const
   cTFTPProtocol = '69';
 
+  cTFTP_RRQ = word(1);
+  cTFTP_WRQ = word(2);
+  cTFTP_DTA = word(3);
+  cTFTP_ACK = word(4);
+  cTFTP_ERR = word(5);
+
 type
+  {:@abstract(Implementation of TFTP client and server)
+   Note: Are you missing properties for specify server address and port? Look to
+   parent @link(TSynaClient) too!}
   TTFTPSend = class(TSynaClient)
   private
     FSock: TUDPBlockSocket;
@@ -75,17 +87,44 @@ type
   public
     constructor Create;
     destructor Destroy; override;
+
+    {:Upload @link(data) as file to TFTP server.}
     function SendFile(const Filename: string): Boolean;
+
+    {:Download file from TFTP server to @link(data).}
     function RecvFile(const Filename: string): Boolean;
+
+    {:Acts as TFTP server and wait for client request. When some request
+     incoming within Timeout, result is @true and parametres is filled with
+     information from request. You must handle this request, validate it, and
+     call @link(ReplyError), @link(ReplyRecv) or @link(ReplySend) for send reply
+     to TFTP Client.}
     function WaitForRequest(var Req: word; var filename: string): Boolean;
+
+    {:send error to TFTP client, when you acts as TFTP server.}
     procedure ReplyError(Error: word; Description: string);
+
+    {:Accept uploaded file from TFTP client to @link(data), when you acts as
+     TFTP server.}
     function ReplyRecv: Boolean;
+
+    {:Accept download request file from TFTP client and send content of
+     @link(data), when you acts as TFTP server.}
     function ReplySend: Boolean;
   published
+    {:Code of TFTP error.}
     property ErrorCode: integer read FErrorCode;
+
+    {:Human readable decription of TFTP error. (if is sended by remote side)}
     property ErrorString: string read FErrorString;
+
+    {:MemoryStream with datas for sending or receiving}
     property Data: TMemoryStream read FData;
+
+    {:Address of TFTP remote side.}
     property RequestIP: string read FRequestIP write FRequestIP;
+
+    {:Port of TFTP remote side.}
     property RequestPort: string read FRequestPort write FRequestPort;
   end;
 
@@ -197,14 +236,16 @@ begin
       n2 := FData.Size mod 512;
       for n := 1 to n1 do
       begin
-        SetLength(s, 512);
-        FData.Read(pointer(s)^, 512);
+        s := ReadStrFromStream(FData, 512);
+//        SetLength(s, 512);
+//        FData.Read(pointer(s)^, 512);
         if not Sendpacket(3, ser, s) then
           Exit;
         inc(ser);
       end;
-      SetLength(s, n2);
-      FData.Read(pointer(s)^, n2);
+      s := ReadStrFromStream(FData, n2);
+//      SetLength(s, n2);
+//      FData.Read(pointer(s)^, n2);
       if not Sendpacket(3, ser, s) then
         Exit;
       Result := True;
@@ -237,7 +278,8 @@ begin
         if not RecvPacket(ser, s) then
           Exit;
         inc(ser);
-        FData.Write(pointer(s)^, length(s));
+        WriteStrToStream(FData, s);
+//        FData.Write(pointer(s)^, length(s));
       until length(s) <> 512;
       FData.Position := 0;
       Result := true;
@@ -266,10 +308,10 @@ begin
         FRequestPort := IntToStr(FSock.GetRemoteSinPort);
         Req := DecodeInt(s, 1);
         delete(s, 1, 2);
-        filename := SeparateLeft(s, #0);
+        filename := Trim(SeparateLeft(s, #0));
         s := SeparateRight(s, #0);
         s := SeparateLeft(s, #0);
-        Result := lowercase(s) = 'octet';
+        Result := lowercase(trim(s)) = 'octet';
       end;
   end;
 end;
@@ -304,7 +346,8 @@ begin
       if not RecvPacket(ser, s) then
         Exit;
       inc(ser);
-      FData.Write(pointer(s)^, length(s));
+      WriteStrToStream(FData, s);
+//      FData.Write(pointer(s)^, length(s));
     until length(s) <> 512;
     FData.Position := 0;
     Result := true;
@@ -331,14 +374,16 @@ begin
     n2 := FData.Size mod 512;
     for n := 1 to n1 do
     begin
-      SetLength(s, 512);
-      FData.Read(pointer(s)^, 512);
+      s := ReadStrFromStream(FData, 512);
+//      SetLength(s, 512);
+//      FData.Read(pointer(s)^, 512);
       if not Sendpacket(3, ser, s) then
         Exit;
       inc(ser);
     end;
-    SetLength(s, n2);
-    FData.Read(pointer(s)^, n2);
+    s := ReadStrFromStream(FData, n2);
+//    SetLength(s, n2);
+//    FData.Read(pointer(s)^, n2);
     if not Sendpacket(3, ser, s) then
       Exit;
     Result := True;

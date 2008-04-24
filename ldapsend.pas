@@ -1,9 +1,9 @@
 {==============================================================================|
-| Project : Ararat Synapse                                       | 001.000.011 |
+| Project : Ararat Synapse                                       | 001.002.001 |
 |==============================================================================|
 | Content: LDAP client                                                         |
 |==============================================================================|
-| Copyright (c)1999-2003, Lukas Gebauer                                        |
+| Copyright (c)1999-2004, Lukas Gebauer                                        |
 | All rights reserved.                                                         |
 |                                                                              |
 | Redistribution and use in source and binary forms, with or without           |
@@ -33,7 +33,7 @@
 | DAMAGE.                                                                      |
 |==============================================================================|
 | The Initial Developer of the Original Code is Lukas Gebauer (Czech Republic).|
-| Portions created by Lukas Gebauer are Copyright (c)2003.                     |
+| Portions created by Lukas Gebauer are Copyright (c)2003-2004.                |
 | All Rights Reserved.                                                         |
 |==============================================================================|
 | Contributor(s):                                                              |
@@ -42,7 +42,10 @@
 |          (Found at URL: http://www.ararat.cz/synapse/)                       |
 |==============================================================================}
 
-//RFC-2251, RFC-2254, RFC-2829, RFC-2830
+{:@abstract(LDAP client)
+
+Used RFC: RFC-2251, RFC-2254, RFC-2829, RFC-2830
+}
 
 {$IFDEF FPC}
   {$MODE DELPHI}
@@ -54,7 +57,7 @@ unit ldapsend;
 interface
 
 uses
-  Classes, SysUtils,
+  SysUtils, Classes,
   {$IFDEF STREAMSEC}
   TlsInternalServer, TlsSynaSock,
   {$ENDIF}
@@ -87,6 +90,9 @@ const
 
 type
 
+  {:@abstract(LDAP attribute with list of their values)
+   This class holding name of LDAP attribute and list of their values. This is
+   descendant of TStringList class enhanced by some new properties.}
   TLDAPAttribute = class(TStringList)
   private
     FAttributeName: string;
@@ -96,10 +102,14 @@ type
     procedure Put(Index: integer; const Value: string); override;
     procedure SetAttributeName(Value: string);
   published
+    {:Name of LDAP attribute.}
     property AttributeName: string read FAttributeName Write SetAttributeName;
+    {:Return @true when attribute contains binary data.}
     property IsBinary: Boolean read FIsBinary;
   end;
 
+  {:@abstract(List of @link(TLDAPAttribute))
+   This object can hold list of TLDAPAttribute objects.}
   TLDAPAttributeList = class(TObject)
   private
     FAttributeList: TList;
@@ -107,12 +117,19 @@ type
   public
     constructor Create;
     destructor Destroy; override;
+    {:Clear list.}
     procedure Clear;
+    {:Return count of TLDAPAttribute objects in list.}
     function Count: integer;
+    {:Add new TLDAPAttribute object to list.}
     function Add: TLDAPAttribute;
+    {:List of TLDAPAttribute objects.}
     property Items[Index: Integer]: TLDAPAttribute read GetAttribute; default;
   end;
 
+  {:@abstract(LDAP result object)
+   This object can hold LDAP object. (their name and all their attributes with
+   values)}
   TLDAPResult = class(TObject)
   private
     FObjectName: string;
@@ -121,10 +138,14 @@ type
     constructor Create;
     destructor Destroy; override;
   published
+    {:Name of this LDAP object.}
     property ObjectName: string read FObjectName write FObjectName;
+    {:Here is list of object attributes.}
     property Attributes: TLDAPAttributeList read FAttributes;
   end;
 
+  {:@abstract(List of LDAP result objects)
+   This object can hold list of LDAP objects. (for example result of LDAP SEARCH.)}
   TLDAPResultList = class(TObject)
   private
     FResultList: TList;
@@ -132,24 +153,31 @@ type
   public
     constructor Create;
     destructor Destroy; override;
+    {:Clear all TLDAPResult objects in list.}
     procedure Clear;
+    {:Return count of TLDAPResult objects in list.}
     function Count: integer;
+    {:Create and add new TLDAPResult object to list.}
     function Add: TLDAPResult;
+    {:List of TLDAPResult objects.}
     property Items[Index: Integer]: TLDAPResult read GetResult; default;
   end;
 
+  {:Define possible operations for LDAP MODIFY operations.}
   TLDAPModifyOp = (
     MO_Add,
     MO_Delete,
     MO_Replace
   );
 
+  {:Specify possible values for search scope.}
   TLDAPSearchScope = (
     SS_BaseObject,
     SS_SingleLevel,
     SS_WholeSubtree
   );
 
+  {:Specify possible values about alias dereferencing.}
   TLDAPSearchAliases = (
     SA_NeverDeref,
     SA_InSearching,
@@ -157,6 +185,14 @@ type
     SA_Always
   );
 
+  {:@abstract(Implementation of LDAP client)
+   (version 2 and 3)
+
+   Note: Are you missing properties for setting Username and Password? Look to
+   parent @link(TSynaClient) object!
+
+   Are you missing properties for specify server address and port? Look to
+   parent @link(TSynaClient) too!}
   TLDAPSend = class(TSynaClient)
   private
     {$IFDEF STREAMSEC}
@@ -168,8 +204,6 @@ type
     FResultCode: Integer;
     FResultString: string;
     FFullResult: string;
-    FUsername: string;
-    FPassword: string;
     FAutoTLS: Boolean;
     FFullSSL: Boolean;
     FSeq: integer;
@@ -194,46 +228,114 @@ type
   public
     constructor Create;
     destructor Destroy; override;
+
+    {:Try to connect to LDAP server and start secure channel, when it is required.}
     function Login: Boolean;
+
+    {:Try to bind to LDAP server with @link(TSynaClient.Username) and
+     @link(TSynaClient.Password). If this is empty strings, then it do annonymous
+     Bind. When you not call Bind on LDAPv3, then is automaticly used anonymous
+     mode.
+
+     This method using plaintext transport of password! It is not secure!}
     function Bind: Boolean;
+
+    {:Try to bind to LDAP server with @link(TSynaClient.Username) and
+     @link(TSynaClient.Password). If this is empty strings, then it do annonymous
+     Bind. When you not call Bind on LDAPv3, then is automaticly used anonymous
+     mode.
+
+     This method using SASL with DIGEST-MD5 method for secure transfer of your
+     password.}
     function BindSasl: Boolean;
-    procedure Logout;
+
+    {:Close connection to LDAP server.}
+    function Logout: Boolean;
+
+    {:Modify content of LDAP attribute on this object.}
     function Modify(obj: string; Op: TLDAPModifyOp; const Value: TLDAPAttribute): Boolean;
+
+    {:Add list of attributes to specified object.}
     function Add(obj: string; const Value: TLDAPAttributeList): Boolean;
+
+    {:Delete this LDAP object from server.}
     function Delete(obj: string): Boolean;
+
+    {:Modify object name of this LDAP object.}
     function ModifyDN(obj, newRDN, newSuperior: string; DeleteoldRDN: Boolean): Boolean;
+
+    {:Try to compare Attribute value with this LDAP object.}
     function Compare(obj, AttributeValue: string): Boolean;
+
+    {:Search LDAP base for LDAP objects by Filter.}
     function Search(obj: string; TypesOnly: Boolean; Filter: string;
       const Attributes: TStrings): Boolean;
+
+    {:Call any LDAPv3 extended command.}
     function Extended(const Name, Value: string): Boolean;
 
+    {:Try to start SSL/TLS connection to LDAP server.}
     function StartTLS: Boolean;
   published
+    {:Specify version of used LDAP protocol. Default value is 3.}
     property Version: integer read FVersion Write FVersion;
+
+    {:Result code of last LDAP operation.}
     property ResultCode: Integer read FResultCode;
+
+    {:Human readable description of result code of last LDAP operation.}
     property ResultString: string read FResultString;
+
+    {:Binary string with full last response of LDAP server. This string is
+     encoded by ASN.1 BER encoding! You need this only for debugging.}
     property FullResult: string read FFullResult;
-    property Username: string read FUsername Write FUsername;
-    property Password: string read FPassword Write FPassword;
+
+    {:If @true, then try to start TSL mode in Login procedure.}
     property AutoTLS: Boolean read FAutoTLS Write FAutoTLS;
+
+    {:If @true, then use connection to LDAP server through SSL/TLS tunnel.}
     property FullSSL: Boolean read FFullSSL Write FFullSSL;
+
+    {:Sequence number of last LDAp command. It is incremented by any LDAP command.}
     property Seq: integer read FSeq;
+
+    {:Specify what search scope is used in search command.}
     property SearchScope: TLDAPSearchScope read FSearchScope Write FSearchScope;
+
+    {:Specify how to handle aliases in search command.}
     property SearchAliases: TLDAPSearchAliases read FSearchAliases Write FSearchAliases;
+
+    {:Specify result size limit in search command. Value 0 means without limit.}
     property SearchSizeLimit: integer read FSearchSizeLimit Write FSearchSizeLimit;
+
+    {:Specify search time limit in search command (seconds). Value 0 means
+     without limit.}
     property SearchTimeLimit: integer read FSearchTimeLimit Write FSearchTimeLimit;
+
+    {:Here is result of search command.}
     property SearchResult: TLDAPResultList read FSearchResult;
+
+    {:On each LDAP operation can LDAP server return some referals URLs. Here is
+     their list.}
     property Referals: TStringList read FReferals;
+
+    {:When you call @link(Extended) operation, then here is result Name returned
+     by server.}
     property ExtName: string read FExtName;
+
+    {:When you call @link(Extended) operation, then here is result Value returned
+     by server.}
     property ExtValue: string read FExtValue;
 {$IFDEF STREAMSEC}
     property Sock: TSsTCPBlockSocket read FSock;
     property TLSServer: TCustomTLSInternalServer read FTLSServer write FTLSServer;
 {$ELSE}
+    {:TCP socket used by all LDAP operations.}
     property Sock: TTCPBlockSocket read FSock;
 {$ENDIF}
   end;
 
+{:Dump result of LDAP SEARCH into human readable form. Good for debugging.}
 function LDAPResultDump(const Value: TLDAPResultList): string;
 
 implementation
@@ -382,8 +484,6 @@ begin
 {$ENDIF}
   FTimeout := 60000;
   FTargetPort := cLDAPProtocol;
-  FUsername := '';
-  FPassword := '';
   FAutoTLS := False;
   FFullSSL := False;
   FSeq := 0;
@@ -625,10 +725,10 @@ begin
     l.CommaText := Value;
     n := IndexByBegin('nonce=', l);
     if n >= 0 then
-      nonce := UnQuoteStr(SeparateRight(l[n], 'nonce='), '"');
+      nonce := UnQuoteStr(Trim(SeparateRight(l[n], 'nonce=')), '"');
     n := IndexByBegin('realm=', l);
     if n >= 0 then
-      realm := UnQuoteStr(SeparateRight(l[n], 'realm='), '"');
+      realm := UnQuoteStr(Trim(SeparateRight(l[n], 'realm=')), '"');
     cnonce := IntToHex(GetTick, 8);
     nc := '00000001';
     qop := 'auth';
@@ -671,17 +771,17 @@ begin
     '!':
       // NOT rule (recursive call)
       begin
-        Result := ASNOBject(TranslateFilter(GetBetween('(', ')', s)), $82);
+        Result := ASNOBject(TranslateFilter(GetBetween('(', ')', s)), $A2);
       end;
     '&':
       // AND rule (recursive call)
       begin
         repeat
           t := GetBetween('(', ')', s);
-          s := SeparateRight(s, t);
+          s := Trim(SeparateRight(s, t));
           if s <> '' then
             if s[1] = ')' then
-              System.Delete(s, 1, 1);
+              {$IFDEF CIL}Borland.Delphi.{$ENDIF}System.Delete(s, 1, 1);
           Result := Result + TranslateFilter(t);
         until s = '';
         Result := ASNOBject(Result, $A0);
@@ -691,18 +791,18 @@ begin
       begin
         repeat
           t := GetBetween('(', ')', s);
-          s := SeparateRight(s, t);
+          s := Trim(SeparateRight(s, t));
           if s <> '' then
             if s[1] = ')' then
-              System.Delete(s, 1, 1);
+              {$IFDEF CIL}Borland.Delphi.{$ENDIF}System.Delete(s, 1, 1);
           Result := Result + TranslateFilter(t);
         until s = '';
         Result := ASNOBject(Result, $A1);
       end;
     else
       begin
-        l := SeparateLeft(s, '=');
-        r := SeparateRight(s, '=');
+        l := Trim(SeparateLeft(s, '='));
+        r := Trim(SeparateRight(s, '='));
         if l <> '' then
         begin
           c := l[Length(l)];
@@ -710,7 +810,7 @@ begin
             ':':
               // Extensible match
               begin
-                System.Delete(l, Length(l), 1);
+                {$IFDEF CIL}Borland.Delphi.{$ENDIF}System.Delete(l, Length(l), 1);
                 dn := False;
                 attr := '';
                 rule := '';
@@ -719,8 +819,8 @@ begin
                   dn := True;
                   l := ReplaceString(l, ':dn', '');
                 end;
-                attr := SeparateLeft(l, ':');
-                rule := SeparateRight(l, ':');
+                attr := Trim(SeparateLeft(l, ':'));
+                rule := Trim(SeparateRight(l, ':'));
                 if rule = l then
                   rule := '';
                 if rule <> '' then
@@ -737,7 +837,7 @@ begin
             '~':
               // Approx match
               begin
-                System.Delete(l, Length(l), 1);
+                {$IFDEF CIL}Borland.Delphi.{$ENDIF}System.Delete(l, Length(l), 1);
                 Result := ASNOBject(l, ASN1_OCTSTR)
                   + ASNOBject(DecodeTriplet(r, '\'), ASN1_OCTSTR);
                 Result := ASNOBject(Result, $a8);
@@ -745,7 +845,7 @@ begin
             '>':
               // Greater or equal match
               begin
-                System.Delete(l, Length(l), 1);
+                {$IFDEF CIL}Borland.Delphi.{$ENDIF}System.Delete(l, Length(l), 1);
                 Result := ASNOBject(l, ASN1_OCTSTR)
                   + ASNOBject(DecodeTriplet(r, '\'), ASN1_OCTSTR);
                 Result := ASNOBject(Result, $a5);
@@ -753,7 +853,7 @@ begin
             '<':
               // Less or equal match
               begin
-                System.Delete(l, Length(l), 1);
+                {$IFDEF CIL}Borland.Delphi.{$ENDIF}System.Delete(l, Length(l), 1);
                 Result := ASNOBject(l, ASN1_OCTSTR)
                   + ASNOBject(DecodeTriplet(r, '\'), ASN1_OCTSTR);
                 Result := ASNOBject(Result, $a6);
@@ -802,7 +902,7 @@ begin
     Exit;
   Result := True;
   if FAutoTLS then
-    StartTLS;
+    Result := StartTLS;
 end;
 
 function TLDAPSend.Bind: Boolean;
@@ -861,10 +961,11 @@ begin
   end;
 end;
 
-procedure TLDAPSend.Logout;
+function TLDAPSend.Logout: Boolean;
 begin
   Fsock.SendString(BuildPacket(ASNObject('', LDAP_ASN1_UNBIND_REQUEST)));
   FSock.CloseSocket;
+  Result := True;
 end;
 
 function TLDAPSend.Modify(obj: string; Op: TLDAPModifyOp; const Value: TLDAPAttribute): Boolean;
@@ -942,8 +1043,8 @@ function TLDAPSend.Compare(obj, AttributeValue: string): Boolean;
 var
   s: string;
 begin
-  s := ASNObject(SeparateLeft(AttributeValue, '='), ASN1_OCTSTR)
-    + ASNObject(SeparateRight(AttributeValue, '='), ASN1_OCTSTR);
+  s := ASNObject(Trim(SeparateLeft(AttributeValue, '=')), ASN1_OCTSTR)
+    + ASNObject(Trim(SeparateRight(AttributeValue, '=')), ASN1_OCTSTR);
   s := ASNObject(obj, ASN1_OCTSTR) + ASNObject(s, ASN1_SEQ);
   s := ASNObject(s, LDAP_ASN1_COMPARE_REQUEST);
   Fsock.SendString(BuildPacket(s));
