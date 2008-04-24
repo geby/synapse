@@ -1,5 +1,5 @@
 {==============================================================================|
-| Project : Delphree - Synapse                                   | 002.002.000 |
+| Project : Delphree - Synapse                                   | 003.001.000 |
 |==============================================================================|
 | Content: SMTP client                                                         |
 |==============================================================================|
@@ -14,7 +14,7 @@
 | The Original Code is Synapse Delphi Library.                                 |
 |==============================================================================|
 | The Initial Developer of the Original Code is Lukas Gebauer (Czech Republic).|
-| Portions created by Lukas Gebauer are Copyright (c) 1999,2000,2001.          |
+| Portions created by Lukas Gebauer are Copyright (c) 1999-2002.          |
 | All Rights Reserved.                                                         |
 |==============================================================================|
 | Contributor(s):                                                              |
@@ -57,6 +57,8 @@ type
     FEnhCode2: Integer;
     FEnhCode3: Integer;
     FSystemName: string;
+    FAutoTLS: Boolean;
+    FFullSSL: Boolean;
     procedure EnhancedCode(const Value: string);
     function ReadResult: Integer;
     function AuthLogin: Boolean;
@@ -76,6 +78,7 @@ type
     function MailData(const Value: Tstrings): Boolean;
     function Etrn(const Value: string): Boolean;
     function Verify(const Value: string): Boolean;
+    function StartTLS: Boolean;
     function EnhCodeString: string;
     function FindCap(const Value: string): string;
   published
@@ -97,6 +100,8 @@ type
     property EnhCode3: Integer read FEnhCode3;
     property SystemName: string read FSystemName Write FSystemName;
     property Sock: TTCPBlockSocket read FSock;
+    property AutoTLS: Boolean read FAutoTLS Write FAutoTLS;
+    property FullSSL: Boolean read FFullSSL Write FFullSSL;
   end;
 
 function SendToRaw(const MailFrom, MailTo, SMTPHost: string;
@@ -124,6 +129,8 @@ begin
   FUsername := '';
   FPassword := '';
   FSystemName := FSock.LocalName;
+  FAutoTLS := False;
+  FFullSSL := False;
 end;
 
 destructor TSMTPSend.Destroy;
@@ -223,6 +230,8 @@ function TSMTPSend.Connect: Boolean;
 begin
   FSock.CloseSocket;
   FSock.CreateSocket;
+  if FFullSSL then
+    FSock.SSLEnabled := True;
   FSock.Connect(FSMTPHost, FSMTPPort);
   Result := FSock.LastError = 0;
 end;
@@ -272,6 +281,14 @@ begin
   begin
     for n := 1 to FFullResult.Count - 1 do
       FESMTPcap.Add(Copy(FFullResult[n], 5, Length(FFullResult[n]) - 4));
+    if (not FullSSL) and FAutoTLS and (FindCap('STARTTLS') <> '') then
+      if StartTLS then
+      begin
+        Ehlo;
+        FESMTPcap.Clear;
+        for n := 1 to FFullResult.Count - 1 do
+          FESMTPcap.Add(Copy(FFullResult[n], 5, Length(FFullResult[n]) - 4));
+      end;
     if not ((FUsername = '') and (FPassword = '')) then
     begin
       s := FindCap('AUTH ');
@@ -372,6 +389,20 @@ begin
   Result := (x >= 250) and (x <= 259);
 end;
 
+function TSMTPSend.StartTLS: Boolean;
+begin
+  Result := False;
+  if FindCap('STARTTLS') <> '' then
+  begin
+    FSock.SendString('STARTTLS' + CRLF);
+    if (ReadResult = 220) and (FSock.LastError = 0) then
+    begin
+      Fsock.SSLDoConnect;
+      Result := FSock.LastError = 0;
+    end;
+  end;
+end;
+
 function TSMTPSend.EnhCodeString: string;
 var
   s, t: string;
@@ -460,6 +491,13 @@ begin
   Result := False;
   SMTP := TSMTPSend.Create;
   try
+// if you need SOCKS5 support, uncomment next lines:
+    // SMTP.Sock.SocksIP := '127.0.0.1';
+    // SMTP.Sock.SocksPort := '1080';
+// if you need support for upgrade session to TSL/SSL, uncomment next lines:
+    // SMTP.AutoTLS := True;
+// if you need support for TSL/SSL tunnel, uncomment next lines:
+    // SMTP.FullSSL := True;
     SMTP.SMTPHost := SeparateLeft(SMTPHost, ':');
     s := SeparateRight(SMTPHost, ':');
     if (s <> '') and (s <> SMTPHost) then

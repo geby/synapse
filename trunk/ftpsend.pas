@@ -1,5 +1,5 @@
 {==============================================================================|
-| Project : Delphree - Synapse                                   | 001.002.002 |
+| Project : Delphree - Synapse                                   | 002.000.000 |
 |==============================================================================|
 | Content: FTP client                                                          |
 |==============================================================================|
@@ -14,7 +14,7 @@
 | The Original Code is Synapse Delphi Library.                                 |
 |==============================================================================|
 | The Initial Developer of the Original Code is Lukas Gebauer (Czech Republic).|
-| Portions created by Lukas Gebauer are Copyright (c) 1999,2000,2001.          |
+| Portions created by Lukas Gebauer are Copyright (c) 1999-2002.               |
 | All Rights Reserved.                                                         |
 |==============================================================================|
 | Contributor(s):                                                              |
@@ -47,6 +47,27 @@ type
   TFTPStatus = procedure(Sender: TObject; Response: Boolean;
     const Value: string) of object;
 
+  TFTPListRec = class(TObject)
+  public
+    FileName: string;
+    Directory: Boolean;
+    Readable: Boolean;
+    FileSize: Longint;
+    FileTime: TDateTime;
+  end;
+
+  TFTPList = class(TObject)
+  private
+    FList: TList;
+  public
+    constructor Create;
+    destructor Destroy; override;
+    procedure Clear;
+    function ParseLine(Value: string): Boolean;
+  published
+    property List: TList read FList;
+  end;
+
   TFTPSend = class(TObject)
   private
     FOnStatus: TFTPStatus;
@@ -74,6 +95,7 @@ type
     FCanResume: Boolean;
     FPassiveMode: Boolean;
     FForceDefaultPort: Boolean;
+    FFtpList: TFTPList;
     function Auth(Mode: integer): Boolean;
     function Connect: Boolean;
     function InternalStor(const Command: string; RestoreAt: integer): Boolean;
@@ -132,6 +154,7 @@ type
     property PassiveMode: Boolean read FPassiveMode Write FPassiveMode;
     property ForceDefaultPort: Boolean read FForceDefaultPort Write FForceDefaultPort;
     property OnStatus: TFTPStatus read FOnStatus write FOnStatus;
+    property FtpList: TFTPList read FFtpList;
   end;
 
 function FtpGetFile(const IP, Port, FileName, LocalFile,
@@ -154,6 +177,7 @@ begin
   FDataStream := TMemoryStream.Create;
   FSock := TTCPBlockSocket.Create;
   FDSock := TTCPBlockSocket.Create;
+  FFtpList := TFTPList.Create;
   FTimeout := 300000;
   FFTPHost := cLocalhost;
   FFTPPort := cFtpProtocol;
@@ -174,6 +198,7 @@ destructor TFTPSend.Destroy;
 begin
   FDSock.Free;
   FSock.Free;
+  FFTPList.Free;
   FDataStream.Free;
   FFullResult.Free;
   inherited Destroy;
@@ -344,11 +369,12 @@ begin
   FTPCommand('TYPE I');
   FTPCommand('STRU F');
   FTPCommand('MODE S');
-  if FTPCommand('REST 1') = 350 then
-  begin
-    FTPCommand('REST 0');
-    FCanResume := True;
-  end;
+  if FTPCommand('REST 0') = 350 then
+    if FTPCommand('REST 1') = 350 then
+    begin
+      FTPCommand('REST 0');
+      FCanResume := True;
+    end;
   Result := True;
 end;
 
@@ -508,9 +534,11 @@ end;
 function TFTPSend.List(Directory: string; NameList: Boolean): Boolean;
 var
   x: integer;
+  l: TStringList;
 begin
   Result := False;
   FDataStream.Clear;
+  FFTPList.Clear;
   if Directory <> '' then
     Directory := ' ' + Directory;
   if not DataSocket then
@@ -523,6 +551,18 @@ begin
   if (x div 100) <> 1 then
     Exit;
   Result := DataRead(FDataStream);
+  if not NameList then
+  begin
+    l := TStringList.Create;
+    try
+      FDataStream.Seek(0, soFromBeginning);
+      l.LoadFromStream(FDataStream);
+      for x := 0 to l.Count - 1 do
+        FFTPList.ParseLine(l[x]);
+    finally
+      l.Free;
+    end;
+  end;
   FDataStream.Seek(0, soFromBeginning);
 end;
 
@@ -698,6 +738,267 @@ begin
   begin
     Result := SeparateRight(FResultString, '"');
     Result := Separateleft(Result, '"');
+  end;
+end;
+
+{==============================================================================}
+
+constructor TFTPList.Create;
+begin
+  inherited Create;
+  FList := TList.Create;
+end;
+
+destructor TFTPList.Destroy;
+begin
+  Clear;
+  FList.Free;
+  inherited Destroy;
+end;
+
+procedure TFTPList.Clear;
+var
+  n:integer;
+begin
+  for n := 0 to FList.Count - 1 do
+    if Assigned(FList[n]) then
+      TFTPListRec(FList[n]).Free;
+  FList.Clear;
+end;
+
+// based on idea by D. J. Bernstein, djb@pobox.com
+function TFTPList.ParseLine(Value: string): Boolean;
+var
+  flr: TFTPListRec;
+  s: string;
+  state: integer;
+  year: Word;
+  month: Word;
+  mday: Word;
+  t: TDateTime;
+  x: integer;
+begin
+  Result := False;
+  if Length(Value) < 2 then
+    Exit;
+  year := 0;
+  month := 0;
+  mday := 0;
+  t := 0;
+  flr := TFTPListRec.Create;
+  try
+    flr.FileName := '';
+    flr.Directory := False;
+    flr.Readable := False;
+    flr.FileSize := 0;
+    flr.FileTime := 0;
+    Value := Trim(Value);
+  {EPLF
+    See http://pobox.com/~djb/proto/eplf.txt
+  "+i8388621.29609,m824255902,/," + #9 + "tdev"
+  "+i8388621.44468,m839956783,r,s10376," + #9 + "RFCEPLF" }
+    if Value[1] = '+' then
+    begin
+      s := Fetch(Value, ',');
+      while s <> '' do
+      begin
+        if s[1] = #9 then
+        begin
+          flr.FileName := Copy(s, 2, Length(s) - 1);
+          Result := True;
+        end;
+        case s[1] of
+          '/':
+            flr.Directory := true;
+          'r':
+            flr.Readable := true;
+          's':
+            flr.FileSize := StrToIntDef(Copy(s, 2, Length(s) - 1), 0);
+          'm':
+            flr.FileTime := (StrToIntDef(Copy(s, 2, Length(s) - 1), 0) / 86400)
+              + 25569;
+        end;
+        s := Fetch(Value, ',');
+      end;
+      Exit;
+    end;
+
+  {UNIX-style listing, without inum and without blocks
+   Permissions   Owner     Group        Size  Date/Time   Name
+
+  "-rw-r--r--   1 root     other        531 Jan 29 03:26 README"
+  "dr-xr-xr-x   2 root     other        512 Apr  8  1994 etc"
+  "dr-xr-xr-x   2 root                  512 Apr  8  1994 etc"
+  "lrwxrwxrwx   1 root     other        7   Jan 25 00:17 bin -> usr/bin"
+
+    Also produced by Microsoft's FTP servers for Windows:
+  "----------   1 owner    group         1803128 Jul 10 10:18 ls-lR.Z"
+
+  Also WFTPD for MSDOS:
+  "-rwxrwxrwx   1 noone    nogroup      322 Aug 19  1996 message.ftp"
+
+  Also NetWare:
+  "d [R----F--] supervisor            512       Jan 16 18:53    login"
+  "- [R----F--] rhesus             214059       Oct 20 15:27    cx.exe"
+
+  Also NetPresenz for the Mac:
+  "-------r--         326  1391972  1392298 Nov 22  1995 MegaPhone.sit"
+  "drwxrwxr-x               folder        2 May 10  1996 network" }
+
+    if (Value[1] = 'b') or
+       (Value[1] = 'c') or
+       (Value[1] = 'd') or
+       (Value[1] = 'l') or
+       (Value[1] = 'p') or
+       (Value[1] = 's') or
+       (Value[1] = '-') then
+    begin
+      if Value[1] = 'd' then
+        flr.Directory := True;
+      if Value[1] = '-' then
+        flr.Readable := True;
+      if Value[1] = 'l' then
+      begin
+        flr.Directory := True;
+        flr.Readable := True;
+      end;
+      state := 1;
+      s := Fetch(Value, ' ');
+      while s <> '' do
+      begin
+        case state of
+          1:
+            begin
+              state := 2;
+              if (s[1] = 'f') and (Pos(' ', s) = 6) then
+                state := 3;
+            end;
+          2:
+            state := 3;
+          3:
+            begin
+              flr.FileSize := StrToIntDef(s, 0);
+              state := 4;
+            end;
+          4:
+            begin
+              month := GetMonthNumber(s);
+              if month > 0 then
+                state := 5
+              else
+                flr.FileSize := StrToIntDef(s, 0);
+            end;
+          5:
+            begin
+              mday := StrToIntDef(s, 0);
+              state := 6;
+            end;
+          6:
+            begin
+              if (Pos(':', s) > 0) then
+                t := GetTimeFromStr(s)
+              else
+                if Length(s) = 4 then
+                  year := StrToIntDef(s, 0)
+                else Exit;
+              if (year = 0) or (month = 0) or (mday = 0) then
+                Exit;
+              flr.FileTime := t + Encodedate(year, month, mday);
+              state := 7;
+            end;
+          7:
+            begin
+              flr.FileName := s;
+              Result := True;
+            end;
+        end;
+        s := Fetch(Value, ' ');
+      end;
+      Exit;
+    end;
+  {Microsoft NT 4.0 FTP Service
+  10-20-98  08:57AM               619098 rizrem.zip
+  11-12-98  11:54AM       <DIR>          test         }
+    if (Value[1] = '1') or (Value[1] = '0') then
+    begin
+      if Length(Value) < 8 then
+        Exit;
+      if (Ord(Value[2]) < 48) or (Ord(Value[2]) > 57) then
+        Exit;
+      if Value[3] <> '-' then
+        Exit;
+      s := Fetch(Value, ' ');
+      t := GetDateMDYFromStr(s);
+      if t = 0 then
+        Exit;
+      if Value = '' then
+        Exit;
+      s := Fetch(Value, ' ');
+      flr.FileTime := t + GetTimeFromStr(s);
+      if Value = '' then
+        Exit;
+      s := Fetch(Value, ' ');
+      if s[1] = '<' then
+        flr.Directory := True
+      else
+      begin
+        flr.Readable := true;
+        flr.Filesize := StrToIntDef(s, 0);
+      end;
+      if Value = '' then
+        Exit;
+      s := Fetch(Value, ' ');
+      flr.FileName := s;
+      Result := True;
+      Exit;
+    end;
+  {MultiNet
+  "00README.TXT;1      2 30-DEC-1996 17:44 [SYSTEM] (RWED,RWED,RE,RE)"
+  "CORE.DIR;1          1  8-SEP-1996 16:09 [SYSTEM] (RWE,RWE,RE,RE)"
+
+  and non-MutliNet VMS:
+  "CII-MANUAL.TEX;1  213/216  29-JAN-1996 03:33:12  [ANONYMOU,ANONYMOUS]   (RWED,RWED,,)" }
+    x := Pos(';', Value);
+    if x > 0 then
+    begin
+      s := Fetch(Value, ';');
+      if Uppercase(Copy(s,Length(s) - 4, 4)) = '.DIR' then
+      begin
+        flr.FileName := Copy(s, 1, Length(s) - 4);
+        flr.Directory := True;
+      end
+      else
+      begin
+        flr.FileName := s;
+        flr.Readable := True;
+      end;
+      s := Fetch(Value, ' ');
+      s := Fetch(Value, ' ');
+      if Value = '' then
+        Exit;
+      s := Fetch(Value, '-');
+      mday := StrToIntDef(s, 0);
+      s := Fetch(Value, '-');
+      month := GetMonthNumber(s);
+      s := Fetch(Value, ' ');
+      year := StrToIntDef(s, 0);
+      s := Fetch(Value, ' ');
+      if Value = '' then
+        Exit;
+      if (year = 0) or (month = 0) or (mday = 0) then
+        Exit;
+      flr.FileTime := GetTimeFromStr(s) + EncodeDate(year, month, mday);
+      Result := True;
+      Exit;
+    end;
+  finally
+    if Result then
+      if flr.Directory and ((flr.FileName = '.') or (flr.FileName = '..')) then
+        Result := False;
+    if Result then
+      FList.Add(flr)
+    else
+      flr.Free;
   end;
 end;
 

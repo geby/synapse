@@ -1,5 +1,5 @@
 {==============================================================================|
-| Project : Delphree - Synapse                                   | 001.001.001 |
+| Project : Delphree - Synapse                                   | 001.004.000 |
 |==============================================================================|
 | Content: SSL support                                                         |
 |==============================================================================|
@@ -39,7 +39,8 @@ const
   DLLSSLName = 'libssl.so';
   DLLUtilName = 'libcrypto.so';
 {$ELSE}
-  DLLSSLName = 'ssleay32.dll';
+  DLLSSLName = 'libssl32.dll';
+  DLLSSLName2 = 'ssleay32.dll';
   DLLUtilName = 'libeay32.dll';
 {$ENDIF}
 
@@ -57,6 +58,10 @@ const
   SSL_ERROR_WANT_READ = 2;
   SSL_ERROR_WANT_WRITE = 3;
   SSL_ERROR_ZERO_RETURN = 6;
+  SSL_OP_NO_SSLv2 = $01000000;
+  SSL_OP_NO_SSLv3 = $02000000;
+  SSL_OP_NO_TLSv1 = $04000000;
+  SSL_OP_ALL = $000FFFFF;
 
 var
   SSLLibHandle: Integer = 0;
@@ -72,7 +77,11 @@ var
   SslSetFd : function(s: PSSL; fd: Integer):Integer cdecl = nil;
   SslMethodV23 : function:PSSL_METHOD cdecl = nil;
   SslCtxUsePrivateKeyFile : function(ctx: PSSL_CTX; const _file: PChar; _type: Integer):Integer cdecl = nil;
-  SslCtxUseCertificateFile : function(ctx: PSSL_CTX; const _file: PChar; _type: Integer):Integer cdecl = nil;
+  SslCtxUseCertificateChainFile : function(ctx: PSSL_CTX; const _file: PChar):Integer cdecl = nil;
+  SslCtxCheckPrivateKeyFile : function(ctx: PSSL_CTX):Integer cdecl = nil;
+  SslCtxSetDefaultPasswdCb : procedure(ctx: PSSL_CTX; cb: Pointer) cdecl = nil;
+  SslCtxSetDefaultPasswdCbUserdata : procedure(ctx: PSSL_CTX; u: Pointer) cdecl = nil;
+  SslCtxLoadVerifyLocations : function(ctx: PSSL_CTX; const CAfile: PChar; const CApath: PChar):Integer cdecl = nil;
   SslNew : function(ctx: PSSL_CTX):PSSL cdecl = nil;
   SslFree : procedure(ssl: PSSL) cdecl = nil;
   SslAccept : function(ssl: PSSL):Integer cdecl = nil;
@@ -116,6 +125,8 @@ begin
       SSLUtilHandle := HMODULE(dlopen(DLLUtilName, RTLD_GLOBAL));
 {$ELSE}
       SSLLibHandle := LoadLibrary(PChar(DLLSSLName));
+      if (SSLLibHandle = 0) then
+        SSLLibHandle := LoadLibrary(PChar(DLLSSLName2));
       SSLUtilHandle := LoadLibrary(PChar(DLLUtilName));
 {$ENDIF}
       if (SSLLibHandle <> 0) and (SSLUtilHandle <> 0) then
@@ -129,7 +140,11 @@ begin
         SslSetFd := GetProcAddress(SSLLibHandle, PChar('SSL_set_fd'));
         SslMethodV23 := GetProcAddress(SSLLibHandle, PChar('SSLv23_method'));
         SslCtxUsePrivateKeyFile := GetProcAddress(SSLLibHandle, PChar('SSL_CTX_use_PrivateKey_file'));
-        SslCtxUseCertificateFile := GetProcAddress(SSLLibHandle, PChar('SSL_CTX_use_certificate_file'));
+        SslCtxUseCertificateChainFile := GetProcAddress(SSLLibHandle, PChar('SSL_CTX_use_certificate_chain_file'));
+        SslCtxCheckPrivateKeyFile := GetProcAddress(SSLLibHandle, PChar('SSL_CTX_check_private_key'));
+        SslCtxSetDefaultPasswdCb := GetProcAddress(SSLLibHandle, PChar('SSL_CTX_set_default_passwd_cb'));
+        SslCtxSetDefaultPasswdCbUserdata := GetProcAddress(SSLLibHandle, PChar('SSL_CTX_set_default_passwd_cb_userdata'));
+        SslCtxLoadVerifyLocations := GetProcAddress(SSLLibHandle, PChar('SSL_CTX_load_verify_locations'));
         SslNew := GetProcAddress(SSLLibHandle, PChar('SSL_new'));
         SslFree := GetProcAddress(SSLLibHandle, PChar('SSL_free'));
         SslAccept := GetProcAddress(SSLLibHandle, PChar('SSL_accept'));

@@ -1,5 +1,5 @@
 {==============================================================================|
-| Project : Delphree - Synapse                                   | 001.005.003 |
+| Project : Delphree - Synapse                                   | 001.005.005 |
 |==============================================================================|
 | Content: Coding and decoding support                                         |
 |==============================================================================|
@@ -14,7 +14,7 @@
 | The Original Code is Synapse Delphi Library.                                 |
 |==============================================================================|
 | The Initial Developer of the Original Code is Lukas Gebauer (Czech Republic).|
-| Portions created by Lukas Gebauer are Copyright (c)2000, 2001.               |
+| Portions created by Lukas Gebauer are Copyright (c)2000-2002.                |
 | All Rights Reserved.                                                         |
 |==============================================================================|
 | Contributor(s):                                                              |
@@ -239,11 +239,10 @@ begin
       begin
         s := Copy(Value, x, 2);
         Inc(x, 2);
-        if pos(#13, s) + pos(#10, s) = 0 then
-          Result[l] := Char(StrToIntDef('$' + s, 32))
-        else
-          Result[l] := ' ';
-      end;
+        Result[l] := Char(StrToIntDef('$' + s, 32))
+      end
+      else
+        break;
     Inc(l);
   end;
   Dec(l);
@@ -340,7 +339,7 @@ begin
       begin
         y := Pos(Value[x], Table);
         if y < 1 then
-          y := 65;
+          y := 1;
         d[n] := y - 1;
       end;
       Inc(x);

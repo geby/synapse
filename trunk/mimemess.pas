@@ -1,5 +1,5 @@
 {==============================================================================|
-| Project : Delphree - Synapse                                   | 001.007.002 |
+| Project : Delphree - Synapse                                   | 001.007.004 |
 |==============================================================================|
 | Content: MIME message object                                                 |
 |==============================================================================|
@@ -14,7 +14,7 @@
 | The Original Code is Synapse Delphi Library.                                 |
 |==============================================================================|
 | The Initial Developer of the Original Code is Lukas Gebauer (Czech Republic).|
-| Portions created by Lukas Gebauer are Copyright (c)2000,2001.                |
+| Portions created by Lukas Gebauer are Copyright (c)2000-2002.                |
 | All Rights Reserved.                                                         |
 |==============================================================================|
 | Contributor(s):                                                              |
@@ -221,6 +221,18 @@ begin
       FDate := DecodeRfcDateTime(SeparateRight(s, ':'));
       continue;
     end;
+    if Pos('MIME-VERSION:', UpperCase(s)) = 1 then
+      continue;
+    if Pos('CONTENT-TYPE:', UpperCase(s)) = 1 then
+      continue;
+    if Pos('CONTENT-DESCRIPTION:', UpperCase(s)) = 1 then
+      continue;
+    if Pos('CONTENT-DISPOSITION:', UpperCase(s)) = 1 then
+      continue;
+    if Pos('CONTENT-ID:', UpperCase(s)) = 1 then
+      continue;
+    if Pos('CONTENT-TRANSFER-ENCODING:', UpperCase(s)) = 1 then
+      continue;
     FCustomHeaders.Add(s);
   end;
 end;
@@ -231,7 +243,7 @@ var
 begin
   Result := '';
   for n := 0 to FCustomHeaders.Count - 1 do
-    if Pos(Value, FCustomHeaders[n]) = 1 then
+    if Pos(UpperCase(Value), UpperCase(FCustomHeaders[n])) = 1 then
     begin
       Result := SeparateRight(FCustomHeaders[n], ':');
       break;
@@ -244,7 +256,7 @@ var
 begin
   HeaderList.Clear;
   for n := 0 to FCustomHeaders.Count - 1 do
-    if Pos(Value, FCustomHeaders[n]) = 1 then
+    if Pos(UpperCase(Value), UpperCase(FCustomHeaders[n])) = 1 then
     begin
       HeaderList.Add(SeparateRight(FCustomHeaders[n], ':'));
     end;
@@ -370,30 +382,35 @@ procedure TMimeMess.EncodeMessage;
 var
   bound: string;
   n: Integer;
+  m:TMimepart;
 begin
   FLines.Clear;
   if FPartList.Count = 1 then
+  begin
+    TMimePart(FPartList[0]).EncodePart;
     FLines.Assign(TMimePart(FPartList[0]).Lines)
+  end
   else
   begin
     bound := GenerateBoundary;
     for n := 0 to FPartList.Count - 1 do
     begin
       FLines.Add('--' + bound);
+      TMimePart(FPartList[n]).EncodePart;
       FLines.AddStrings(TMimePart(FPartList[n]).Lines);
     end;
     FLines.Add('--' + bound + '--');
-    with TMimePart.Create do
+    m := TMimePart.Create;
     try
-      Self.FLines.SaveToStream(DecodedLines);
-      Primary := 'Multipart';
-      Secondary := FMultipartType;
-      Description := 'Multipart message';
-      Boundary := bound;
-      EncodePart;
-      Self.FLines.Assign(Lines);
+      FLines.SaveToStream(m.DecodedLines);
+      m.Primary := 'Multipart';
+      m.Secondary := FMultipartType;
+      m.Description := 'Multipart message';
+      m.Boundary := bound;
+      m.EncodePart;
+      FLines.Assign(m.Lines);
     finally
-      Free;
+      m.Free;
     end;
   end;
 end;

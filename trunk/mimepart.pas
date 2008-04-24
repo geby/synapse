@@ -1,5 +1,5 @@
 {==============================================================================|
-| Project : Delphree - Synapse                                   | 001.008.001 |
+| Project : Delphree - Synapse                                   | 001.008.004 |
 |==============================================================================|
 | Content: MIME support procedures and functions                               |
 |==============================================================================|
@@ -14,7 +14,7 @@
 | The Original Code is Synapse Delphi Library.                                 |
 |==============================================================================|
 | The Initial Developer of the Original Code is Lukas Gebauer (Czech Republic).|
-| Portions created by Lukas Gebauer are Copyright (c)2000,2001.                |
+| Portions created by Lukas Gebauer are Copyright (c)2000-2002.                |
 | All Rights Reserved.                                                         |
 |==============================================================================|
 | Contributor(s):                                                              |
@@ -415,6 +415,7 @@ var
   l: TStringList;
   s, t: string;
   n, x: Integer;
+  d1, d2: integer;
 const
   MaxLine = 75;
 begin
@@ -453,10 +454,27 @@ begin
             begin
               s := EncodeQuotedPrintable(s);
               repeat
-                t := Copy(s, 1, MaxLine);
-                s := Copy(s, MaxLine + 1, Length(s) - MaxLine);
-                if s <> '' then
-                  t := t + '=';
+                if Length(s) < MaxLine then
+                begin
+                  t := s;
+                  s := '';
+                end
+                else
+                begin
+                  d1 := RPosEx('=', s, MaxLine);
+                  d2 := RPosEx(' ', s, MaxLine);
+                  if (d1 = 0) and (d2 = 0) then
+                    x := MaxLine
+                  else
+                    if d1 > d2 then
+                      x := d1 - 1
+                    else
+                      x := d2 - 1;
+                  t := Copy(s, 1, x);
+                  s := Copy(s, x + 1, Length(s) - x);
+                  if s <> '' then
+                    t := t + '=';
+                end;
                 FLines.Add(t);
               until s = '';
             end
@@ -596,7 +614,7 @@ var
 begin
   Randomize;
   x := Random(MaxInt);
-  Result := '--' + IntToHex(x, 8) + '_Synapse_message_boundary--';
+  Result := '--' + IntToHex(x, 8) + '_Synapse_message_boundary';
 end;
 
 end.
