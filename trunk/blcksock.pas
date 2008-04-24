@@ -1,5 +1,5 @@
 {==============================================================================|
-| Project : Delphree - Synapse                                   | 002.000.001 |
+| Project : Delphree - Synapse                                   | 002.001.000 |
 |==============================================================================|
 | Content: Library base                                                        |
 |==============================================================================|
@@ -52,6 +52,10 @@ Protected
   procedure SetSin (var sin:TSockAddrIn;ip,port:string);
   function GetSinIP (sin:TSockAddrIn):string;
   function GetSinPort (sin:TSockAddrIn):integer;
+  function GetSizeRecvBuffer:integer;
+  procedure SetSizeRecvBuffer(size:integer);
+  function GetSizeSendBuffer:integer;
+  procedure SetSizeSendBuffer(size:integer);
 public
   FWsaData : TWSADATA;
 
@@ -66,6 +70,7 @@ public
   procedure SendByte(data:byte); virtual;
   procedure SendString(data:string); virtual;
   function RecvBuffer(buffer:pointer;length:integer):integer; virtual;
+  function RecvBufferEx(buffer:pointer;length:integer;timeout:integer):integer; virtual;
   function RecvByte(timeout:integer):byte; virtual;
   function Recvstring(timeout:integer):string; virtual;
   function PeekBuffer(buffer:pointer;length:integer):integer; virtual;
@@ -85,14 +90,16 @@ public
   function SendBufferTo(buffer:pointer;length:integer):integer;
   function RecvBufferFrom(buffer:pointer;length:integer):integer;
 
-published
-  property socket:TSocket read FSocket write FSocket;
   property LocalSin:TSockAddrIn read FLocalSin;
   property RemoteSin:TSockAddrIn read FRemoteSin;
+published
+  property socket:TSocket read FSocket write FSocket;
   property LastError:integer read FLastError;
   property Protocol:integer read FProtocol;
   property LineBuffer:string read FBuffer write FBuffer;
   property RaiseExcept:boolean read FRaiseExcept write FRaiseExcept;
+  property SizeRecvBuffer:integer read GetSizeRecvBuffer write SetSizeRecvBuffer;
+  property SizeSendBuffer:integer read GetSizeSendBuffer write SetSizeSendBuffer;
 end;
 
 {TUDPBlockSocket}
@@ -262,6 +269,71 @@ begin
   if result=0
     then FLastError:=WSAENOTCONN
     else sockcheck(result);
+  ExceptCheck;
+end;
+
+{TBlockSocket.RecvBufferEx}
+function TBlockSocket.RecvBufferEx(buffer:pointer;length:integer;timeout:integer):integer;
+var
+  s,ss,st:string;
+  x,l,lss:integer;
+  fb,fs:integer;
+  max:integer;
+begin
+  FLastError:=0;
+  x:=system.length(FBuffer);
+  if length<=x
+    then
+      begin
+        fb:=length;
+        fs:=0;
+      end
+    else
+      begin
+        fb:=x;
+        fs:=length-x;
+      end;
+  ss:='';
+  if fb>0 then
+    begin
+      s:=copy(FBuffer,1,fb);
+      delete(Fbuffer,1,fb);
+    end;
+  if fs>0 then
+    begin
+      Max:=GetSizeRecvBuffer;
+      ss:='';
+      while system.length(ss)<fs do
+        begin
+          if canread(timeout) then
+            begin
+              l:=WaitingData;
+              if l>max
+                then l:=max;
+              if (system.length(ss)+l)>fs
+                then l:=fs-system.length(ss);
+              setlength(st,l);
+              x:=winsock.recv(FSocket,pointer(st)^,l,0);
+              if x=0
+                then FLastError:=WSAENOTCONN
+                else sockcheck(result);
+              if Flasterror<>0
+                then break;
+              lss:=system.length(ss);
+              setlength(ss,lss+x);
+              Move(pointer(st)^,Pointer(@ss[lss+1])^, x);
+              {It is 3x faster then ss:=ss+copy(st,1,x);}
+              sleep(0);
+            end
+            else FLastError:=WSAETIMEDOUT;
+          if Flasterror<>0
+            then break;
+        end;
+      fs:=system.length(ss);
+    end;
+  result:=fb+fs;
+  s:=s+ss;
+  move(pointer(s)^,buffer^,result);
   ExceptCheck;
 end;
 
@@ -515,6 +587,43 @@ begin
   ExceptCheck;
 end;
 
+{TBlockSocket.GetSizeRecvBuffer}
+function TBlockSocket.GetSizeRecvBuffer:integer;
+var
+  l:integer;
+begin
+  l:=SizeOf(result);
+  SockCheck(winsock.getSockOpt(FSocket, SOL_SOCKET, SO_RCVBUF, @result, l));
+  if Flasterror<>0
+    then result:=1024;
+  ExceptCheck;
+end;
+
+{TBlockSocket.SetSizeRecvBuffer}
+procedure TBlockSocket.SetSizeRecvBuffer(size:integer);
+begin
+  SockCheck(winsock.SetSockOpt(FSocket, SOL_SOCKET, SO_RCVBUF, @size, SizeOf(size)));
+  ExceptCheck;
+end;
+
+{TBlockSocket.GetSizeSendBuffer}
+function TBlockSocket.GetSizeSendBuffer:integer;
+var
+  l:integer;
+begin
+  l:=SizeOf(result);
+  SockCheck(winsock.getSockOpt(FSocket, SOL_SOCKET, SO_SNDBUF, @result, l));
+  if Flasterror<>0
+    then result:=1024;
+  ExceptCheck;
+end;
+
+{TBlockSocket.SetSizeSendBuffer}
+procedure TBlockSocket.SetSizeSendBuffer(size:integer);
+begin
+  SockCheck(winsock.SetSockOpt(FSocket, SOL_SOCKET, SO_SNDBUF, @size, SizeOf(size)));
+  ExceptCheck;
+end;
 
 
 {======================================================================}
@@ -555,6 +664,7 @@ end;
 procedure TTCPBlockSocket.Listen;
 begin
   SockCheck(winsock.listen(FSocket,SOMAXCONN));
+  GetSins;
   ExceptCheck;
 end;
 
@@ -581,56 +691,57 @@ function GetErrorDesc(ErrorCode:integer): string;
 begin
   case ErrorCode of
     0                  : Result:= 'OK';
-    WSAEINTR           : Result:= 'Interrupted system call';
-    WSAEBADF           : Result:= 'Bad file number';
-    WSAEACCES          : Result:= 'Permission denied';
-    WSAEFAULT          : Result:= 'Bad address';
-    WSAEINVAL          : Result:= 'Invalid argument';
-    WSAEMFILE          : Result:= 'Too many open files';
-    WSAEWOULDBLOCK     : Result:= 'Operation would block';
-    WSAEINPROGRESS     : Result:= 'Operation now in progress';
-    WSAEALREADY        : Result:= 'Operation already in progress';
-    WSAENOTSOCK        : Result:= 'Socket operation on nonsocket';
-    WSAEDESTADDRREQ    : Result:= 'Destination address required';
-    WSAEMSGSIZE        : Result:= 'Message too long';
-    WSAEPROTOTYPE      : Result:= 'Protocol wrong type for socket';
-    WSAENOPROTOOPT     : Result:= 'Protocol not available';
-    WSAEPROTONOSUPPORT : Result:= 'Protocol not supported';
-    WSAESOCKTNOSUPPORT : Result:= 'Socket not supported';
-    WSAEOPNOTSUPP      : Result:= 'Operation not supported on socket';
-    WSAEPFNOSUPPORT    : Result:= 'Protocol family not supported';
-    WSAEAFNOSUPPORT    : Result:= 'Address family not supported';
-    WSAEADDRINUSE      : Result:= 'Address already in use';
-    WSAEADDRNOTAVAIL   : Result:= 'Can''t assign requested address';
-    WSAENETDOWN        : Result:= 'Network is down';
-    WSAENETUNREACH     : Result:= 'Network is unreachable';
-    WSAENETRESET       : Result:= 'Network dropped connection on reset';
-    WSAECONNABORTED    : Result:= 'Software caused connection abort';
-    WSAECONNRESET      : Result:= 'Connection reset by peer';
-    WSAENOBUFS         : Result:= 'No buffer space available';
-    WSAEISCONN         : Result:= 'Socket is already connected';
-    WSAENOTCONN        : Result:= 'Socket is not connected';
-    WSAESHUTDOWN       : Result:= 'Can''t send after socket shutdown';
-    WSAETOOMANYREFS    : Result:= 'Too many references:can''t splice';
-    WSAETIMEDOUT       : Result:= 'Connection timed out';
-    WSAECONNREFUSED    : Result:= 'Connection refused';
-    WSAELOOP           : Result:= 'Too many levels of symbolic links';
-    WSAENAMETOOLONG    : Result:= 'File name is too long';
-    WSAEHOSTDOWN       : Result:= 'Host is down';
-    WSAEHOSTUNREACH    : Result:= 'No route to host';
-    WSAENOTEMPTY       : Result:= 'Directory is not empty';
-    WSAEPROCLIM        : Result:= 'Too many processes';
-    WSAEUSERS          : Result:= 'Too many users';
-    WSAEDQUOT          : Result:= 'Disk quota exceeded';
-    WSAESTALE          : Result:= 'Stale NFS file handle';
-    WSAEREMOTE         : Result:= 'Too many levels of remote in path';
-    WSASYSNOTREADY     : Result:= 'Network subsystem is unusable';
-    WSAVERNOTSUPPORTED : Result:= 'Winsock DLL cannot support this application';
-    WSANOTINITIALISED  : Result:= 'Winsock not initialized';
-    WSAHOST_NOT_FOUND  : Result:= 'Host not found';
-    WSATRY_AGAIN       : Result:= 'Non authoritative - host not found';
-    WSANO_RECOVERY     : Result:= 'Non recoverable error';
-    WSANO_DATA         : Result:= 'Valid name, no data record of requested type'
+    WSAEINTR           :{10004} Result:= 'Interrupted system call';
+    WSAEBADF           :{10009} Result:= 'Bad file number';
+    WSAEACCES          :{10013} Result:= 'Permission denied';
+    WSAEFAULT          :{10014} Result:= 'Bad address';
+    WSAEINVAL          :{10022} Result:= 'Invalid argument';
+    WSAEMFILE          :{10024} Result:= 'Too many open files';
+    WSAEWOULDBLOCK     :{10035} Result:= 'Operation would block';
+    WSAEINPROGRESS     :{10036} Result:= 'Operation now in progress';
+    WSAEALREADY        :{10037} Result:= 'Operation already in progress';
+    WSAENOTSOCK        :{10038} Result:= 'Socket operation on nonsocket';
+    WSAEDESTADDRREQ    :{10039} Result:= 'Destination address required';
+    WSAEMSGSIZE        :{10040} Result:= 'Message too long';
+    WSAEPROTOTYPE      :{10041} Result:= 'Protocol wrong type for socket';
+    WSAENOPROTOOPT     :{10042} Result:= 'Protocol not available';
+    WSAEPROTONOSUPPORT :{10043} Result:= 'Protocol not supported';
+    WSAESOCKTNOSUPPORT :{10044} Result:= 'Socket not supported';
+    WSAEOPNOTSUPP      :{10045} Result:= 'Operation not supported on socket';
+    WSAEPFNOSUPPORT    :{10046} Result:= 'Protocol family not supported';
+    WSAEAFNOSUPPORT    :{10047} Result:= 'Address family not supported';
+    WSAEADDRINUSE      :{10048} Result:= 'Address already in use';
+    WSAEADDRNOTAVAIL   :{10049} Result:= 'Can''t assign requested address';
+    WSAENETDOWN        :{10050} Result:= 'Network is down';
+    WSAENETUNREACH     :{10051} Result:= 'Network is unreachable';
+    WSAENETRESET       :{10052} Result:= 'Network dropped connection on reset';
+    WSAECONNABORTED    :{10053} Result:= 'Software caused connection abort';
+    WSAECONNRESET      :{10054} Result:= 'Connection reset by peer';
+    WSAENOBUFS         :{10055} Result:= 'No buffer space available';
+    WSAEISCONN         :{10056} Result:= 'Socket is already connected';
+    WSAENOTCONN        :{10057} Result:= 'Socket is not connected';
+    WSAESHUTDOWN       :{10058} Result:= 'Can''t send after socket shutdown';
+    WSAETOOMANYREFS    :{10059} Result:= 'Too many references:can''t splice';
+    WSAETIMEDOUT       :{10060} Result:= 'Connection timed out';
+    WSAECONNREFUSED    :{10061} Result:= 'Connection refused';
+    WSAELOOP           :{10062} Result:= 'Too many levels of symbolic links';
+    WSAENAMETOOLONG    :{10063} Result:= 'File name is too long';
+    WSAEHOSTDOWN       :{10064} Result:= 'Host is down';
+    WSAEHOSTUNREACH    :{10065} Result:= 'No route to host';
+    WSAENOTEMPTY       :{10066} Result:= 'Directory is not empty';
+    WSAEPROCLIM        :{10067} Result:= 'Too many processes';
+    WSAEUSERS          :{10068} Result:= 'Too many users';
+    WSAEDQUOT          :{10069} Result:= 'Disk quota exceeded';
+    WSAESTALE          :{10070} Result:= 'Stale NFS file handle';
+    WSAEREMOTE         :{10071} Result:= 'Too many levels of remote in path';
+    WSASYSNOTREADY     :{10091} Result:= 'Network subsystem is unusable';
+    WSAVERNOTSUPPORTED :{10092} Result:= 'Winsock DLL cannot support this application';
+    WSANOTINITIALISED  :{10093} Result:= 'Winsock not initialized';
+    WSAEDISCON         :{10101} Result:= 'WSAEDISCON-10101';
+    WSAHOST_NOT_FOUND  :{11001} Result:= 'Host not found';
+    WSATRY_AGAIN       :{11002} Result:= 'Non authoritative - host not found';
+    WSANO_RECOVERY     :{11003} Result:= 'Non recoverable error';
+    WSANO_DATA         :{11004} Result:= 'Valid name, no data record of requested type'
   else
     Result:= 'Not a Winsock error ('+IntToStr(ErrorCode)+')';
   end;
