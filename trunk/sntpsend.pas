@@ -1,9 +1,9 @@
 {==============================================================================|
-| Project : Delphree - Synapse                                   | 002.000.000 |
+| Project : Delphree - Synapse                                   | 002.000.001 |
 |==============================================================================|
 | Content: SNTP client                                                         |
 |==============================================================================|
-| The contents of this file are subject to the Mozilla Public License Ver. 1.0 |
+| The contents of this file are subject to the Mozilla Public License Ver. 1.1 |
 | (the "License"); you may not use this file except in compliance with the     |
 | License. You may obtain a copy of the License at http://www.mozilla.org/MPL/ |
 |                                                                              |
@@ -14,7 +14,7 @@
 | The Original Code is Synapse Delphi Library.                                 |
 |==============================================================================|
 | The Initial Developer of the Original Code is Lukas Gebauer (Czech Republic).|
-| Portions created by Lukas Gebauer are Copyright (c)2000.                     |
+| Portions created by Lukas Gebauer are Copyright (c)2000,2001.                |
 | All Rights Reserved.                                                         |
 |==============================================================================|
 | Contributor(s):                                                              |
@@ -24,142 +24,144 @@
 |==============================================================================}
 
 {$Q-}
+{$WEAKPACKAGEUNIT ON}
 
 unit SNTPsend;
 
 interface
 
 uses
-  synsock, SysUtils, blcksock;
+  SysUtils,
+  synsock, blcksock;
+
+const
+  cNtpProtocol = 'ntp';
 
 type
-
+  PNtp = ^TNtp;
   TNtp = packed record
-    mode:Byte;
-    stratum:Byte;
-    poll:Byte;
-    Precision:Byte;
-    RootDelay : longint;
-    RootDisperson : longint;
-    RefID : longint;
-    Ref1, Ref2,
-    Org1, Org2,
-    Rcv1, Rcv2,
-    Xmit1, Xmit2 : longint;
+    mode: Byte;
+    stratum: Byte;
+    poll: Byte;
+    Precision: Byte;
+    RootDelay: Longint;
+    RootDisperson: Longint;
+    RefID: Longint;
+    Ref1: Longint;
+    Ref2: Longint;
+    Org1: Longint;
+    Org2: Longint;
+    Rcv1: Longint;
+    Rcv2: Longint;
+    Xmit1: Longint;
+    Xmit2: Longint;
   end;
 
-TSNTPSend=class(TObject)
+  TSNTPSend = class(TObject)
   private
-    Sock:TUDPBlockSocket;
-    Buffer:string;
+    FNTPReply: TNtp;
+    FNTPTime: TDateTime;
+    FSntpHost: string;
+    FTimeout: Integer;
+    FSock: TUDPBlockSocket;
+    FBuffer: string;
   public
-    timeout:integer;
-    SntpHost:string;
-    NTPReply:TNtp;
-    NTPTime:TDateTime;
     constructor Create;
     destructor Destroy; override;
-    function DecodeTs(nsec,nfrac:Longint):tdatetime;
-    function GetNTP:Boolean;
-    function GetBroadcastNTP:Boolean;
-end;
+    function DecodeTs(Nsec, Nfrac: Longint): TDateTime;
+    function GetNTP: Boolean;
+    function GetBroadcastNTP: Boolean;
+  published
+    property NTPReply: TNtp read FNTPReply;
+    property NTPTime: TDateTime read FNTPTime;
+    property SntpHost: string read FSntpHost write FSntpHost;
+    property Timeout: Integer read FTimeout write FTimeout;
+  end;
 
 implementation
 
-{==============================================================================}
-
-{TSNTPSend.Create}
-Constructor TSNTPSend.Create;
+constructor TSNTPSend.Create;
 begin
   inherited Create;
-  sock:=TUDPBlockSocket.create;
-  sock.CreateSocket;
-  timeout:=5000;
-  sntphost:='localhost';
+  FSock := TUDPBlockSocket.Create;
+  FSock.CreateSocket;
+  FTimeout := 5000;
+  FSntpHost := cLocalhost;
 end;
 
-{TSNTPSend.Destroy}
-Destructor TSNTPSend.Destroy;
+destructor TSNTPSend.Destroy;
 begin
-  Sock.free;
-  inherited destroy;
+  FSock.Free;
+  inherited Destroy;
 end;
 
-{TSNTPSend.DecodeTs}
-function TSNTPSend.DecodeTs(nsec,nfrac:Longint):tdatetime;
+function TSNTPSend.DecodeTs(Nsec, Nfrac: Longint): TDateTime;
 const
   maxi = 4294967296.0;
 var
-  d, d1: double;
+  d, d1: Double;
 begin
-  nsec:=synsock.htonl(nsec);
-  nfrac:=synsock.htonl(nfrac);
-  d:=nsec;
-  if d<0
-    then d:=maxi+d-1;
-  d1 := nfrac;
-  if d1<0
-    then d1:=maxi+d1-1;
-  d1:=d1/maxi;
-  d1:=trunc(d1*1000)/1000;
-  result:=(d+d1)/86400;
-  result := Result + 2;
+  Nsec := synsock.htonl(Nsec);
+  Nfrac := synsock.htonl(Nfrac);
+  d := Nsec;
+  if d < 0 then
+    d := maxi + d - 1;
+  d1 := Nfrac;
+  if d1 < 0 then
+    d1 := maxi + d1 - 1;
+  d1 := d1 / maxi;
+  d1 := Trunc(d1 * 1000) / 1000;
+  Result := (d + d1) / 86400;
+  Result := Result + 2;
 end;
 
-
-{TSNTPSend.GetBroadcastNTP}
-function TSNTPSend.GetBroadcastNTP:Boolean;
+function TSNTPSend.GetBroadcastNTP: Boolean;
 var
-  PNtp:^TNtp;
-  x:integer;
+  NtpPtr: PNtp;
+  x: Integer;
 begin
-  Result:=False;
-  sock.bind('0.0.0.0','ntp');
-  if sock.canread(timeout)
-    then begin
-      x:=sock.waitingdata;
-      setlength(Buffer,x);
-      sock.recvbufferFrom(Pointer(Buffer),x);
-      if (sntphost='0.0.0.0') or (sock.GetRemoteSinIP=sntphost) then
-        if x>=SizeOf(NTPReply) then
-          begin
-            PNtp:=Pointer(Buffer);
-            NtpReply:=PNtp^;
-            NTPtime:=DeCodeTs(ntpreply.Xmit1,ntpreply.Xmit2);
-            Result:=True;
-          end;
-    end;
+  Result := False;
+  FSock.Bind('0.0.0.0', cNtpProtocol);
+  if FSock.CanRead(Timeout) then
+  begin
+    x := FSock.WaitingData;
+    SetLength(FBuffer, x);
+    FSock.RecvBufferFrom(Pointer(FBuffer), x);
+    if (SntpHost = '0.0.0.0') or (FSock.GetRemoteSinIP = SntpHost) then
+      if x >= SizeOf(NTPReply) then
+      begin
+        NtpPtr := Pointer(FBuffer);
+        FNTPReply := NtpPtr^;
+        FNTPTime := DecodeTs(NTPReply.Xmit1, NTPReply.Xmit2);
+        Result := True;
+      end;
+  end;
 end;
 
-{TSNTPSend.GetNTP}
-function TSNTPSend.GetNTP:Boolean;
+function TSNTPSend.GetNTP: Boolean;
 var
-  q:Tntp;
-  PNtp:^TNtp;
-  x:integer;
+  q: TNtp;
+  NtpPtr: PNtp;
+  x: Integer;
 begin
-  Result:=False;
-  sock.Connect(sntphost,'ntp');
-  fillchar(q,SizeOf(q),0);
-  q.mode:=$1b;
-  sock.SendBuffer(@q,SizeOf(q));
-  if sock.canread(timeout)
-    then begin
-      x:=sock.waitingdata;
-      setlength(Buffer,x);
-      sock.recvbuffer(Pointer(Buffer),x);
-      if x>=SizeOf(NTPReply) then
-        begin
-          PNtp:=Pointer(Buffer);
-          NtpReply:=PNtp^;
-          NTPtime:=DeCodeTs(ntpreply.Xmit1,ntpreply.Xmit2);
-          Result:=True;
-        end;
+  Result := False;
+  FSock.Connect(sntphost, cNtpProtocol);
+  FillChar(q, SizeOf(q), 0);
+  q.mode := $1B;
+  FSock.SendBuffer(@q, SizeOf(q));
+  if FSock.CanRead(Timeout) then
+  begin
+    x := FSock.WaitingData;
+    SetLength(FBuffer, x);
+    FSock.RecvBuffer(Pointer(FBuffer), x);
+    if x >= SizeOf(NTPReply) then
+    begin
+      NtpPtr := Pointer(FBuffer);
+      FNTPReply := NtpPtr^;
+      FNTPTime := DecodeTs(NTPReply.Xmit1, NTPReply.Xmit2);
+      Result := True;
     end;
+  end;
 end;
-
-
-{==============================================================================}
-
 
 end.

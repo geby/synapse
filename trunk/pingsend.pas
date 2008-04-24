@@ -1,9 +1,9 @@
 {==============================================================================|
-| Project : Delphree - Synapse                                   | 002.000.000 |
+| Project : Delphree - Synapse                                   | 002.001.000 |
 |==============================================================================|
 | Content: PING sender                                                         |
 |==============================================================================|
-| The contents of this file are subject to the Mozilla Public License Ver. 1.0 |
+| The contents of this file are subject to the Mozilla Public License Ver. 1.1 |
 | (the "License"); you may not use this file except in compliance with the     |
 | License. You may obtain a copy of the License at http://www.mozilla.org/MPL/ |
 |                                                                              |
@@ -14,7 +14,7 @@
 | The Original Code is Synapse Delphi Library.                                 |
 |==============================================================================|
 | The Initial Developer of the Original Code is Lukas Gebauer (Czech Republic).|
-| Portions created by Lukas Gebauer are Copyright (c)2000.                     |
+| Portions created by Lukas Gebauer are Copyright (c)2000,2001.                |
 | All Rights Reserved.                                                         |
 |==============================================================================|
 | Contributor(s):                                                              |
@@ -25,27 +25,12 @@
 
 {
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-
-Remember, this unit work only on Linux or Windows with Winsock2!
- (on Win98 and WinNT 4.0 or higher)
-If you must use this unit on Win95, download Wínsock2 from Microsoft
-and distribute it with your application!
-
-In spite of I use Winsock level version 1.1, RAW sockets work in this level only
-if Winsock2 is installed on your computer!!!
-
-On WinNT standardly RAW sockets work if program is running under user with
-administrators provilegies. To use RAW sockets under another users, you must
-create the following registry variable and set its value to DWORD 1:
-
-HKLM\System\CurrentControlSet\Services\Afd\Parameters\DisableRawSecurity
-
-After you change the registry, you need to restart your computer!
-
+See 'winsock2.txt' file in distribute package!
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 }
 
 {$Q-}
+{$WEAKPACKAGEUNIT ON}
 
 unit PINGsend;
 
@@ -53,159 +38,183 @@ interface
 
 uses
 {$IFDEF LINUX}
-  libc,
+  Libc,
 {$ELSE}
-  windows,
+  Windows,
 {$ENDIF}
-  synsock, SysUtils, blcksck2, Synautil;
+  SysUtils,
+  synsock, blcksock, SynaUtil;
 
 const
-  ICMP_ECHO=8;
-  ICMP_ECHOREPLY=0;
+  ICMP_ECHO = 8;
+  ICMP_ECHOREPLY = 0;
 
 type
+  TIcmpEchoHeader = record
+    i_type: Byte;
+    i_code: Byte;
+    i_checkSum: Word;
+    i_Id: Word;
+    i_seq: Word;
+    TimeStamp: ULONG;
+  end;
 
-TIcmpEchoHeader = Record
-  i_type : Byte;
-  i_code : Byte;
-  i_checkSum : Word;
-  i_Id : Word;
-  i_seq : Word;
-  TimeStamp : ULong;
-End;
-
-TPINGSend=class(TObject)
+  TPINGSend = class(TObject)
   private
-    Sock:TICMPBlockSocket;
-    Buffer:string;
-    seq:integer;
-    id:integer;
-    function checksum:integer;
-    function GetTick:cardinal;
+    FSock: TICMPBlockSocket;
+    FBuffer: string;
+    FSeq: Integer;
+    FId: Integer;
+    FTimeout: Integer;
+    FPacketSize: Integer;
+    FPingTime: Integer;
+    function Checksum: Integer;
+    function GetTick: Cardinal;
+    function ReadPacket: Boolean;
   public
-    timeout:integer;
-    PacketSize:integer;
-    PingTime:integer;
-    function ping(host:string):Boolean;
+    function Ping(const Host: string): Boolean;
     constructor Create;
     destructor Destroy; override;
-end;
+  published
+    property Timeout: Integer read FTimeout Write FTimeout;
+    property PacketSize: Integer read FPacketSize Write FPacketSize;
+    property PingTime: Integer read FPingTime;
+  end;
 
-function PingHost(host:string):integer;
+function PingHost(const Host: string): Integer;
 
 implementation
 
 {==============================================================================}
 
-{TPINGSend.Create}
-Constructor TPINGSend.Create;
+constructor TPINGSend.Create;
 begin
   inherited Create;
-  sock:=TICMPBlockSocket.create;
-  sock.CreateSocket;
-  timeout:=5000;
-  packetsize:=32;
-  seq:=0;
+  FSock := TICMPBlockSocket.Create;
+  FSock.CreateSocket;
+  FTimeout := 5000;
+  FPacketSize := 32;
+  FSeq := 0;
+  Randomize;
 end;
 
-{TPINGSend.Destroy}
-Destructor TPINGSend.Destroy;
+destructor TPINGSend.Destroy;
 begin
-  Sock.free;
-  inherited destroy;
+  FSock.Free;
+  inherited Destroy;
 end;
 
-{TPINGSend.ping}
-function TPINGSend.ping(host:string):Boolean;
+function TPINGSend.ReadPacket: Boolean;
 var
-  PIPHeader:^TIPHeader;
-  IpHdrLen:Integer;
-  PIcmpEchoHeader:^TICMPEchoHeader;
-  n,x:integer;
+  x: Integer;
 begin
-  Result:=False;
-  sock.connect(host,'0');
-  Buffer:=StringOfChar(#0,SizeOf(TICMPEchoHeader)+packetSize);
-  PIcmpEchoHeader := Pointer(Buffer);
-  With PIcmpEchoHeader^ Do Begin
-    i_type:=ICMP_ECHO;
-    i_code:=0;
-    i_CheckSum:=0;
-    id:=Random(32767);
-    i_Id:=id;
-    TimeStamp:=GetTick;
-    Inc(Seq);
-    i_Seq:=Seq;
-    for n:=Succ(SizeOf(TicmpEchoHeader)) to Length(Buffer) do
-      Buffer[n]:=#$55;
-    i_CheckSum:=CheckSum;
+  Result := FSock.CanRead(FTimeout);
+  if Result then
+  begin
+    x := FSock.WaitingData;
+    SetLength(FBuffer, x);
+    FSock.RecvBuffer(Pointer(FBuffer), x);
   end;
-  sock.sendString(Buffer);
-  if sock.canread(timeout)
-    then begin
-      x:=sock.waitingdata;
-      setlength(Buffer,x);
-      sock.recvbuffer(Pointer(Buffer),x);
-      PIpHeader:=Pointer(Buffer);
-      IpHdrLen:=(PIpHeader^.VerLen and $0F)*4;
-      PIcmpEchoHeader:=@Buffer[IpHdrLen+1];
-      if (PIcmpEchoHeader^.i_type=ICMP_ECHOREPLY)
-// Linux return from localhost ECHO instead ECHOREPLY???
-       or (PIcmpEchoHeader^.i_type=ICMP_ECHO) then
-        if (PIcmpEchoHeader^.i_id=id) then
-          begin
-            PingTime:=GetTick-PIcmpEchoHeader^.TimeStamp;
-            Result:=True;
-          end;
-    end;
 end;
 
-{TPINGSend.checksum}
-function TPINGSend.checksum:integer;
-type
-  tWordArray=Array[0..0] Of Word;
+function TPINGSend.Ping(const Host: string): Boolean;
 var
-  PWordArray:^TWordArray;
-  CkSum:Dword;
-  Num,Remain:Integer;
-  n:Integer;
+  IPHeadPtr: ^TIPHeader;
+  IpHdrLen: Integer;
+  IcmpEchoHeaderPtr: ^TICMPEchoHeader;
+  n: Integer;
+  t: Boolean;
 begin
-  Num:=length(Buffer) div 2;
-  Remain:=length(Buffer) mod 2;
-  PWordArray:=Pointer(Buffer);
-  CkSum := 0;
-  for n:=0 to Num-1 do
-    CkSum:=CkSum+PWordArray^[n];
-  if Remain<>0 then
-    CkSum:=CkSum+ord(Buffer[Length(Buffer)]);
-  CkSum:=(CkSum shr 16)+(CkSum and $FFFF);
-  CkSum:=CkSum+(CkSum shr 16);
-  Result:=Word(not CkSum);
+  Result := False;
+  FSock.Connect(Host, '0');
+  FBuffer := StringOfChar(#0, SizeOf(TICMPEchoHeader) + FPacketSize);
+  IcmpEchoHeaderPtr := Pointer(FBuffer);
+  with IcmpEchoHeaderPtr^ do
+  begin
+    i_type := ICMP_ECHO;
+    i_code := 0;
+    i_CheckSum := 0;
+    FId := Random(32767);
+    i_Id := FId;
+    TimeStamp := GetTick;
+    Inc(FSeq);
+    i_Seq := FSeq;
+    for n := Succ(SizeOf(TIcmpEchoHeader)) to Length(FBuffer) do
+      FBuffer[n] := #$55;
+    i_CheckSum := CheckSum;
+  end;
+  FSock.SendString(FBuffer);
+  repeat
+    t := ReadPacket;
+    if not t then
+      break;
+    IPHeadPtr := Pointer(FBuffer);
+    IpHdrLen := (IPHeadPtr^.VerLen and $0F) * 4;
+    IcmpEchoHeaderPtr := @FBuffer[IpHdrLen + 1];
+  until IcmpEchoHeaderPtr^.i_type <> ICMP_ECHO;
+  //it discard sometimes possible 'echoes' of previosly sended packet...
+  if t then
+    if (IcmpEchoHeaderPtr^.i_type = ICMP_ECHOREPLY) then
+      if (IcmpEchoHeaderPtr^.i_id = FId) then
+      begin
+        FPingTime := GetTick - IcmpEchoHeaderPtr^.TimeStamp;
+        Result := True;
+      end;
 end;
 
-{TPINGSend.GetTick}
-function TPINGSend.GetTick:cardinal;
+function TPINGSend.Checksum: Integer;
+type
+  TWordArray = array[0..0] of Word;
+var
+  WordArr: ^TWordArray;
+  CkSum: DWORD;
+  Num, Remain: Integer;
+  n: Integer;
 begin
-{$IFDEF LINUX}
-  result:=clock div (CLOCKS_PER_SEC div 1000);
-{$ELSE}
-  result:=windows.GetTickCount;
-{$ENDIF}
+  Num := Length(FBuffer) div 2;
+  Remain := Length(FBuffer) mod 2;
+  WordArr := Pointer(FBuffer);
+  CkSum := 0;
+  for n := 0 to Num - 1 do
+    CkSum := CkSum + WordArr^[n];
+  if Remain <> 0 then
+    CkSum := CkSum + Ord(FBuffer[Length(FBuffer)]);
+  CkSum := (CkSum shr 16) + (CkSum and $FFFF);
+  CkSum := CkSum + (CkSum shr 16);
+  Result := Word(not CkSum);
 end;
+
+{$IFDEF LINUX}
+
+function TPINGSend.GetTick: Cardinal;
+var
+  Stamp: TTimeStamp;
+begin
+  Stamp := DateTimeToTimeStamp(Now);
+  Result := Stamp.Time;
+end;
+
+{$ELSE}
+
+function TPINGSend.GetTick: Cardinal;
+begin
+  Result := Windows.GetTickCount;
+end;
+
+{$ENDIF}
 
 {==============================================================================}
 
-function PingHost(host:string):integer;
-var
-  ping:TPINGSend;
+function PingHost(const Host: string): Integer;
 begin
-  ping:=TPINGSend.Create;
+  with TPINGSend.Create do
   try
-    if ping.ping(host)
-      then Result:=ping.pingtime
-      else Result:=-1;
+    if Ping(Host) then
+      Result := PingTime
+    else
+      Result := -1;
   finally
-    ping.Free;
+    Free;
   end;
 end;
 

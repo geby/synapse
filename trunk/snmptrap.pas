@@ -1,9 +1,9 @@
 {==============================================================================|
-| Project : Delphree - Synapse                                   | 002.002.001 |
+| Project : Delphree - Synapse                                   | 002.002.002 |
 |==============================================================================|
 | Content: SNMP traps                                                          |
 |==============================================================================|
-| The contents of this file are subject to the Mozilla Public License Ver. 1.0 |
+| The contents of this file are subject to the Mozilla Public License Ver. 1.1 |
 | (the "License"); you may not use this file except in compliance with the     |
 | License. You may obtain a copy of the License at http://www.mozilla.org/MPL/ |
 |                                                                              |
@@ -25,105 +25,123 @@
 |==============================================================================}
 
 {$Q-}
+{$WEAKPACKAGEUNIT ON}
 
 unit SNMPTrap;
 
 interface
 
 uses
-  Classes, SysUtils, BlckSock, SynaUtil, ASN1Util, SNMPsend;
+  Classes, SysUtils,
+  blckSock, SynaUtil, ASN1Util, SNMPSend;
 
 const
-  TRAP_PORT      = 162;
+  cSnmpTrapProtocol = '162';
 
-  SNMP_VERSION   = 0;
+  SNMP_VERSION = 0;
 
-  PDU_GET        = $A0;
-  PDU_GETN       = $A1;
-  PDU_RESP       = $A2;
-  PDU_SET        = $A3;
-  PDU_TRAP       = $A4;
+  PDU_GET = $A0;
+  PDU_GETN = $A1;
+  PDU_RESP = $A2;
+  PDU_SET = $A3;
+  PDU_TRAP = $A4;
 
 type
   TTrapPDU = class(TObject)
-    private
-    protected
-      Buffer: string;
-    public
-      TrapPort: integer;
-      Version: integer;
-      PDUType: integer;
-      Community: string;
-      Enterprise: string;
-      TrapHost: string;
-      GenTrap: integer;
-      SpecTrap: integer;
-      TimeTicks: integer;
-      SNMPMibList: TList;
-      constructor Create;
-      destructor Destroy; override;
-      procedure Clear;
-      procedure MIBAdd(MIB, Value: string; ValueType:integer);
-      procedure MIBDelete(Index: integer);
-      function MIBGet(MIB: string): string;
-      function EncodeTrap: integer;
-      function DecodeTrap: boolean;
+  private
+    FBuffer: string;
+    FTrapPort: string;
+    FVersion: Integer;
+    FPDUType: Integer;
+    FCommunity: string;
+    FEnterprise: string;
+    FTrapHost: string;
+    FGenTrap: Integer;
+    FSpecTrap: Integer;
+    FTimeTicks: Integer;
+    FSNMPMibList: TList;
+  public
+    constructor Create;
+    destructor Destroy; override;
+    procedure Clear;
+    procedure MIBAdd(const MIB, Value: string; ValueType: Integer);
+    procedure MIBDelete(Index: Integer);
+    function MIBGet(const MIB: string): string;
+    function EncodeTrap: Integer;
+    function DecodeTrap: Boolean;
+  published
+    property Version: Integer read FVersion Write FVersion;
+    property Community: string read FCommunity Write FCommunity;
+    property PDUType: Integer read FPDUType Write FPDUType;
+    property TrapPort: string read FTrapPort Write FTrapPort;
+    property Enterprise: string read FEnterprise Write FEnterprise;
+    property TrapHost: string read FTrapHost Write FTrapHost;
+    property GenTrap: Integer read FGenTrap Write FGenTrap;
+    property SpecTrap: Integer read FSpecTrap Write FSpecTrap;
+    property TimeTicks: Integer read FTimeTicks Write FTimeTicks;
+    property SNMPMibList: TList read FSNMPMibList;
   end;
 
   TTrapSNMP = class(TObject)
   private
-    sock: TUDPBlockSocket;
+    FSock: TUDPBlockSocket;
+    FTrap: TTrapPDU;
+    FSNMPHost: string;
+    FTimeout: Integer;
   public
-    Trap: TTrapPDU;
-    SNMPHost: string;
-    Timeout: integer;
     constructor Create;
     destructor Destroy; override;
-    function Send: integer;
-    function Recv: integer;
+    function Send: Integer;
+    function Recv: Integer;
+  published
+    property Trap: TTrapPDU read FTrap;
+    property SNMPHost: string read FSNMPHost Write FSNMPHost;
+    property Timeout: Integer read FTimeout Write FTimeout;
   end;
 
-function SendTrap(Dest, Source, Enterprise, Community: string;
-  Generic, Specific, Seconds: integer; MIBName, MIBValue: string; MIBtype:integer): integer;
+function SendTrap(const Dest, Source, Enterprise, Community: string;
+  Generic, Specific, Seconds: Integer; const MIBName, MIBValue: string;
+  MIBtype: Integer): Integer;
 function RecvTrap(var Dest, Source, Enterprise, Community: string;
-  var Generic, Specific, Seconds: integer; var MIBName, MIBValue: TStringList): integer;
+  var Generic, Specific, Seconds: Integer; const MIBName,
+  MIBValue: TStringList): Integer;
 
 implementation
 
 constructor TTrapPDU.Create;
 begin
   inherited Create;
-  SNMPMibList := TList.create;
-  TrapPort := TRAP_PORT;
-  Version := SNMP_VERSION;
-  PDUType := PDU_TRAP;
-  Community := 'public';
+  FSNMPMibList := TList.Create;
+  FTrapPort := cSnmpTrapProtocol;
+  FVersion := SNMP_VERSION;
+  FPDUType := PDU_TRAP;
+  FCommunity := 'public';
 end;
 
 destructor TTrapPDU.Destroy;
 var
-  i:integer;
+  i: Integer;
 begin
-  for i := 0 to SNMPMibList.count - 1 do
-    TSNMPMib(SNMPMibList[i]).Free;
-  SNMPMibList.free;
+  for i := 0 to FSNMPMibList.Count - 1 do
+    TSNMPMib(FSNMPMibList[i]).Free;
+  FSNMPMibList.Free;
   inherited Destroy;
 end;
 
 procedure TTrapPDU.Clear;
 var
-  i:integer;
+  i: Integer;
 begin
-  for i := 0 to SNMPMibList.count - 1 do
-    TSNMPMib(SNMPMibList[i]).Free;
-  SNMPMibList.Clear;
-  TrapPort := TRAP_PORT;
-  Version := SNMP_VERSION;
-  PDUType := PDU_TRAP;
-  Community := 'public';
+  for i := 0 to FSNMPMibList.Count - 1 do
+    TSNMPMib(FSNMPMibList[i]).Free;
+  FSNMPMibList.Clear;
+  FTrapPort := cSnmpTrapProtocol;
+  FVersion := SNMP_VERSION;
+  FPDUType := PDU_TRAP;
+  FCommunity := 'public';
 end;
 
-procedure TTrapPDU.MIBAdd(MIB, Value: string; ValueType:integer);
+procedure TTrapPDU.MIBAdd(const MIB, Value: string; ValueType: Integer);
 var
   SNMPMib: TSNMPMib;
 begin
@@ -131,216 +149,207 @@ begin
   SNMPMib.OID := MIB;
   SNMPMib.Value := Value;
   SNMPMib.ValueType := ValueType;
-  SNMPMibList.Add(SNMPMib);
+  FSNMPMibList.Add(SNMPMib);
 end;
 
-procedure TTrapPDU.MIBDelete(Index: integer);
+procedure TTrapPDU.MIBDelete(Index: Integer);
 begin
-  if (Index >= 0) and (Index < SNMPMibList.count) then
-    begin
-      TSNMPMib(SNMPMibList[Index]).Free;
-      SNMPMibList.Delete(Index);
-    end;
+  if (Index >= 0) and (Index < FSNMPMibList.Count) then
+  begin
+    TSNMPMib(FSNMPMibList[Index]).Free;
+    FSNMPMibList.Delete(Index);
+  end;
 end;
 
-function TTrapPDU.MIBGet(MIB: string): string;
+function TTrapPDU.MIBGet(const MIB: string): string;
 var
-  i: integer;
+  i: Integer;
 begin
   Result := '';
-  for i := 0 to SNMPMibList.count - 1 do
+  for i := 0 to FSNMPMibList.Count - 1 do
+  begin
+    if TSNMPMib(FSNMPMibList[i]).OID = MIB then
     begin
-      if ((TSNMPMib(SNMPMibList[i])).OID = MIB) then
-      begin
-        Result := (TSNMPMib(SNMPMibList[i])).Value;
-        break;
-      end;
+      Result := TSNMPMib(FSNMPMibList[i]).Value;
+      Break;
     end;
+  end;
 end;
 
-function TTrapPDU.EncodeTrap: integer;
+function TTrapPDU.EncodeTrap: Integer;
 var
   s: string;
-  n: integer;
+  n: Integer;
   SNMPMib: TSNMPMib;
 begin
-  Buffer := '';
-  for n:=0 to SNMPMibList.Count-1 do
-    begin
-      SNMPMib := SNMPMibList[n];
-      case (SNMPMib.ValueType) of
-        ASN1_INT:
-          begin
-            s := ASNObject(MibToID(SNMPMib.OID),ASN1_OBJID)
-              +ASNObject(ASNEncInt(strToIntDef(SNMPMib.Value,0)),SNMPMib.ValueType);
-          end;
-        ASN1_COUNTER, ASN1_GAUGE, ASN1_TIMETICKS:
-          begin
-            s := ASNObject(MibToID(SNMPMib.OID),ASN1_OBJID)
-              +ASNObject(ASNEncUInt(strToIntDef(SNMPMib.Value,0)),SNMPMib.ValueType);
-          end;
-        ASN1_OBJID:
-          begin
-            s := ASNObject(MibToID(SNMPMib.OID),ASN1_OBJID) + ASNObject(MibToID(SNMPMib.Value),SNMPMib.ValueType);
-          end;
-        ASN1_IPADDR:
-          begin
-            s := ASNObject(MibToID(SNMPMib.OID),ASN1_OBJID) + ASNObject(IPToID(SNMPMib.Value),SNMPMib.ValueType);
-          end;
-        ASN1_NULL:
-          begin
-            s := ASNObject(MibToID(SNMPMib.OID),ASN1_OBJID) + ASNObject('',ASN1_NULL);
-          end;
-        else
-          s := ASNObject(MibToID(SNMPMib.OID),ASN1_OBJID) + ASNObject(SNMPMib.Value,SNMPMib.ValueType);
-      end;
-      Buffer := Buffer + ASNObject(s, ASN1_SEQ);
+  FBuffer := '';
+  for n := 0 to FSNMPMibList.Count - 1 do
+  begin
+    SNMPMib := FSNMPMibList[n];
+    case SNMPMib.ValueType of
+      ASN1_INT:
+        s := ASNObject(MibToID(SNMPMib.OID), ASN1_OBJID) +
+          ASNObject(ASNEncInt(StrToIntDef(SNMPMib.Value, 0)), SNMPMib.ValueType);
+      ASN1_COUNTER, ASN1_GAUGE, ASN1_TIMETICKS:
+        s := ASNObject(MibToID(SNMPMib.OID), ASN1_OBJID) +
+          ASNObject(ASNEncUInt(StrToIntDef(SNMPMib.Value, 0)), SNMPMib.ValueType);
+      ASN1_OBJID:
+        s := ASNObject(MibToID(SNMPMib.OID), ASN1_OBJID) +
+          ASNObject(MibToID(SNMPMib.Value), SNMPMib.ValueType);
+      ASN1_IPADDR:
+        s := ASNObject(MibToID(SNMPMib.OID), ASN1_OBJID) +
+          ASNObject(IPToID(SNMPMib.Value), SNMPMib.ValueType);
+      ASN1_NULL:
+        s := ASNObject(MibToID(SNMPMib.OID), ASN1_OBJID) +
+          ASNObject('', ASN1_NULL);
+    else
+      s := ASNObject(MibToID(SNMPMib.OID), ASN1_OBJID) +
+        ASNObject(SNMPMib.Value, SNMPMib.ValueType);
     end;
-  Buffer := ASNObject(Buffer, ASN1_SEQ);
-  Buffer := ASNObject(ASNEncInt(GenTrap), ASN1_INT)
-    + ASNObject(ASNEncInt(SpecTrap), ASN1_INT)
-    + ASNObject(ASNEncUInt(TimeTicks), ASN1_TIMETICKS)
-    + Buffer;
-  Buffer := ASNObject(MibToID(Enterprise), ASN1_OBJID)
-    + ASNObject(IPToID(TrapHost), ASN1_IPADDR)
-    + Buffer;
-  Buffer := ASNObject(ASNEncInt(Version), ASN1_INT)
-    + ASNObject(Community, ASN1_OCTSTR)
-    + ASNObject(Buffer, Self.PDUType);
-  Buffer := ASNObject(Buffer, ASN1_SEQ);
+    FBuffer := FBuffer + ASNObject(s, ASN1_SEQ);
+  end;
+  FBuffer := ASNObject(FBuffer, ASN1_SEQ);
+  FBuffer := ASNObject(ASNEncInt(FGenTrap), ASN1_INT) +
+    ASNObject(ASNEncInt(FSpecTrap), ASN1_INT) +
+    ASNObject(ASNEncUInt(FTimeTicks), ASN1_TIMETICKS) +
+    FBuffer;
+  FBuffer := ASNObject(MibToID(FEnterprise), ASN1_OBJID) +
+    ASNObject(IPToID(FTrapHost), ASN1_IPADDR) +
+    FBuffer;
+  FBuffer := ASNObject(ASNEncInt(FVersion), ASN1_INT) +
+    ASNObject(FCommunity, ASN1_OCTSTR) +
+    ASNObject(FBuffer, Self.FPDUType);
+  FBuffer := ASNObject(FBuffer, ASN1_SEQ);
   Result := 1;
 end;
 
-function TTrapPDU.DecodeTrap: boolean;
+function TTrapPDU.DecodeTrap: Boolean;
 var
-  Pos, EndPos: integer;
+  Pos, EndPos: Integer;
   Sm, Sv: string;
-  Svt:integer;
+  Svt: Integer;
 begin
-  clear;
-  result:=false;
-  if length(buffer)<2
-    then exit;
-  if (ord(buffer[1]) and $20)=0
-    then exit;
+  Clear;
+  Result := False;
+  if Length(FBuffer) < 2 then
+    Exit;
+  if (Ord(FBuffer[1]) and $20) = 0 then
+    Exit;
   Pos := 2;
-  EndPos := ASNDecLen(Pos, Buffer);
-  Version := StrToIntDef(ASNItem(Pos, Buffer,svt), 0);
-  Community := ASNItem(Pos, Buffer,svt);
-  PDUType := StrToIntDef(ASNItem(Pos, Buffer,svt), PDU_TRAP);
-  Enterprise := ASNItem(Pos, Buffer,svt);
-  TrapHost := ASNItem(Pos, Buffer,svt);
-  GenTrap := StrToIntDef(ASNItem(Pos, Buffer,svt), 0);
-  Spectrap := StrToIntDef(ASNItem(Pos, Buffer,svt), 0);
-  TimeTicks := StrToIntDef(ASNItem(Pos, Buffer,svt), 0);
-  ASNItem(Pos, Buffer,svt);
-  while (Pos < EndPos) do
-    begin
-      ASNItem(Pos, Buffer,svt);
-      Sm := ASNItem(Pos, Buffer,svt);
-      Sv := ASNItem(Pos, Buffer,svt);
-      MIBAdd(Sm, Sv, svt);
-    end;
-  Result := true;
+  EndPos := ASNDecLen(Pos, FBuffer);
+  FVersion := StrToIntDef(ASNItem(Pos, FBuffer, Svt), 0);
+  FCommunity := ASNItem(Pos, FBuffer, Svt);
+  FPDUType := StrToIntDef(ASNItem(Pos, FBuffer, Svt), PDU_TRAP);
+  FEnterprise := ASNItem(Pos, FBuffer, Svt);
+  FTrapHost := ASNItem(Pos, FBuffer, Svt);
+  FGenTrap := StrToIntDef(ASNItem(Pos, FBuffer, Svt), 0);
+  FSpecTrap := StrToIntDef(ASNItem(Pos, FBuffer, Svt), 0);
+  FTimeTicks := StrToIntDef(ASNItem(Pos, FBuffer, Svt), 0);
+  ASNItem(Pos, FBuffer, Svt);
+  while Pos < EndPos do
+  begin
+    ASNItem(Pos, FBuffer, Svt);
+    Sm := ASNItem(Pos, FBuffer, Svt);
+    Sv := ASNItem(Pos, FBuffer, Svt);
+    MIBAdd(Sm, Sv, Svt);
+  end;
+  Result := True;
 end;
 
 constructor TTrapSNMP.Create;
 begin
   inherited Create;
-  Sock := TUDPBlockSocket.Create;
-  Trap := TTrapPDU.Create;
-  Timeout := 5000;
-  SNMPHost := '127.0.0.1';
-  Sock.CreateSocket;
+  FSock := TUDPBlockSocket.Create;
+  FTrap := TTrapPDU.Create;
+  FTimeout := 5000;
+  FSNMPHost := cLocalhost;
+  FSock.CreateSocket;
 end;
 
 destructor TTrapSNMP.Destroy;
 begin
-  Trap.Free;
-  Sock.Free;
+  FTrap.Free;
+  FSock.Free;
   inherited Destroy;
 end;
 
-function TTrapSNMP.Send: integer;
+function TTrapSNMP.Send: Integer;
 begin
-  Trap.EncodeTrap;
-  Sock.Connect(SNMPHost, IntToStr(Trap.TrapPort));
-  Sock.SendBuffer(PChar(Trap.Buffer), Length(Trap.Buffer));
+  FTrap.EncodeTrap;
+  FSock.Connect(SNMPHost, FTrap.TrapPort);
+  FSock.SendBuffer(PChar(FTrap.FBuffer), Length(FTrap.FBuffer));
   Result := 1;
 end;
 
-function TTrapSNMP.Recv: integer;
+function TTrapSNMP.Recv: Integer;
 var
-  x: integer;
+  x: Integer;
 begin
   Result := 0;
-  Sock.Bind('0.0.0.0', IntToStr(Trap.TrapPort));
-  if Sock.CanRead(Timeout) then
+  FSock.Bind('0.0.0.0', FTrap.TrapPort);
+  if FSock.CanRead(FTimeout) then
+  begin
+    x := FSock.WaitingData;
+    if x > 0 then
     begin
-      x := Sock.WaitingData;
-      if (x > 0) then
-        begin
-          SetLength(Trap.Buffer, x);
-          Sock.RecvBuffer(PChar(Trap.Buffer), x);
-          if Trap.DecodeTrap
-            then Result:=1;
-        end;
+      SetLength(FTrap.FBuffer, x);
+      FSock.RecvBuffer(PChar(FTrap.FBuffer), x);
+      if FTrap.DecodeTrap then
+        Result := 1;
     end;
+  end;
 end;
 
-function SendTrap(Dest, Source, Enterprise, Community: string;
-  Generic, Specific, Seconds: integer; MIBName, MIBValue: string; MIBtype:integer): integer;
-var
-  SNMP: TTrapSNMP;
+function SendTrap(const Dest, Source, Enterprise, Community: string;
+  Generic, Specific, Seconds: Integer; const MIBName, MIBValue: string;
+  MIBtype: Integer): Integer;
 begin
-  SNMP := TTrapSNMP.Create;
+  with TTrapSNMP.Create do
   try
-    SNMP.SNMPHost := Dest;
-    SNMP.Trap.TrapHost := Source;
-    SNMP.Trap.Enterprise := Enterprise;
-    SNMP.Trap.Community := Community;
-    SNMP.Trap.GenTrap := Generic;
-    SNMP.Trap.SpecTrap := Specific;
-    SNMP.Trap.TimeTicks := Seconds;
-    SNMP.Trap.MIBAdd(MIBName,MIBValue,MIBType);
-    Result := SNMP.Send;
+    SNMPHost := Dest;
+    Trap.TrapHost := Source;
+    Trap.Enterprise := Enterprise;
+    Trap.Community := Community;
+    Trap.GenTrap := Generic;
+    Trap.SpecTrap := Specific;
+    Trap.TimeTicks := Seconds;
+    Trap.MIBAdd(MIBName, MIBValue, MIBType);
+    Result := Send;
   finally
-    SNMP.Free;
+    Free;
   end;
 end;
 
 function RecvTrap(var Dest, Source, Enterprise, Community: string;
-  var Generic, Specific, Seconds: integer; var MIBName, MIBValue: TStringList):
-integer;
+  var Generic, Specific, Seconds: Integer;
+  const MIBName, MIBValue: TStringList): Integer;
 var
-  SNMP: TTrapSNMP;
-  i: integer;
+  i: Integer;
 begin
-  SNMP := TTrapSNMP.Create;
+  with TTrapSNMP.Create do
   try
-    SNMP.SNMPHost := Dest;
-    Result := SNMP.Recv;
-    if (Result <> 0) then
+    SNMPHost := Dest;
+    Result := Recv;
+    if Result <> 0 then
     begin
-      Dest := SNMP.SNMPHost;
-      Source := SNMP.Trap.TrapHost;
-      Enterprise := SNMP.Trap.Enterprise;
-      Community := SNMP.Trap.Community;
-      Generic := SNMP.Trap.GenTrap;
-      Specific := SNMP.Trap.SpecTrap;
-      Seconds := SNMP.Trap.TimeTicks;
+      Dest := SNMPHost;
+      Source := Trap.TrapHost;
+      Enterprise := Trap.Enterprise;
+      Community := Trap.Community;
+      Generic := Trap.GenTrap;
+      Specific := Trap.SpecTrap;
+      Seconds := Trap.TimeTicks;
       MIBName.Clear;
       MIBValue.Clear;
-      for i:=0 to (SNMP.Trap.SNMPMibList.count - 1) do
-        begin
-          MIBName.Add(TSNMPMib(SNMP.Trap.SNMPMibList[i]).OID);
-          MIBValue.Add(TSNMPMib(SNMP.Trap.SNMPMibList[i]).Value);
-        end;
+      for i := 0 to Trap.SNMPMibList.Count - 1 do
+      begin
+        MIBName.Add(TSNMPMib(Trap.SNMPMibList[i]).OID);
+        MIBValue.Add(TSNMPMib(Trap.SNMPMibList[i]).Value);
+      end;
     end;
   finally
-    SNMP.Free;
+    Free;
   end;
 end;
 
 end.
-

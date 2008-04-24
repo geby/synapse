@@ -1,9 +1,9 @@
 {==============================================================================|
-| Project : Delphree - Synapse                                   | 001.004.000 |
+| Project : Delphree - Synapse                                   | 001.004.001 |
 |==============================================================================|
 | Content: MIME support procedures and functions                               |
 |==============================================================================|
-| The contents of this file are subject to the Mozilla Public License Ver. 1.0 |
+| The contents of this file are subject to the Mozilla Public License Ver. 1.1 |
 | (the "License"); you may not use this file except in compliance with the     |
 | License. You may obtain a copy of the License at http://www.mozilla.org/MPL/ |
 |                                                                              |
@@ -28,553 +28,532 @@ unit MIMEpart;
 interface
 
 uses
-  sysutils, classes, MIMEchar, SynaCode, SynaUtil, MIMEinLn;
+  SysUtils, Classes,
+  SynaChar, SynaCode, SynaUtil, MIMEinLn;
 
 type
 
-TMimePrimary=(MP_TEXT,
-              MP_MULTIPART,
-              MP_MESSAGE,
-              MP_BINARY);
+  TMimePrimary = (MP_TEXT, MP_MULTIPART,
+    MP_MESSAGE, MP_BINARY);
 
-TMimeEncoding=(ME_7BIT,
-               ME_8BIT,
-               ME_QUOTED_PRINTABLE,
-               ME_BASE64,
-               ME_UU,
-               ME_XX);
+  TMimeEncoding = (ME_7BIT, ME_8BIT, ME_QUOTED_PRINTABLE,
+    ME_BASE64, ME_UU, ME_XX);
 
-TMimePart=class
+  TMimePart = class(TObject)
   private
-    FPrimary:string;
-    FEncoding:string;
-    FCharset:string;
-    procedure Setprimary(Value:string);
-    procedure SetEncoding(Value:string);
-    procedure SetCharset(Value:string);
-  protected
+    FPrimary: string;
+    FEncoding: string;
+    FCharset: string;
+    FPrimaryCode: TMimePrimary;
+    FEncodingCode: TMimeEncoding;
+    FCharsetCode: TMimeChar;
+    FTargetCharset: TMimeChar;
+    FSecondary: string;
+    FDescription: string;
+    FDisposition: string;
+    FContentID: string;
+    FBoundary: string;
+    FFileName: string;
+    FLines: TStringList;
+    FDecodedLines: TMemoryStream;
+    procedure SetPrimary(Value: string);
+    procedure SetEncoding(Value: string);
+    procedure SetCharset(Value: string);
   public
-    PrimaryCode:TMimePrimary;
-    EncodingCode:TMimeEncoding;
-    CharsetCode:TMimeChar;
-    TargetCharset:TMimeChar;
-    secondary:string;
-    description:string;
-    disposition:string;
-    contentID:string;
-    boundary:string;
-    FileName:string;
-    Lines:TStringList;
-    DecodedLines:TmemoryStream;
     constructor Create;
     destructor Destroy; override;
-    procedure clear;
-    function ExtractPart(value:TStringList; BeginLine:integer):integer;
+    procedure Clear;
+    function ExtractPart(Value: TStringList; BeginLine: Integer): Integer;
     procedure DecodePart;
     procedure EncodePart;
-    procedure MimeTypeFromExt(value:string);
-  property
-    Primary:string read FPrimary Write SetPrimary;
-  property
-    encoding:string read FEncoding write SetEncoding;
-  property
-    Charset:string read FCharset write SetCharset;
-end;
+    procedure MimeTypeFromExt(Value: string);
+  published
+    property Primary: string read FPrimary write SetPrimary;
+    property Encoding: string read FEncoding write SetEncoding;
+    property Charset: string read FCharset write SetCharset;
+    property PrimaryCode: TMimePrimary read FPrimaryCode Write FPrimaryCode;
+    property EncodingCode: TMimeEncoding read FEncodingCode Write FEncodingCode;
+    property CharsetCode: TMimeChar read FCharsetCode Write FCharsetCode;
+    property TargetCharset: TMimeChar read FTargetCharset Write FTargetCharset;
+    property Secondary: string read FSecondary Write FSecondary;
+    property Description: string read FDescription Write FDescription;
+    property Disposition: string read FDisposition Write FDisposition;
+    property ContentID: string read FContentID Write FContentID;
+    property Boundary: string read FBoundary Write FBoundary;
+    property FileName: string read FFileName Write FFileName;
+    property Lines: TStringList read FLines Write FLines;
+    property DecodedLines: TMemoryStream read FDecodedLines Write FDecodedLines;
+  end;
 
 const
-  MaxMimeType=25;
-  MimeType:array [0..MaxMimeType,0..2] of string=
-    (
-      ('AU','audio','basic'),
-      ('AVI','video','x-msvideo'),
-      ('BMP','image','BMP'),
-      ('DOC','application','MSWord'),
-      ('EPS','application','Postscript'),
-      ('GIF','image','GIF'),
-      ('JPEG','image','JPEG'),
-      ('JPG','image','JPEG'),
-      ('MID','audio','midi'),
-      ('MOV','video','quicktime'),
-      ('MPEG','video','MPEG'),
-      ('MPG','video','MPEG'),
-      ('MP2','audio','mpeg'),
-      ('MP3','audio','mpeg'),
-      ('PDF','application','PDF'),
-      ('PNG','image','PNG'),
-      ('PS','application','Postscript'),
-      ('QT','video','quicktime'),
-      ('RA','audio','x-realaudio'),
-      ('RTF','application','RTF'),
-      ('SND','audio','basic'),
-      ('TIF','image','TIFF'),
-      ('TIFF','image','TIFF'),
-      ('WAV','audio','x-wav'),
-      ('WPD','application','Wordperfect5.1'),
-      ('ZIP','application','ZIP')
+  MaxMimeType = 25;
+  MimeType: array[0..MaxMimeType, 0..2] of string =
+  (
+    ('AU', 'audio', 'basic'),
+    ('AVI', 'video', 'x-msvideo'),
+    ('BMP', 'image', 'BMP'),
+    ('DOC', 'application', 'MSWord'),
+    ('EPS', 'application', 'Postscript'),
+    ('GIF', 'image', 'GIF'),
+    ('JPEG', 'image', 'JPEG'),
+    ('JPG', 'image', 'JPEG'),
+    ('MID', 'audio', 'midi'),
+    ('MOV', 'video', 'quicktime'),
+    ('MPEG', 'video', 'MPEG'),
+    ('MPG', 'video', 'MPEG'),
+    ('MP2', 'audio', 'mpeg'),
+    ('MP3', 'audio', 'mpeg'),
+    ('PDF', 'application', 'PDF'),
+    ('PNG', 'image', 'PNG'),
+    ('PS', 'application', 'Postscript'),
+    ('QT', 'video', 'quicktime'),
+    ('RA', 'audio', 'x-realaudio'),
+    ('RTF', 'application', 'RTF'),
+    ('SND', 'audio', 'basic'),
+    ('TIF', 'image', 'TIFF'),
+    ('TIFF', 'image', 'TIFF'),
+    ('WAV', 'audio', 'x-wav'),
+    ('WPD', 'application', 'Wordperfect5.1'),
+    ('ZIP', 'application', 'ZIP')
     );
 
-function NormalizeHeader(value:TStringList;var index:integer):string;
-function GenerateBoundary:string;
+function NormalizeHeader(Value: TStringList; var Index: Integer): string;
+function GenerateBoundary: string;
 
 implementation
 
-function NormalizeHeader(value:TStringList;var index:integer):string;
+function NormalizeHeader(Value: TStringList; var Index: Integer): string;
 var
-  s,t:string;
-  n:integer;
+  s, t: string;
+  n: Integer;
 begin
-  s:=value[index];
-  inc(index);
-  if s<>''
-    then
-      while (value.Count-1) > index do
-        begin
-          t:=value[index];
-          if t=''
-            then break;
-          for n:=1 to length(t) do
-            if t[n]=#9
-              then t[n]:=' ';
-          if t[1]<>' '
-            then break
-            else
-              begin
-                s:=s+' '+trim(t);
-                inc(index);
-              end;
-        end;
-  result:=s;
+  s := Value[Index];
+  Inc(Index);
+  if s <> '' then
+    while (Value.Count - 1) > Index do
+    begin
+      t := Value[Index];
+      if t = '' then
+        Break;
+      for n := 1 to Length(t) do
+        if t[n] = #9 then
+          t[n] := ' ';
+      if t[1] <> ' ' then
+        Break
+      else
+      begin
+        s := s + ' ' + Trim(t);
+        Inc(Index);
+      end;
+    end;
+  Result := s;
 end;
 
 {==============================================================================}
-{TMIMEPart.Create}
-Constructor TMIMEPart.Create;
+
+constructor TMIMEPart.Create;
 begin
   inherited Create;
-  Lines:=TStringList.Create;
-  DecodedLines:=TmemoryStream.create;
-  TargetCharset:=GetCurCP;
+  FLines := TStringList.Create;
+  FDecodedLines := TMemoryStream.Create;
+  FTargetCharset := GetCurCP;
 end;
 
-{TMIMEPart.Destroy}
-Destructor TMIMEPart.Destroy;
+destructor TMIMEPart.Destroy;
 begin
-  DecodedLines.free;
-  Lines.free;
-  inherited destroy;
+  FDecodedLines.Free;
+  FLines.Free;
+  inherited Destroy;
 end;
 
 {==============================================================================}
-{TMIMEPart.Clear}
+
 procedure TMIMEPart.Clear;
 begin
-  FPrimary:='';
-  FEncoding:='';
-  FCharset:='';
-  PrimaryCode:=MP_TEXT;
-  EncodingCode:=ME_7BIT;
-  CharsetCode:=ISO_8859_1;
-  TargetCharset:=GetCurCP;
-  secondary:='';
-  disposition:='';
-  contentID:='';
-  description:='';
-  boundary:='';
-  FileName:='';
-  Lines.clear;
-  DecodedLines.clear;
+  FPrimary := '';
+  FEncoding := '';
+  FCharset := '';
+  FPrimaryCode := MP_TEXT;
+  FEncodingCode := ME_7BIT;
+  FCharsetCode := ISO_8859_1;
+  FTargetCharset := GetCurCP;
+  FSecondary := '';
+  FDisposition := '';
+  FContentID := '';
+  FDescription := '';
+  FBoundary := '';
+  FFileName := '';
+  FLines.Clear;
+  FDecodedLines.Clear;
 end;
 
 {==============================================================================}
-{TMIMEPart.ExtractPart}
-function TMIMEPart.ExtractPart(value:TStringList; BeginLine:integer):integer;
+
+function TMIMEPart.ExtractPart(Value: TStringList; BeginLine: Integer): Integer;
 var
-  n,x,x1,x2:integer;
-  t:tstringlist;
-  s,su,b:string;
-  st,st2:string;
-  e:boolean;
-  fn:string;
+  n, x, x1, x2: Integer;
+  t: TStringList;
+  s, su, b: string;
+  st, st2: string;
+  e: Boolean;
+  fn: string;
 begin
-  t:=tstringlist.create;
+  t := TStringlist.Create;
   try
-    {defaults}
-    lines.clear;
-    primary:='text';
-    secondary:='plain';
-    description:='';
-    charset:='US-ASCII';
-    FileName:='';
-    encoding:='7BIT';
+    { defaults }
+    FLines.Clear;
+    Primary := 'text';
+    FSecondary := 'plain';
+    FDescription := '';
+    Charset := 'US-ASCII';
+    FFileName := '';
+    Encoding := '7BIT';
 
-    fn:='';
-    x:=beginline;
-    b:=boundary;
-    if b<>'' then
-      while value.count>x do
-        begin
-          s:=value[x];
-          inc(x);
-          if pos('--'+b,s)>0
-            then break;
-        end;
-
-    {parse header}
-    while value.count>x do
+    fn := '';
+    x := BeginLine;
+    b := FBoundary;
+    if b <> '' then
+      while Value.Count > x do
       begin
-        s:=normalizeheader(value,x);
-        if s=''
-          then break;
-        su:=uppercase(s);
-        if pos('CONTENT-TYPE:',su)=1 then
-          begin
-            st:=separateright(su,':');
-            st2:=separateleft(st,';');
-            primary:=separateleft(st2,'/');
-            secondary:=separateright(st2,'/');
-            if (secondary=primary) and (pos('/',st2)<1)
-              then secondary:='';
-            case primarycode of
-              MP_TEXT:
-                begin
-                  charset:=uppercase(getparameter(s,'charset='));
-                end;
-              MP_MULTIPART:
-                begin
-                  boundary:=getparameter(s,'boundary=');
-                end;
-              MP_MESSAGE:
-                begin
-                end;
-              MP_BINARY:
-                begin
-                  filename:=getparameter(s,'name=');
-                end;
-            end;
-          end;
-        if pos('CONTENT-TRANSFER-ENCODING:',su)=1 then
-          begin
-            encoding:=separateright(su,':');
-          end;
-        if pos('CONTENT-DESCRIPTION:',su)=1 then
-          begin
-            description:=separateright(s,':');
-          end;
-        if pos('CONTENT-DISPOSITION:',su)=1 then
-          begin
-            disposition:=separateright(su,':');
-            disposition:=trim(separateleft(disposition,';'));
-            fn:=getparameter(s,'filename=');
-          end;
-        if pos('CONTENT-ID:',su)=1 then
-          begin
-            contentID:=separateright(s,':');
-          end;
+        s := Value[x];
+        Inc(x);
+        if Pos('--' + b, s) > 0 then
+          Break;
       end;
 
-    if (primarycode=MP_BINARY) and (filename='')
-      then filename:=fn;
-    filename:=InlineDecode(filename,getCurCP);
-    filename:=extractfilename(filename);
-
-    x1:=x;
-    x2:=value.count-1;
-    if b<>'' then
+    { parse header }
+    while Value.Count > x do
+    begin
+      s := NormalizeHeader(Value, x);
+      if s = '' then
+        Break;
+      su := UpperCase(s);
+      if Pos('CONTENT-TYPE:', su) = 1 then
       begin
-        for n:=x to value.count-1 do
-          begin
-            x2:=n;
-            s:=value[n];
-            if pos('--'+b,s)>0
-              then begin
-                dec(x2);
-                break;
-              end;
-          end;
-      end;
-    if primarycode=MP_MULTIPART then
-      begin
-        for n:=x to value.count-1 do
-          begin
-            s:=value[n];
-            if pos('--'+boundary,s)>0 then
-              begin
-                x1:=n;
-                break;
-              end;
-          end;
-        for n:=value.count-1 downto x do
-          begin
-            s:=value[n];
-            if pos('--'+boundary,s)>0 then
-              begin
-                x2:=n;
-                break;
-              end;
-          end;
-      end;
-    for n:=x1 to x2 do
-      lines.add(value[n]);
-    result:=x2;
-    if primarycode=MP_MULTIPART then
-      begin
-        e:=false;
-        for n:=x2+1 to value.count-1 do
-          if pos('--'+boundary,value[n])>0 then
+        st := SeparateRight(su, ':');
+        st2 := SeparateLeft(st, ';');
+        Primary := SeparateLeft(st2, '/');
+        FSecondary := SeparateRight(st2, '/');
+        if (FSecondary = Primary) and (Pos('/', st2) < 1) then FSecondary := '';
+        case FPrimaryCode of
+          MP_TEXT:
+            Charset := UpperCase(GetParameter(s, 'charset='));
+          MP_MULTIPART:
+            FBoundary := GetParameter(s, 'Boundary=');
+          MP_MESSAGE:
             begin
-              e:=true;
-              break;
             end;
-        if not e
-          then result:=value.count-1;
+          MP_BINARY:
+            FFileName := GetParameter(s, 'name=');
+        end;
       end;
+      if Pos('CONTENT-TRANSFER-ENCODING:', su) = 1 then
+        Encoding := SeparateRight(su, ':');
+      if Pos('CONTENT-DESCRIPTION:', su) = 1 then
+        FDescription := SeparateRight(s, ':');
+      if Pos('CONTENT-DISPOSITION:', su) = 1 then
+      begin
+        FDisposition := SeparateRight(su, ':');
+        FDisposition := Trim(SeparateLeft(FDisposition, ';'));
+        fn := GetParameter(s, 'FileName=');
+      end;
+      if Pos('CONTENT-ID:', su) = 1 then
+        FContentID := SeparateRight(s, ':');
+    end;
+
+    if (PrimaryCode = MP_BINARY) and (FFileName = '') then
+      FFileName := fn;
+    FFileName := InlineDecode(FFileName, getCurCP);
+    FFileName := ExtractFileName(FFileName);
+
+    x1 := x;
+    x2 := Value.Count - 1;
+    if b <> '' then
+    begin
+      for n := x to Value.Count - 1 do
+      begin
+        x2 := n;
+        s := Value[n];
+        if Pos('--' + b, s) > 0 then
+        begin
+          Dec(x2);
+          Break;
+        end;
+      end;
+    end;
+    if FPrimaryCode = MP_MULTIPART then
+    begin
+      for n := x to Value.Count - 1 do
+      begin
+        s := Value[n];
+        if Pos('--' + Boundary, s) > 0 then
+        begin
+          x1 := n;
+          Break;
+        end;
+      end;
+      for n := Value.Count - 1 downto x do
+      begin
+        s := Value[n];
+        if Pos('--' + Boundary, s) > 0 then
+        begin
+          x2 := n;
+          Break;
+        end;
+      end;
+    end;
+    for n := x1 to x2 do
+      FLines.Add(Value[n]);
+    Result := x2;
+    if FPrimaryCode = MP_MULTIPART then
+    begin
+      e := False;
+      for n := x2 + 1 to Value.Count - 1 do
+        if Pos('--' + Boundary, Value[n]) > 0 then
+        begin
+          e := True;
+          Break;
+        end;
+      if not e then
+        Result := Value.Count - 1;
+    end;
   finally
-    t.free;
+    t.Free;
   end;
 end;
 
 {==============================================================================}
-{TMIMEPart.DecodePart}
+
 procedure TMIMEPart.DecodePart;
 const
-  CRLF=#$0D+#$0A;
+  CRLF = #13#10;
 var
-  n:integer;
-  s:string;
+  n: Integer;
+  s: string;
 begin
-  decodedLines.Clear;
-  for n:=0 to lines.count-1 do
-    begin
-      s:=lines[n];
-      case EncodingCode of
-        ME_7BIT:
-          begin
-            s:=s+CRLF;
-          end;
-        ME_8BIT:
-          begin
-            s:=decodeChar(s,CharsetCode,TargetCharset);
-            s:=s+CRLF;
-          end;
-        ME_QUOTED_PRINTABLE:
-          begin
-            if s=''
-              then s:=CRLF
-              else
-                if s[length(s)]<>'='
-                  then s:=s+CRLF;
-            s:=DecodeQuotedPrintable(s);
-            if PrimaryCode=MP_TEXT
-              then s:=decodeChar(s,CharsetCode,TargetCharset);
-          end;
-        ME_BASE64:
-          begin
-            if s<>''
-              then s:=DecodeBase64(s);
-            if PrimaryCode=MP_TEXT
-              then s:=decodeChar(s,CharsetCode,TargetCharset);
-          end;
-        ME_UU:
-          begin
-            if s<>''
-              then s:=DecodeUU(s);
-          end;
-        ME_XX:
-          begin
-            if s<>''
-              then s:=DecodeXX(s);
-          end;
-      end;
-      Decodedlines.Write(pointer(s)^,length(s));
+  FDecodedLines.Clear;
+  for n := 0 to FLines.Count - 1 do
+  begin
+    s := FLines[n];
+    case FEncodingCode of
+      ME_7BIT:
+        s := s + CRLF;
+      ME_8BIT:
+        begin
+          s := CharsetConversion(s, FCharsetCode, FTargetCharset);
+          s := s + CRLF;
+        end;
+      ME_QUOTED_PRINTABLE:
+        begin
+          if s = '' then
+            s := CRLF
+          else
+            if s[Length(s)] <> '=' then
+              s := s + CRLF;
+          s := DecodeQuotedPrintable(s);
+          if FPrimaryCode = MP_TEXT then
+            s := CharsetConversion(s, FCharsetCode, FTargetCharset);
+        end;
+      ME_BASE64:
+        begin
+          if s <> '' then
+            s := DecodeBase64(s);
+          if FPrimaryCode = MP_TEXT then
+            s := CharsetConversion(s, FCharsetCode, FTargetCharset);
+        end;
+      ME_UU:
+        if s <> '' then
+          s := DecodeUU(s);
+      ME_XX:
+        if s <> '' then
+          s := DecodeXX(s);
     end;
-  decodedlines.Seek(0,soFromBeginning);
+    FDecodedLines.Write(Pointer(s)^, Length(s));
+  end;
+  FDecodedLines.Seek(0, soFromBeginning);
 end;
 
 {==============================================================================}
-{TMIMEPart.EncodePart}
+
 procedure TMIMEPart.EncodePart;
 var
-  l:TStringList;
-  s,buff:string;
-  n,x:integer;
+  l: TStringList;
+  s, buff: string;
+  n, x: Integer;
 begin
-  if EncodingCode=ME_UU
-    then encoding:='base64';
-  if EncodingCode=ME_XX
-    then encoding:='base64';
-  l:=tstringlist.create;
-  Lines.clear;
-  decodedlines.Seek(0,soFromBeginning);
+  if (FEncodingCode = ME_UU) or (FEncodingCode = ME_XX) then
+    Encoding := 'base64';
+  l := TStringList.Create;
+  FLines.Clear;
+  FDecodedLines.Seek(0, soFromBeginning);
   try
-    case primarycode of
-      MP_MULTIPART,
-      MP_MESSAGE:
+    case FPrimaryCode of
+      MP_MULTIPART, MP_MESSAGE:
+        FLines.LoadFromStream(FDecodedLines);
+      MP_TEXT, MP_BINARY:
+        if FEncodingCode = ME_BASE64 then
         begin
-          lines.LoadFromStream(DecodedLines);
+          while FDecodedLines.Position < FDecodedLines.Size do
+          begin
+            Setlength(Buff, 54);
+            s := '';
+            x := FDecodedLines.Read(pointer(Buff)^, 54);
+            for n := 1 to x do
+              s := s + Buff[n];
+            if FPrimaryCode = MP_TEXT then
+              s := CharsetConversion(s, FTargetCharset, FCharsetCode);
+            s := EncodeBase64(s);
+            if x <> 54 then
+              s := s + '=';
+            FLines.Add(s);
+          end;
+        end
+        else
+        begin
+          l.LoadFromStream(FDecodedLines);
+          for n := 0 to l.Count - 1 do
+          begin
+            s := l[n];
+            if FPrimaryCode = MP_TEXT then
+              s := CharsetConversion(s, FTargetCharset, FCharsetCode);
+            s := EncodeQuotedPrintable(s);
+            FLines.Add(s);
+          end;
         end;
+
+    end;
+    FLines.Add('');
+    FLines.Insert(0, '');
+    if FSecondary = '' then
+      case FPrimaryCode of
+        MP_TEXT:
+          FSecondary := 'plain';
+        MP_MULTIPART:
+          FSecondary := 'mixed';
+        MP_MESSAGE:
+          FSecondary := 'rfc822';
+        MP_BINARY:
+          FSecondary := 'octet-stream';
+      end;
+    if FDescription <> '' then
+      FLines.Insert(0, 'Content-Description: ' + FDescription);
+    if FDisposition <> '' then
+    begin
+      s := '';
+      if FFileName <> '' then
+        s := '; FileName="' + FFileName + '"';
+      FLines.Insert(0, 'Content-Disposition: ' + LowerCase(FDisposition) + s);
+    end;
+    if FContentID <> '' then
+      FLines.Insert(0, 'Content-ID: ' + FContentID);
+
+    case FEncodingCode of
+      ME_7BIT:
+        s := '7bit';
+      ME_8BIT:
+        s := '8bit';
+      ME_QUOTED_PRINTABLE:
+        s := 'Quoted-printable';
+      ME_BASE64:
+        s := 'Base64';
+    end;
+    case FPrimaryCode of
       MP_TEXT,
+        MP_BINARY: FLines.Insert(0, 'Content-Transfer-Encoding: ' + s);
+    end;
+    case FPrimaryCode of
+      MP_TEXT:
+        s := FPrimary + '/' + FSecondary + '; charset=' + GetIDfromCP(FCharsetCode);
+      MP_MULTIPART:
+        s := FPrimary + '/' + FSecondary + '; boundary="' + Boundary + '"';
+      MP_MESSAGE:
+        s := FPrimary + '/' + FSecondary + '';
       MP_BINARY:
-        if EncodingCode=ME_BASE64
-          then
-            begin
-              while decodedlines.Position<decodedlines.Size do
-                begin
-                  Setlength(Buff,54);
-                  s:='';
-                  x:=Decodedlines.Read(pointer(Buff)^,54);
-                  for n:=1 to x do
-                    s:=s+Buff[n];
-                  if PrimaryCode=MP_TEXT
-                    then s:=decodeChar(s,TargetCharset,CharsetCode);
-                  s:=EncodeBase64(s);
-                  if x<>54
-                    then s:=s+'=';
-                  Lines.add(s);
-                end;
-            end
-          else
-            begin
-              l.LoadFromStream(DecodedLines);
-              for n:=0 to l.count-1 do
-                begin
-                  s:=l[n];
-                  if PrimaryCode=MP_TEXT
-                    then s:=decodeChar(s,TargetCharset,CharsetCode);
-                  s:=EncodeQuotedPrintable(s);
-                  Lines.add(s);
-                end;
-            end;
-
+        s := FPrimary + '/' + FSecondary + '; name="' + FFileName + '"';
     end;
-    Lines.add('');
-    lines.insert(0,'');
-    if secondary='' then
-      case PrimaryCode of
-        MP_TEXT:       secondary:='plain';
-        MP_MULTIPART:  secondary:='mixed';
-        MP_MESSAGE:    secondary:='rfc822';
-        MP_BINARY:     secondary:='octet-stream';
-      end;
-    if description<>''
-      then lines.insert(0,'Content-Description: '+Description);
-    if disposition<>'' then
-      begin
-        s:='';
-        if filename<>''
-          then s:='; filename="'+filename+'"';
-        lines.insert(0,'Content-Disposition: '+lowercase(disposition)+s);
-      end;
-    if contentID<>''
-      then lines.insert(0,'Content-ID: '+contentID);
-
-    case EncodingCode of
-      ME_7BIT:              s:='7bit';
-      ME_8BIT:              s:='8bit';
-      ME_QUOTED_PRINTABLE:  s:='Quoted-printable';
-      ME_BASE64:            s:='Base64';
-    end;
-    case PrimaryCode of
-      MP_TEXT,
-      MP_BINARY:     lines.insert(0,'Content-Transfer-Encoding: '+s);
-    end;
-    case PrimaryCode of
-      MP_TEXT:       s:=primary+'/'+secondary+'; charset='+GetIDfromCP(charsetcode);
-      MP_MULTIPART:  s:=primary+'/'+secondary+'; boundary="'+boundary+'"';
-      MP_MESSAGE:    s:=primary+'/'+secondary+'';
-      MP_BINARY:     s:=primary+'/'+secondary+'; name="'+FileName+'"';
-    end;
-    lines.insert(0,'Content-type: '+s);
+    FLines.Insert(0, 'Content-type: ' + s);
   finally
-    l.free;
+    l.Free;
   end;
 end;
 
 {==============================================================================}
-{TMIMEPart.MimeTypeFromExt}
-procedure TMIMEPart.MimeTypeFromExt(value:string);
-var
-  s:string;
-  n:integer;
-begin
-  primary:='';
-  secondary:='';
-  s:=uppercase(extractfileext(value));
-  if s=''
-    then s:=uppercase(value);
-  s:=separateright(s,'.');
-  for n:=0 to MaxMimeType do
-    if MimeType[n,0]=s then
-      begin
-        primary:=MimeType[n,1];
-        secondary:=MimeType[n,2];
-        break;
-      end;
-  if primary=''
-    then primary:='application';
-  if secondary=''
-    then secondary:='mixed';
-end;
 
-{==============================================================================}
-{TMIMEPart.Setprimary}
-procedure TMIMEPart.Setprimary(Value:string);
+procedure TMIMEPart.MimeTypeFromExt(Value: string);
 var
-  s:string;
+  s: string;
+  n: Integer;
 begin
-  Fprimary:=Value;
-  s:=uppercase(Value);
-  PrimaryCode:=MP_BINARY;
-  if Pos('TEXT',s)=1
-    then PrimaryCode:=MP_TEXT;
-  if Pos('MULTIPART',s)=1
-    then PrimaryCode:=MP_MULTIPART;
-  if Pos('MESSAGE',s)=1
-    then PrimaryCode:=MP_MESSAGE;
-end;
-
-{TMIMEPart.SetEncoding}
-procedure TMIMEPart.SetEncoding(Value:string);
-var
-  s:string;
-begin
-  FEncoding:=Value;
-  s:=uppercase(Value);
-  EncodingCode:=ME_7BIT;
-  if Pos('8BIT',s)=1
-    then EncodingCode:=ME_8BIT;
-  if Pos('QUOTED-PRINTABLE',s)=1
-    then EncodingCode:=ME_QUOTED_PRINTABLE;
-  if Pos('BASE64',s)=1
-    then EncodingCode:=ME_BASE64;
-  if Pos('X-UU',s)=1
-    then EncodingCode:=ME_UU;
-  if Pos('X-XX',s)=1
-    then EncodingCode:=ME_XX;
-end;
-
-{TMIMEPart.SetCharset}
-procedure TMIMEPart.SetCharset(Value:string);
-begin
-  FCharset:=Value;
-  CharsetCode:=GetCPfromID(value);
-end;
-
-{==============================================================================}
-{GenerateBoundary}
-function GenerateBoundary:string;
-var
-  x:integer;
-begin
-  randomize;
-  x:=random(maxint);
-  result:='----'+Inttohex(x,8)+'_Synapse_message_boundary';
+  Primary := '';
+  FSecondary := '';
+  s := UpperCase(ExtractFileExt(Value));
+  if s = '' then
+    s := UpperCase(Value);
+  s := SeparateRight(s, '.');
+  for n := 0 to MaxMimeType do
+    if MimeType[n, 0] = s then
+    begin
+      Primary := MimeType[n, 1];
+      FSecondary := MimeType[n, 2];
+      Break;
+    end;
+  if Primary = '' then
+    Primary := 'application';
+  if FSecondary = '' then
+    FSecondary := 'mixed';
 end;
 
 {==============================================================================}
 
+procedure TMIMEPart.SetPrimary(Value: string);
+var
+  s: string;
 begin
-  exit;
-  asm
-    db 'Synapse MIME messages encoding and decoding library by Lukas Gebauer',0
-  end;
+  FPrimary := Value;
+  s := UpperCase(Value);
+  FPrimaryCode := MP_BINARY;
+  if Pos('TEXT', s) = 1 then
+    FPrimaryCode := MP_TEXT;
+  if Pos('MULTIPART', s) = 1 then
+    FPrimaryCode := MP_MULTIPART;
+  if Pos('MESSAGE', s) = 1 then
+    FPrimaryCode := MP_MESSAGE;
+end;
+
+procedure TMIMEPart.SetEncoding(Value: string);
+var
+  s: string;
+begin
+  FEncoding := Value;
+  s := UpperCase(Value);
+  FEncodingCode := ME_7BIT;
+  if Pos('8BIT', s) = 1 then
+    FEncodingCode := ME_8BIT;
+  if Pos('QUOTED-PRINTABLE', s) = 1 then
+    FEncodingCode := ME_QUOTED_PRINTABLE;
+  if Pos('BASE64', s) = 1 then
+    FEncodingCode := ME_BASE64;
+  if Pos('X-UU', s) = 1 then
+    FEncodingCode := ME_UU;
+  if Pos('X-XX', s) = 1 then
+    FEncodingCode := ME_XX;
+end;
+
+procedure TMIMEPart.SetCharset(Value: string);
+begin
+  FCharset := Value;
+  FCharsetCode := GetCPFromID(Value);
+end;
+
+{==============================================================================}
+
+function GenerateBoundary: string;
+var
+  x: Integer;
+begin
+  Randomize;
+  x := Random(MaxInt);
+  Result := '----' + IntToHex(x, 8) + '_Synapse_message_boundary';
+end;
+
 end.

@@ -1,9 +1,9 @@
 {==============================================================================|
-| Project : Delphree - Synapse                                   | 001.003.000 |
+| Project : Delphree - Synapse                                   | 001.004.000 |
 |==============================================================================|
 | Content: MIME message object                                                 |
 |==============================================================================|
-| The contents of this file are subject to the Mozilla Public License Ver. 1.0 |
+| The contents of this file are Subject to the Mozilla Public License Ver. 1.1 |
 | (the "License"); you may not use this file except in compliance with the     |
 | License. You may obtain a copy of the License at http://www.mozilla.org/MPL/ |
 |                                                                              |
@@ -19,314 +19,334 @@
 |==============================================================================|
 | Contributor(s):                                                              |
 |==============================================================================|
-| History: see HISTORY.HTM from distribution package                           |
+| History: see HISTORY.HTM From distribution package                           |
 |          (Found at URL: http://www.ararat.cz/synapse/)                       |
 |==============================================================================}
 
+{$WEAKPACKAGEUNIT ON}
 
 unit MIMEmess;
 
 interface
 
 uses
-  classes, Sysutils, MIMEpart, MimeChar, SynaUtil, MIMEInLn;
+  Classes, SysUtils,
+  MIMEpart, SynaChar, SynaUtil, MIMEinLn;
 
 type
-
-TMessHeader=record
-  from:string;
-  ToList:tstringlist;
-  subject:string;
-  organization:string;
-end;
-
-TMimeMess=class(TObject)
+  TMessHeader = class(TObject)
   private
+    FFrom: string;
+    FToList: TStringList;
+    FSubject: string;
+    FOrganization: string;
   public
-    PartList:TList;
-    Lines:TStringList;
-    header:TMessHeader;
     constructor Create;
     destructor Destroy; override;
     procedure Clear;
-    function AddPart:integer;
-    procedure AddPartText(value:tstringList);
-    procedure AddPartHTML(value:tstringList);
-    procedure AddPartHTMLBinary(Value,Cid:string);
-    procedure AddPartBinary(value:string);
+  published
+    property From: string read FFrom Write FFrom;
+    property ToList: TStringList read FToList Write FToList;
+    property Subject: string read FSubject Write FSubject;
+    property Organization: string read FOrganization Write FOrganization;
+  end;
+
+  TMimeMess = class(TObject)
+  private
+    FPartList: TList;
+    FLines: TStringList;
+    FHeader: TMessHeader;
+  public
+    constructor Create;
+    destructor Destroy; override;
+    procedure Clear;
+    function AddPart: Integer;
+    procedure AddPartText(Value: TStringList);
+    procedure AddPartHTML(Value: TStringList);
+    procedure AddPartHTMLBinary(Value, Cid: string);
+    procedure AddPartBinary(Value: string);
     procedure EncodeMessage;
     procedure FinalizeHeaders;
     procedure ParseHeaders;
     procedure DecodeMessage;
-end;
+  published
+    property PartList: TList read FPartList Write FPartList;
+    property Lines: TStringList read FLines Write FLines;
+    property Header: TMessHeader read FHeader Write FHeader;
+  end;
 
 implementation
 
 {==============================================================================}
-{TMimeMess.Create}
-Constructor TMimeMess.Create;
+
+constructor TMessHeader.Create;
 begin
   inherited Create;
-  PartList:=TList.create;
-  Lines:=TStringList.create;
-  Header.ToList:=TStringList.create;
+  FToList := TStringList.Create;
 end;
 
-{TMimeMess.Destroy}
-Destructor TMimeMess.Destroy;
+destructor TMessHeader.Destroy;
 begin
-  Header.ToList.free;
-  Lines.free;
-  PartList.free;
-  inherited destroy;
+  FToList.Free;
+  inherited Destroy;
 end;
 
 {==============================================================================}
-{TMimeMess.Clear}
+
+procedure TMessHeader.Clear;
+begin
+  FFrom := '';
+  FToList.Clear;
+  FSubject := '';
+  FOrganization := '';
+end;
+
+{==============================================================================}
+
+constructor TMimeMess.Create;
+begin
+  inherited Create;
+  FPartList := TList.Create;
+  FLines := TStringList.Create;
+  FHeader := TMessHeader.Create;
+end;
+
+destructor TMimeMess.Destroy;
+begin
+  FHeader.Free;
+  Lines.Free;
+  PartList.Free;
+  inherited Destroy;
+end;
+
+{==============================================================================}
+
 procedure TMimeMess.Clear;
 var
-  n:integer;
+  n: Integer;
 begin
-  Lines.clear;
-  for n:=0 to PartList.count-1 do
+  Lines.Clear;
+  for n := 0 to PartList.Count - 1 do
     TMimePart(PartList[n]).Free;
   PartList.Clear;
-  with header do
-    begin
-      from:='';
-      ToList.clear;
-      subject:='';
-      organization:='';
-    end;
+  FHeader.Clear;
 end;
 
 {==============================================================================}
-{TMimeMess.AddPart}
-function TMimeMess.AddPart:integer;
+
+function TMimeMess.AddPart: Integer;
 var
-  mp:TMimePart;
+  mp: TMimePart;
 begin
-  mp:=TMimePart.create;
-  result:=PartList.Add(mp);
+  mp := TMimePart.Create;
+  Result := PartList.Add(mp);
 end;
 
 {==============================================================================}
-{TMimeMess.AddPartText}
-procedure TMimeMess.AddPartText(value:tstringList);
+
+procedure TMimeMess.AddPartText(Value: TStringList);
 var
-  x:integer;
+  x: Integer;
 begin
-  x:=Addpart;
+  x := AddPart;
   with TMimePart(PartList[x]) do
-    begin
-      value.SaveToStream(decodedlines);
-      primary:='text';
-      secondary:='plain';
-      description:='Message text';
-      disposition:='inline';
-      CharsetCode:=IdealCoding(value.text,targetCharset,
-        [ISO_8859_1, ISO_8859_2, ISO_8859_3, ISO_8859_4, ISO_8859_5,
-         ISO_8859_6, ISO_8859_7, ISO_8859_8, ISO_8859_9, ISO_8859_10]);
-      EncodingCode:=ME_QUOTED_PRINTABLE;
-      EncodePart;
-    end;
-end;
-
-{==============================================================================}
-{TMimeMess.AddPartHTML}
-procedure TMimeMess.AddPartHTML(value:tstringList);
-var
-  x:integer;
-begin
-  x:=Addpart;
-  with TMimePart(PartList[x]) do
-    begin
-      value.SaveToStream(decodedlines);
-      primary:='text';
-      secondary:='html';
-      description:='HTML text';
-      disposition:='inline';
-      CharsetCode:=UTF_8;
-      EncodingCode:=ME_QUOTED_PRINTABLE;
-      EncodePart;
-    end;
-end;
-
-{==============================================================================}
-{TMimeMess.AddPartBinary}
-procedure TMimeMess.AddPartBinary(value:string);
-var
-  x:integer;
-  s:string;
-begin
-  x:=Addpart;
-  with TMimePart(PartList[x]) do
-    begin
-      DecodedLines.LoadFromFile(Value);
-      s:=ExtractFileName(value);
-      MimeTypeFromExt(s);
-      description:='Attached file: '+s;
-      disposition:='attachment';
-      filename:=s;
-      EncodingCode:=ME_BASE64;
-      EncodePart;
-    end;
-end;
-
-{TMimeMess.AddPartHTMLBinary}
-procedure TMimeMess.AddPartHTMLBinary(Value,Cid:string);
-var
-  x:integer;
-  s:string;
-begin
-  x:=Addpart;
-  with TMimePart(PartList[x]) do
-    begin
-      DecodedLines.LoadFromFile(Value);
-      s:=ExtractFileName(value);
-      MimeTypeFromExt(s);
-      description:='Included file: '+s;
-      disposition:='inline';
-      contentID:=cid;
-      filename:=s;
-      EncodingCode:=ME_BASE64;
-      EncodePart;
-    end;
-end;
-
-{==============================================================================}
-{TMimeMess.Encodemessage}
-procedure TMimeMess.Encodemessage;
-var
-  bound:string;
-  n:integer;
-  m:TMimepart;
-begin
-  lines.clear;
-  If PartList.Count=1
-    then
-      Lines.assign(TMimePart(PartList[0]).lines)
-    else
-      begin
-        bound:=generateboundary;
-        for n:=0 to PartList.count-1 do
-          begin
-            Lines.add('--'+bound);
-            lines.AddStrings(TMimePart(PartList[n]).lines);
-          end;
-        Lines.add('--'+bound);
-        m:=TMimePart.Create;
-        try
-          Lines.SaveToStream(m.DecodedLines);
-          m.Primary:='Multipart';
-          m.secondary:='mixed';
-          m.description:='Multipart message';
-          m.boundary:=bound;
-          m.EncodePart;
-          Lines.assign(m.lines);
-        finally
-          m.free;
-        end;
-      end;
-end;
-
-{==============================================================================}
-{TMimeMess.FinalizeHeaders}
-procedure TMimeMess.FinalizeHeaders;
-var
-  n:integer;
-begin
-  Lines.Insert(0,'x-mailer: Synapse - Delphi TCP/IP library by Lukas Gebauer');
-  Lines.Insert(0,'MIME-Version: 1.0 (produced by Synapse)');
-  Lines.Insert(0,'date: '+Rfc822DateTime(now));
-  if header.organization<>''
-    then Lines.Insert(0,'Organization: '+InlineCode(header.organization));
-  if header.subject<>''
-    then Lines.Insert(0,'Subject: '+InlineCode(header.subject));
-  for n:=0 to Header.ToList.count-1 do
-    Lines.Insert(0,'To: '+InlineEmail(header.ToList[n]));
-  Lines.Insert(0,'From: '+InlineEmail(header.from));
-end;
-
-{==============================================================================}
-{TMimeMess.ParseHeaders}
-procedure TMimeMess.ParseHeaders;
-var
-  s:string;
-  x:integer;
-  cp:TMimeChar;
-begin
-  cp:=getCurCP;
-  header.ToList.clear;
-  x:=0;
-  while lines.count>x do
-    begin
-      s:=normalizeheader(lines,x);
-      if s=''
-        then break;
-      If pos('FROM:',uppercase(s))=1
-        then header.from:=InlineDecode(separateright(s,':'),cp);
-      If pos('SUBJECT:',uppercase(s))=1
-        then header.subject:=InlineDecode(separateright(s,':'),cp);
-      If pos('ORGANIZATION:',uppercase(s))=1
-        then header.organization:=InlineDecode(separateright(s,':'),cp);
-      If pos('TO:',uppercase(s))=1
-        then header.ToList.add(InlineDecode(separateright(s,':'),cp));
-    end;
-end;
-
-{==============================================================================}
-{TMimeMess.DecodeMessage}
-procedure TMimeMess.DecodeMessage;
-var
-  l:tstringlist;
-  m:tmimepart;
-  x,i:integer;
-  bound:string;
-begin
-  l:=tstringlist.create;
-  m:=tmimepart.create;
-  try
-    l.assign(lines);
-    with header do
-      begin
-        from:='';
-        ToList.clear;
-        subject:='';
-        organization:='';
-      end;
-    ParseHeaders;
-    m.ExtractPart(l,0);
-    if m.primarycode=MP_MULTIPART
-      then
-        begin
-          bound:=m.boundary;
-          i:=0;
-          repeat
-            x:=AddPart;
-            with TMimePart(PartList[x]) do
-              begin
-                boundary:=bound;
-                i:=ExtractPart(l,i);
-                DecodePart;
-              end;
-          until i>=l.count-2;
-        end
-      else
-        begin
-          x:=AddPart;
-          with TMimePart(PartList[x]) do
-            begin
-              ExtractPart(l,0);
-              DecodePart;
-            end;
-        end;
-  finally
-    m.free;
-    l.free;
+  begin
+    Value.SaveToStream(DecodedLines);
+    Primary := 'text';
+    Secondary := 'plain';
+    Description := 'Message text';
+    Disposition := 'inline';
+    CharsetCode := IdealCharsetCoding(Value.Text, TargetCharset,
+      [ISO_8859_1, ISO_8859_2, ISO_8859_3, ISO_8859_4, ISO_8859_5,
+      ISO_8859_6, ISO_8859_7, ISO_8859_8, ISO_8859_9, ISO_8859_10]);
+    EncodingCode := ME_QUOTED_PRINTABLE;
+    EncodePart;
   end;
 end;
 
 {==============================================================================}
+
+procedure TMimeMess.AddPartHTML(Value: TStringList);
+var
+  x: Integer;
+begin
+  x := AddPart;
+  with TMimePart(PartList[x]) do
+  begin
+    Value.SaveToStream(DecodedLines);
+    Primary := 'text';
+    Secondary := 'html';
+    Description := 'HTML text';
+    Disposition := 'inline';
+    CharsetCode := UTF_8;
+    EncodingCode := ME_QUOTED_PRINTABLE;
+    EncodePart;
+  end;
+end;
+
+{==============================================================================}
+
+procedure TMimeMess.AddPartBinary(Value: string);
+var
+  x: Integer;
+  s: string;
+begin
+  x := AddPart;
+  with TMimePart(PartList[x]) do
+  begin
+    DecodedLines.LoadFromFile(Value);
+    s := ExtractFileName(Value);
+    MimeTypeFromExt(s);
+    Description := 'Attached file: ' + s;
+    Disposition := 'attachment';
+    FileName := s;
+    EncodingCode := ME_BASE64;
+    EncodePart;
+  end;
+end;
+
+procedure TMimeMess.AddPartHTMLBinary(Value, Cid: string);
+var
+  x: Integer;
+  s: string;
+begin
+  x := AddPart;
+  with TMimePart(PartList[x]) do
+  begin
+    DecodedLines.LoadFromFile(Value);
+    s := ExtractFileName(Value);
+    MimeTypeFromExt(s);
+    Description := 'Included file: ' + s;
+    Disposition := 'inline';
+    ContentID := cid;
+    FileName := s;
+    EncodingCode := ME_BASE64;
+    EncodePart;
+  end;
+end;
+
+{==============================================================================}
+
+procedure TMimeMess.EncodeMessage;
+var
+  bound: string;
+  n: Integer;
+begin
+  Lines.Clear;
+  if PartList.Count = 1 then
+    Lines.Assign(TMimePart(PartList[0]).Lines)
+  else
+  begin
+    bound := GenerateBoundary;
+    for n := 0 to PartList.Count - 1 do
+    begin
+      Lines.Add('--' + bound);
+      Lines.AddStrings(TMimePart(PartList[n]).Lines);
+    end;
+    Lines.Add('--' + bound);
+    with TMimePart.Create do
+    try
+      Self.Lines.SaveToStream(DecodedLines);
+      Primary := 'Multipart';
+      Secondary := 'mixed';
+      Description := 'Multipart message';
+      Boundary := bound;
+      EncodePart;
+      Self.Lines.Assign(Lines);
+    finally
+      Free;
+    end;
+  end;
+end;
+
+{==============================================================================}
+
+procedure TMimeMess.FinalizeHeaders;
+var
+  n: Integer;
+begin
+  Lines.Insert(0, 'x-mailer: Synapse - Delphi TCP/IP library by Lukas Gebauer');
+  Lines.Insert(0, 'MIME-Version: 1.0 (produced by Synapse)');
+  Lines.Insert(0, 'date: ' + Rfc822DateTime(Now));
+  if FHeader.Organization <> '' then
+    Lines.Insert(0, 'Organization: ' + InlineCode(Header.Organization));
+  if Header.Subject <> '' then
+    FLines.Insert(0, 'Subject: ' + InlineCode(Header.Subject));
+  for n := 0 to FHeader.ToList.Count - 1 do
+    Lines.Insert(0, 'To: ' + InlineEmail(FHeader.ToList[n]));
+  Lines.Insert(0, 'From: ' + InlineEmail(FHeader.From));
+end;
+
+{==============================================================================}
+
+procedure TMimeMess.ParseHeaders;
+var
+  s: string;
+  x: Integer;
+  cp: TMimeChar;
+begin
+  cp := GetCurCP;
+  FHeader.Clear;
+  x := 0;
+  while Lines.Count > x do
+  begin
+    s := NormalizeHeader(Lines, x);
+    if s = '' then
+      Break;
+    if Pos('FROM:', UpperCase(s)) = 1 then
+      FHeader.From := InlineDecode(SeparateRight(s, ':'), cp);
+    if Pos('SUBJECT:', UpperCase(s)) = 1 then
+      FHeader.Subject := InlineDecode(SeparateRight(s, ':'), cp);
+    if Pos('ORGANIZATION:', UpperCase(s)) = 1 then
+      FHeader.Organization := InlineDecode(SeparateRight(s, ':'), cp);
+    if Pos('TO:', UpperCase(s)) = 1 then
+      FHeader.ToList.Add(InlineDecode(SeparateRight(s, ':'), cp));
+  end;
+end;
+
+{==============================================================================}
+
+procedure TMimeMess.DecodeMessage;
+var
+  l: TStringList;
+  m: TMimePart;
+  x, i: Integer;
+  bound: string;
+begin
+  l := TStringList.Create;
+  m := TMimePart.Create;
+  try
+    l.Assign(Lines);
+    FHeader.Clear;
+    ParseHeaders;
+    m.ExtractPart(l, 0);
+    if m.PrimaryCode = MP_MULTIPART then
+    begin
+      bound := m.Boundary;
+      i := 0;
+      repeat
+        x := AddPart;
+        with TMimePart(PartList[x]) do
+        begin
+          Boundary := bound;
+          i := ExtractPart(l, i);
+          DecodePart;
+        end;
+      until i >= l.Count - 2;
+    end
+    else
+    begin
+      x := AddPart;
+      with TMimePart(PartList[x]) do
+      begin
+        ExtractPart(l, 0);
+        DecodePart;
+      end;
+    end;
+  finally
+    m.Free;
+    l.Free;
+  end;
+end;
 
 end.
