@@ -1,5 +1,5 @@
 {==============================================================================|
-| Project : Delphree - Synapse                                   | 001.007.001 |
+| Project : Ararat Synapse                                       | 001.008.007 |
 |==============================================================================|
 | Content: Coding and decoding support                                         |
 |==============================================================================|
@@ -42,9 +42,14 @@
 |          (Found at URL: http://www.ararat.cz/synapse/)                       |
 |==============================================================================}
 
+{$IFDEF FPC}
+  {$MODE DELPHI}
+{$ENDIF}
 {$Q-}
+{$R-}
+{$H+}
 
-unit SynaCode;
+unit synacode;
 
 interface
 
@@ -241,29 +246,72 @@ type
 
 function DecodeTriplet(const Value: string; Delimiter: Char): string;
 var
-  x, l: Integer;
+  x, l, lv: Integer;
   c: Char;
-  s: string;
+  b: Byte;
+  bad: Boolean;
 begin
-  SetLength(Result, Length(Value));
+  lv := Length(Value);
+  SetLength(Result, lv);
   x := 1;
   l := 1;
-  while x <= Length(Value) do
+  while x <= lv do
   begin
     c := Value[x];
     Inc(x);
     if c <> Delimiter then
-      Result[l] := c
+    begin
+      Result[l] := c;
+      Inc(l);
+    end
     else
-      if x < Length(Value) then
+      if x < lv then
       begin
-        s := Copy(Value, x, 2);
-        Inc(x, 2);
-        Result[l] := Char(StrToIntDef('$' + s, 32))
+        Case Value[x] Of
+          #13:
+            if (Value[x + 1] = #10) then
+              Inc(x, 2)
+            else
+              Inc(x);
+          #10:
+            if (Value[x + 1] = #13) then
+              Inc(x, 2)
+            else
+              Inc(x);
+        else
+          begin
+            bad := False;
+            Case Value[x] Of
+              '0'..'9': b := (Byte(Value[x]) - 48) Shl 4;
+              'a'..'f', 'A'..'F': b := ((Byte(Value[x]) And 7) + 9) shl 4;
+            else
+              begin
+                b := 0;
+                bad := True;
+              end;
+            end;
+            Case Value[x + 1] Of
+              '0'..'9': b := b Or (Byte(Value[x + 1]) - 48);
+              'a'..'f', 'A'..'F': b := b Or ((Byte(Value[x + 1]) And 7) + 9);
+            else
+              bad := True;
+            end;
+            if bad then
+            begin
+              Result[l] := c;
+              Inc(l);
+            end
+            else
+            begin
+              Inc(x, 2);
+              Result[l] := Char(b);
+              Inc(l);
+            end;
+          end;
+        end;
       end
       else
         break;
-    Inc(l);
   end;
   Dec(l);
   SetLength(Result, l);
@@ -322,7 +370,7 @@ end;
 function EncodeQuotedPrintable(const Value: string): string;
 begin
   Result := EncodeTriplet(Value, '=', SpecialChar +
-    [Char(1)..Char(31), Char(128)..Char(255)]);
+    [Char(0)..Char(31), Char(127)..Char(255)]);
 end;
 
 {==============================================================================}
@@ -349,7 +397,7 @@ begin
   SetLength(Result, Length(Value));
   x := 1;
   l := 1;
-  while x < Length(Value) do
+  while x <= Length(Value) do
   begin
     for n := 0 to 3 do
     begin
@@ -382,45 +430,66 @@ begin
 end;
 
 {==============================================================================}
-
 function Decode4to3Ex(const Value, Table: string): string;
-var
-  x, y, n, l: Integer;
-  d: array[0..3] of Byte;
-begin
-  SetLength(Result, Length(Value));
-  x := 1;
-  l := 1;
-  while x < Length(Value) do
-  begin
-    for n := 0 to 3 do
-    begin
-      if x > Length(Value) then
-        d[n] := 64
-      else
-      begin
-        y := Ord(Value[x]);
-        if (y < 33) or (y > 127) then
-          d[n] := 64
-        else
-          d[n] := Ord(Table[y - 32]);
-      end;
-      Inc(x);
-    end;
-    Result[l] := Char((D[0] and $3F) shl 2 + (D[1] and $30) shr 4);
-    Inc(l);
-    if d[2] <> 64 then
-    begin
-      Result[l] := Char((D[1] and $0F) shl 4 + (D[2] and $3C) shr 2);
-      Inc(l);
-      if d[3] <> 64 then
-      begin
-        Result[l] := Char((D[2] and $03) shl 6 + (D[3] and $3F));
-        Inc(l);
-      end;
-    end;
+type
+  TDconvert = record
+    case byte of
+      0: (a0, a1, a2, a3: char);
+      1: (i: integer);
   end;
-  Dec(l);
+var
+  x, y, l, lv: Integer;
+  d: TDconvert;
+  dl: integer;
+  c: byte;
+  p: ^char;
+begin
+  lv := Length(Value);
+  SetLength(Result, lv);
+  x := 1;
+  dl := 4;
+  d.i := 0;
+  p := pointer(result);
+  while x <= lv do
+  begin
+    y := Ord(Value[x]);
+    if y in [33..127] then
+      c := Ord(Table[y - 32])
+    else
+      c := 64;
+    Inc(x);
+    if c > 63 then
+      continue;
+    d.i := (d.i shl 6) or c;
+    dec(dl);
+    if dl <> 0 then
+      continue;
+    p^ := d.a2;
+    inc(p);
+    p^ := d.a1;
+    inc(p);
+    p^ := d.a0;
+    inc(p);
+    d.i := 0;
+    dl := 4;
+  end;
+  case dl of
+    1:
+      begin
+        d.i := d.i shr 2;
+        p^ := d.a1;
+        inc(p);
+        p^ := d.a0;
+        inc(p);
+      end;
+    2:
+      begin
+        d.i := d.i shr 4;
+        p^ := d.a0;
+        inc(p);
+      end;
+  end;
+  l := integer(p) - integer(pointer(result));
   SetLength(Result, l);
 end;
 
@@ -516,6 +585,7 @@ begin
   s := Copy(Value, 2, x);
   if s = '' then
     Exit;
+  s := s + StringOfChar(' ', x - length(s));
   Result := Decode4to3(s, uut);
 end;
 
@@ -554,6 +624,7 @@ begin
   s := Copy(Value, 2, x);
   if s = '' then
     Exit;
+  s := s + StringOfChar(' ', x - length(s));
   Result := Decode4to3(s, TableXX);
 end;
 
@@ -772,7 +843,7 @@ begin
       Dec(Len, T);
       Index := T;
     end;
-    while Len >= 64 do
+    while Len > 64 do
     begin
       Move(Data[Index + 1], Bufchar, 64);
       MD5Transform(State, Buflong);
@@ -799,14 +870,15 @@ begin
     BufChar[P] := $80;
     Inc(P);
     Cnt := 64 - 1 - Cnt;
-    if Cnt < 8 then
-    begin
-      FillChar(BufChar[P], Cnt, #0);
-      MD5Transform(State, BufLong);
-      FillChar(BufChar, 56, #0);
-    end
-    else
-      FillChar(BufChar[P], Cnt - 8, #0);
+    if Cnt > 0 then
+      if Cnt < 8 then
+      begin
+        FillChar(BufChar[P], Cnt, #0);
+        MD5Transform(State, BufLong);
+        FillChar(BufChar, 56, #0);
+      end
+      else
+        FillChar(BufChar[P], Cnt - 8, #0);
     BufLong[14] := Count[0];
     BufLong[15] := Count[1];
     MD5Transform(State, BufLong);

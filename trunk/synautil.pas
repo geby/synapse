@@ -1,5 +1,5 @@
 {==============================================================================|
-| Project : Delphree - Synapse                                   | 003.005.001 |
+| Project : Ararat Synapse                                       | 004.000.002 |
 |==============================================================================|
 | Content: support procedures and functions                                    |
 |==============================================================================|
@@ -44,10 +44,14 @@
 |          (Found at URL: http://www.ararat.cz/synapse/)                       |
 |==============================================================================}
 
+{$IFDEF FPC}
+  {$MODE DELPHI}
+{$ENDIF}
 {$Q-}
 {$R-}
+{$H+}
 
-unit SynaUtil;
+unit synautil;
 
 interface
 
@@ -78,11 +82,14 @@ function DecodeInt(const Value: string; Index: Integer): Word;
 function IsIP(const Value: string): Boolean;
 function IsIP6(const Value: string): Boolean;
 function IPToID(Host: string): string;
+function DumpStr(const Buffer: string): string;
+function DumpExStr(const Buffer: string): string;
 procedure Dump(const Buffer, DumpFile: string);
 procedure DumpEx(const Buffer, DumpFile: string);
 function SeparateLeft(const Value, Delimiter: string): string;
 function SeparateRight(const Value, Delimiter: string): string;
 function GetParameter(const Value, Parameter: string): string;
+procedure ParseParametersEx(Value, Delimiter: string; const Parameters: TStrings);
 procedure ParseParameters(Value: string; const Parameters: TStrings);
 function IndexByBegin(Value: string; const List: TStrings): integer;
 function GetEmailAddr(const Value: string): string;
@@ -96,11 +103,15 @@ function ReplaceString(Value, Search, Replace: string): string;
 function RPosEx(const Sub, Value: string; From: integer): Integer;
 function RPos(const Sub, Value: String): Integer;
 function Fetch(var Value: string; const Delimiter: string): string;
+function FetchEx(var Value: string; const Delimiter, Quotation: string): string;
 function IsBinaryString(const Value: string): Boolean;
 function PosCRLF(const Value: string; var Terminator: string): integer;
 Procedure StringsTrim(const value: TStrings);
 function PosFrom(const SubStr, Value: String; From: integer): integer;
 function IncPoint(const p: pointer; Value: integer): pointer;
+function GetBetween(const PairBegin, PairEnd, Value: string): string;
+function CountOfChar(const Value: string; Chr: char): integer;
+function UnquoteStr(const Value: string; Quote: Char): string;
 
 implementation
 
@@ -121,8 +132,13 @@ var
   t: TTime_T;
   UT: TUnixTime;
 begin
+{$IFNDEF FPC}
   __time(@T);
   localtime_r(@T, UT);
+{$ELSE}
+  __time(T);
+  localtime_r(T, UT);
+{$ENDIF}
   Result := ut.__tm_gmtoff div 60;
 {$ELSE}
 var
@@ -430,6 +446,9 @@ begin
     day := 1;
   Result := Result + Encodedate(year, month, day);
   zone := zone - TimeZoneBias;
+  x := zone div 1440;
+  Result := Result - x;
+  zone := zone mod 1440;
   t := EncodeTime(Abs(zone) div 60, Abs(zone) mod 60, 0, 0);
   if zone < 0 then
     t := 0 - t;
@@ -440,17 +459,36 @@ end;
 
 function GetUTTime: TDateTime;
 {$IFNDEF LINUX}
+{$IFNDEF FPC}
 var
   st: TSystemTime;
 begin
- GetSystemTime(st);
- result:=SystemTimeToDateTime(st);
+  GetSystemTime(st);
+  result := SystemTimeToDateTime(st);
+{$ELSE}
+var
+  st: SysUtils.TSystemTime;
+  stw: Windows.TSystemTime;
+begin
+  GetSystemTime(stw);
+  st.Year := stw.wYear;
+  st.Month := stw.wMonth;
+  st.Day := stw.wDay;
+  st.Hour := stw.wHour;
+  st.Minute := stw.wMinute;
+  st.Second := stw.wSecond;
+  st.Millisecond := stw.wMilliseconds;
+  result := SystemTimeToDateTime(st);
+{$ENDIF}
 {$ELSE}
 var
   TV: TTimeVal;
+  TZ: Ttimezone;
 begin
-  gettimeofday(TV, nil);
-  Result:=UnixDateDelta + (TV.tv_sec + TV.tv_usec / 1000000) / 86400;
+  TZ.tz_minuteswest := 0;
+  TZ.tz_dsttime := 0;
+  gettimeofday(TV, TZ);
+  Result := UnixDateDelta + (TV.tv_sec + TV.tv_usec / 1000000) / 86400;
 {$ENDIF}
 end;
 
@@ -458,11 +496,27 @@ end;
 
 function SetUTTime(Newdt: TDateTime): Boolean;
 {$IFNDEF LINUX}
+{$IFNDEF FPC}
 var
   st: TSystemTime;
 begin
- DateTimeToSystemTime(newdt,st);
- Result:=SetSystemTime(st);
+  DateTimeToSystemTime(newdt,st);
+  Result := SetSystemTime(st);
+{$ELSE}
+var
+  st: SysUtils.TSystemTime;
+  stw: Windows.TSystemTime;
+begin
+  DateTimeToSystemTime(newdt,st);
+  stw.wYear := st.Year;
+  stw.wMonth := st.Month;
+  stw.wDay := st.Day;
+  stw.wHour := st.Hour;
+  stw.wMinute := st.Minute;
+  stw.wSecond := st.Second;
+  stw.wMilliseconds := st.Millisecond;
+  Result := SetSystemTime(stw);
+{$ENDIF}
 {$ELSE}
 var
   TV: TTimeVal;
@@ -470,6 +524,8 @@ var
   TZ: Ttimezone;
 begin
   Result := false;
+  TZ.tz_minuteswest := 0;
+  TZ.tz_dsttime := 0;
   gettimeofday(TV, TZ);
   d := (newdt - UnixDateDelta) * 86400;
   TV.tv_sec := trunc(d);
@@ -642,21 +698,45 @@ end;
 
 {==============================================================================}
 
-procedure Dump(const Buffer, DumpFile: string);
+function DumpStr(const Buffer: string): string;
 var
   n: Integer;
-  s: string;
+begin
+  Result := '';
+  for n := 1 to Length(Buffer) do
+    Result := Result + ' +#$' + IntToHex(Ord(Buffer[n]), 2);
+end;
+
+{==============================================================================}
+
+function DumpExStr(const Buffer: string): string;
+var
+  n: Integer;
+  x: Byte;
+begin
+  Result := '';
+  for n := 1 to Length(Buffer) do
+  begin
+    x := Ord(Buffer[n]);
+    if x in [65..90, 97..122] then
+      Result := Result + ' +''' + char(x) + ''''
+    else
+      Result := Result + ' +#$' + IntToHex(Ord(Buffer[n]), 2);
+  end;
+end;
+
+{==============================================================================}
+
+procedure Dump(const Buffer, DumpFile: string);
+var
   f: Text;
 begin
-  s := '';
-  for n := 1 to Length(Buffer) do
-    s := s + ' +#$' + IntToHex(Ord(Buffer[n]), 2);
   AssignFile(f, DumpFile);
   if FileExists(DumpFile) then
     DeleteFile(PChar(DumpFile));
   Rewrite(f);
   try
-    Writeln(f, s);
+    Writeln(f, DumpStr(Buffer));
   finally
     CloseFile(f);
   end;
@@ -666,26 +746,14 @@ end;
 
 procedure DumpEx(const Buffer, DumpFile: string);
 var
-  n: Integer;
-  x: Byte;
-  s: string;
   f: Text;
 begin
-  s := '';
-  for n := 1 to Length(Buffer) do
-  begin
-    x := Ord(Buffer[n]);
-    if x in [65..90, 97..122] then
-      s := s + ' +''' + char(x) + ''''
-    else
-      s := s + ' +#$' + IntToHex(Ord(Buffer[n]), 2);
-  end;
   AssignFile(f, DumpFile);
   if FileExists(DumpFile) then
     DeleteFile(PChar(DumpFile));
   Rewrite(f);
   try
-    Writeln(f, s);
+    Writeln(f, DumpExStr(Buffer));
   finally
     CloseFile(f);
   end;
@@ -720,7 +788,7 @@ end;
 
 function GetParameter(const Value, Parameter: string): string;
 var
-  x, x1: Integer;
+  x: Integer;
   s: string;
 begin
   x := Pos(UpperCase(Parameter), UpperCase(Value));
@@ -730,39 +798,35 @@ begin
     s := Copy(Value, x + Length(Parameter), Length(Value)
       - (x + Length(Parameter)) + 1);
     s := Trim(s);
-    x1 := Length(s);
     if Length(s) > 1 then
     begin
-      if s[1] = '"' then
-      begin
-        s := Copy(s, 2, Length(s) - 1);
-        x := Pos('"', s);
-        if x > 0 then
-          x1 := x - 1;
-      end
-      else
-      begin
-        x := Pos(' ', s);
-        if x > 0 then
-          x1 := x - 1;
-      end;
+      x := pos(';', s);
+      if x > 0 then
+        s := Copy(s, 1, x - 1);
+      Result := UnquoteStr(s, '"');
     end;
-    Result := Copy(s, 1, x1);
   end;
 end;
 
 {==============================================================================}
 
-procedure ParseParameters(Value: string; const Parameters: TStrings);
+procedure ParseParametersEx(Value, Delimiter: string; const Parameters: TStrings);
 var
   s: string;
 begin
   Parameters.Clear;
   while Value <> '' do
   begin
-    s := Fetch(Value, ';');
+    s := Fetch(Value, Delimiter);
     Parameters.Add(s);
   end;
+end;
+
+{==============================================================================}
+
+procedure ParseParameters(Value: string; const Parameters: TStrings);
+begin
+  ParseParametersEx(Value, ';', Parameters);
 end;
 
 {==============================================================================}
@@ -1033,6 +1097,40 @@ end;
 
 {==============================================================================}
 
+function FetchEx(var Value: string; const Delimiter, Quotation: string): string;
+var
+  n: integer;
+  b: Boolean;
+begin
+  Result := '';
+  b := False;
+  n := 1;
+  while n <= Length(Value) do
+  begin
+    if b then
+    begin
+      if Pos(Quotation, Value) = 1 then
+        b := False;
+      Result := Result + Value[1];
+      Delete(Value, 1, 1);
+    end
+    else
+    begin
+      if Pos(Delimiter, Value) = 1 then
+      begin
+        Delete(Value, 1, Length(delimiter));
+        break;
+      end;
+      b := Pos(Quotation, Value) = 1;
+      Result := Result + Value[1];
+      Delete(Value, 1, 1);
+    end;
+  end;
+  Result := Trim(Result);
+end;
+
+{==============================================================================}
+
 function IsBinaryString(const Value: string): Boolean;
 var
   n: integer;
@@ -1128,6 +1226,55 @@ end;
 function IncPoint(const p: pointer; Value: integer): pointer;
 begin
   Result := pointer(integer(p) + Value);
+end;
+
+{==============================================================================}
+
+function GetBetween(const PairBegin, PairEnd, Value: string): string;
+var
+  n: integer;
+  x: integer;
+  s: string;
+begin
+  Result := '';
+  s := SeparateRight(Value, PairBegin);
+  x := 1;
+  for n := 1 to Length(s) do
+  begin
+    if s[n] = PairBegin then
+      Inc(x);
+    if s[n] = PairEnd then
+    begin
+      Dec(x);
+      if x <= 0 then
+        Break;
+    end;
+    Result := Result + s[n];
+  end;
+end;
+
+{==============================================================================}
+
+function CountOfChar(const Value: string; Chr: char): integer;
+var
+  n: integer;
+begin
+  Result := 0;
+  for n := 1 to Length(Value) do
+    if Value[n] = chr then
+      Inc(Result);
+end;
+
+{==============================================================================}
+
+function UnquoteStr(const Value: string; Quote: Char): string;
+var
+  LText: PChar;
+begin
+  LText := PChar(Value);
+  Result := AnsiExtractQuotedStr(LText, Quote);
+  if Result = '' then
+    Result := Value;
 end;
 
 {==============================================================================}

@@ -1,5 +1,5 @@
 {==============================================================================|
-| Project : Delphree - Synapse                                   | 002.002.003 |
+| Project : Ararat Synapse                                       | 002.002.007 |
 |==============================================================================|
 | Content: SNTP client                                                         |
 |==============================================================================|
@@ -43,15 +43,19 @@
 |          (Found at URL: http://www.ararat.cz/synapse/)                       |
 |==============================================================================}
 
+{$IFDEF FPC}
+  {$MODE DELPHI}
+{$ENDIF}
 {$Q-}
+{$H+}
 
-unit SNTPsend;
+unit sntpsend;
 
 interface
 
 uses
   SysUtils,
-  synsock, blcksock, SynaUtil;
+  synsock, blcksock, synautil;
 
 const
   cNtpProtocol = 'ntp';
@@ -95,8 +99,8 @@ type
     function GetSNTP: Boolean;
     function GetNTP: Boolean;
     function GetBroadcastNTP: Boolean;
-  published
     property NTPReply: TNtp read FNTPReply;
+  published
     property NTPTime: TDateTime read FNTPTime;
     property NTPOffset: Double read FNTPOffset;
     property NTPDelay: Double read FNTPDelay;
@@ -171,12 +175,12 @@ var
   x: Integer;
 begin
   Result := False;
-  FSock.Bind(FIPInterface, cAnyPort);
+  FSock.Bind(FIPInterface, FTargetPort);
   FBuffer := FSock.RecvPacket(FTimeout);
   if FSock.LastError = 0 then
   begin
     x := Length(FBuffer);
-    if (FTargetHost = '0.0.0.0') or (FSock.GetRemoteSinIP = FTargetHost) then
+    if (FTargetHost = '0.0.0.0') or (FSock.GetRemoteSinIP = FSock.ResolveName(FTargetHost)) then
       if x >= SizeOf(NTPReply) then
       begin
         NtpPtr := Pointer(FBuffer);

@@ -1,7 +1,7 @@
 {==============================================================================|
-| Project : Ararat Synapse                                       | 001.001.006 |
+| Project : Ararat Synapse                                       | 001.000.000 |
 |==============================================================================|
-| Content: SysLog client                                                       |
+| Content: Utils for FreePascal compatibility                                  |
 |==============================================================================|
 | Copyright (c)1999-2003, Lukas Gebauer                                        |
 | All rights reserved.                                                         |
@@ -33,7 +33,7 @@
 | DAMAGE.                                                                      |
 |==============================================================================|
 | The Initial Developer of the Original Code is Lukas Gebauer (Czech Republic).|
-| Portions created by Lukas Gebauer are Copyright (c)2001-2003.                |
+| Portions created by Lukas Gebauer are Copyright (c)2003.                     |
 | All Rights Reserved.                                                         |
 |==============================================================================|
 | Contributor(s):                                                              |
@@ -42,142 +42,65 @@
 |          (Found at URL: http://www.ararat.cz/synapse/)                       |
 |==============================================================================}
 
-// RFC-3164
-
 {$IFDEF FPC}
   {$MODE DELPHI}
 {$ENDIF}
-{$Q-}
 {$H+}
 
-unit slogsend;
+unit synafpc;
 
 interface
 
+{$IFDEF LINUX}
+  {$IFDEF FPC}
 uses
-  SysUtils, Classes,
-  blcksock, synautil;
-
-const
-  cSysLogProtocol = '514';
-
-  FCL_Kernel = 0;
-  FCL_UserLevel = 1;
-  FCL_MailSystem = 2;
-  FCL_System = 3;
-  FCL_Security = 4;
-  FCL_Syslogd = 5;
-  FCL_Printer = 6;
-  FCL_News = 7;
-  FCL_UUCP = 8;
-  FCL_Clock = 9;
-  FCL_Authorization = 10;
-  FCL_FTP = 11;
-  FCL_NTP = 12;
-  FCL_LogAudit = 13;
-  FCL_LogAlert = 14;
-  FCL_Time = 15;
-  FCL_Local0 = 16;
-  FCL_Local1 = 17;
-  FCL_Local2 = 18;
-  FCL_Local3 = 19;
-  FCL_Local4 = 20;
-  FCL_Local5 = 21;
-  FCL_Local6 = 22;
-  FCL_Local7 = 23;
+  Libc,
+  dynlibs;
 
 type
-  TSyslogSeverity = (Emergency, Alert, Critical, Error, Warning, Notice, Info,
-    Debug);
+  HMODULE = Longint;
 
-  TSyslogSend = class(TSynaClient)
-  private
-    FSock: TUDPBlockSocket;
-    FFacility: Byte;
-    FSeverity: TSyslogSeverity;
-    FTag: string;
-    FMessage: string;
-  public
-    constructor Create;
-    destructor Destroy; override;
-    function DoIt: Boolean;
-  published
-    property Facility: Byte read FFacility Write FFacility;
-    property Severity: TSyslogSeverity read FSeverity Write FSeverity;
-    property Tag: string read FTag Write FTag;
-    property LogMessage: string read FMessage Write FMessage;
-  end;
+function LoadLibrary(ModuleName: PChar): HMODULE;
+function FreeLibrary(Module: HMODULE): LongBool;
+function GetProcAddress(Module: HMODULE; Proc: PChar): Pointer;
+function GetModuleFileName(Module: HMODULE; Buffer: PChar; BufLen: Integer): Integer;
+procedure Sleep(milliseconds: Cardinal);
 
-function ToSysLog(const SyslogServer: string; Facil: Byte;
-  Sever: TSyslogSeverity; const Content: string): Boolean;
+  {$ENDIF}
+{$ENDIF}
+
 
 implementation
 
-constructor TSyslogSend.Create;
-begin
-  inherited Create;
-  FSock := TUDPBlockSocket.Create;
-  FTargetPort := cSysLogProtocol;
-  FFacility := FCL_Local0;
-  FSeverity := Debug;
-  FTag := ExtractFileName(ParamStr(0));
-  FMessage := '';
-end;
-
-destructor TSyslogSend.Destroy;
-begin
-  FSock.Free;
-  inherited Destroy;
-end;
-
-function TSyslogSend.DoIt: Boolean;
-var
-  Buf: string;
-  S: string;
-  L: TStringList;
-begin
-  Result := False;
-  Buf := '<' + IntToStr((FFacility * 8) + Ord(FSeverity)) + '>';
-  Buf := Buf + CDateTime(now) + ' ';
-  L := TStringList.Create;
-  try
-    FSock.ResolveNameToIP(FSock.Localname, L);
-    if L.Count < 1 then
-      S := '0.0.0.0'
-    else
-      S := L[0];
-  finally
-    L.Free;
-  end;
-  Buf := Buf + S + ' ';
-  Buf := Buf + Tag + ': ' + FMessage;
-  if Length(Buf) <= 1024 then
-  begin
-    FSock.EnableReuse(True);
-    Fsock.Bind(FIPInterface, FTargetPort);
-    if FSock.LastError <> 0 then
-      FSock.Bind(FIPInterface, cAnyPort);
-    FSock.Connect(FTargetHost, FTargetPort);
-    FSock.SendString(Buf);
-    Result := FSock.LastError = 0;
-  end;
-end;
-
 {==============================================================================}
-
-function ToSysLog(const SyslogServer: string; Facil: Byte;
-  Sever: TSyslogSeverity; const Content: string): Boolean;
+{$IFDEF LINUX}
+  {$IFDEF FPC}
+function LoadLibrary(ModuleName: PChar): HMODULE;
 begin
-  with TSyslogSend.Create do
-    try
-      TargetHost :=SyslogServer;
-      Facility := Facil;
-      Severity := Sever;
-      LogMessage := Content;
-      Result := DoIt;
-    finally
-      Free;
-    end;
+  Result := HMODULE(dynlibs.LoadLibrary(Modulename));
 end;
+
+function FreeLibrary(Module: HMODULE): LongBool;
+begin
+  Result := dynlibs.UnloadLibrary(pointer(Module));
+end;
+
+function GetProcAddress(Module: HMODULE; Proc: PChar): Pointer;
+begin
+  Result := dynlibs.GetProcedureAddress(pointer(Module), Proc);
+end;
+
+function GetModuleFileName(Module: HMODULE; Buffer: PChar; BufLen: Integer): Integer;
+begin
+  Result := 0;
+end; 
+
+procedure Sleep(milliseconds: Cardinal);
+begin
+  usleep(milliseconds * 1000);  // usleep is in microseconds
+end;
+ 
+  {$ENDIF}
+{$ENDIF}
 
 end.

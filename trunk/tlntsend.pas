@@ -1,5 +1,5 @@
 {==============================================================================|
-| Project : Delphree - Synapse                                   | 001.001.001 |
+| Project : Ararat Synapse                                       | 001.001.003 |
 |==============================================================================|
 | Content: TELNET client                                                       |
 |==============================================================================|
@@ -44,13 +44,18 @@
 
 //RFC-854
 
-unit TlntSend;
+{$IFDEF FPC}
+  {$MODE DELPHI}
+{$ENDIF}
+{$H+}
+
+unit tlntsend;
 
 interface
 
 uses
   SysUtils, Classes,
-  blcksock, SynaUtil;
+  blcksock, synautil;
 
 const
   cTelnetProtocol = 'telnet';

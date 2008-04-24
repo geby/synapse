@@ -1,5 +1,5 @@
 {==============================================================================|
-| Project : Delphree - Synapse                                   | 002.003.002 |
+| Project : Ararat Synapse                                       | 002.003.004 |
 |==============================================================================|
 | Content: SNMP traps                                                          |
 |==============================================================================|
@@ -43,15 +43,19 @@
 |          (Found at URL: http://www.ararat.cz/synapse/)                       |
 |==============================================================================}
 
+{$IFDEF FPC}
+  {$MODE DELPHI}
+{$ENDIF}
 {$Q-}
+{$H+}
 
-unit SNMPTrap;
+unit snmptrap;
 
 interface
 
 uses
   Classes, SysUtils,
-  blckSock, SynaUtil, ASN1Util, SNMPSend;
+  blcksock, synautil, asn1util, snmpsend;
 
 const
   cSnmpTrapProtocol = '162';
