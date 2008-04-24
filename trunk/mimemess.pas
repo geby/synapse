@@ -1,5 +1,5 @@
 {==============================================================================|
-| Project : Delphree - Synapse                                   | 001.001.000 |
+| Project : Delphree - Synapse                                   | 001.002.000 |
 |==============================================================================|
 | Content: MIME message object                                                 |
 |==============================================================================|
@@ -14,7 +14,7 @@
 | The Original Code is Synapse Delphi Library.                                 |
 |==============================================================================|
 | The Initial Developer of the Original Code is Lukas Gebauer (Czech Republic).|
-| Portions created by Lukas Gebauer are Copyright (c)2000.                     |
+| Portions created by Lukas Gebauer are Copyright (c)2000,2001.                |
 | All Rights Reserved.                                                         |
 |==============================================================================|
 | Contributor(s):                                                              |
@@ -51,6 +51,7 @@ TMimeMess=class(TObject)
     procedure Clear;
     function AddPart:integer;
     procedure AddPartText(value:tstringList);
+    procedure AddPartHTML(value:tstringList);
     procedure AddPartBinary(value:string);
     procedure EncodeMessage;
     procedure FinalizeHeaders;
@@ -120,10 +121,31 @@ begin
       value.SaveToStream(decodedlines);
       primary:='text';
       secondary:='plain';
-      description:='message text';
+      description:='Message text';
+      disposition:='inline';
       CharsetCode:=IdealCoding(value.text,targetCharset,
         [ISO_8859_1, ISO_8859_2, ISO_8859_3, ISO_8859_4, ISO_8859_5,
          ISO_8859_6, ISO_8859_7, ISO_8859_8, ISO_8859_9, ISO_8859_10]);
+      EncodingCode:=ME_QUOTED_PRINTABLE;
+      EncodePart;
+    end;
+end;
+
+{==============================================================================}
+{TMimeMess.AddPartHTML}
+procedure TMimeMess.AddPartHTML(value:tstringList);
+var
+  x:integer;
+begin
+  x:=Addpart;
+  with TMimePart(PartList[x]) do
+    begin
+      value.SaveToStream(decodedlines);
+      primary:='text';
+      secondary:='html';
+      description:='HTML text';
+      disposition:='inline';
+      CharsetCode:=UTF_8;
       EncodingCode:=ME_QUOTED_PRINTABLE;
       EncodePart;
     end;
@@ -134,14 +156,17 @@ end;
 procedure TMimeMess.AddPartBinary(value:string);
 var
   x:integer;
+  s:string;
 begin
   x:=Addpart;
   with TMimePart(PartList[x]) do
     begin
       DecodedLines.LoadFromFile(Value);
-      MimeTypeFromExt(value);
-      description:='attached file';
-      filename:=extractFilename(value);
+      s:=ExtractFileName(value);
+      MimeTypeFromExt(s);
+      description:='Attached file: '+s;
+      disposition:='attachment';
+      filename:=s;
       EncodingCode:=ME_BASE64;
       EncodePart;
     end;

@@ -1,5 +1,5 @@
 {==============================================================================|
-| Project : Delphree - Synapse                                   | 002.001.000 |
+| Project : Delphree - Synapse                                   | 002.001.001 |
 |==============================================================================|
 | Content: Library base                                                        |
 |==============================================================================|
@@ -316,7 +316,7 @@ begin
               x:=winsock.recv(FSocket,pointer(st)^,l,0);
               if x=0
                 then FLastError:=WSAENOTCONN
-                else sockcheck(result);
+                else sockcheck(x);
               if Flasterror<>0
                 then break;
               lss:=system.length(ss);
