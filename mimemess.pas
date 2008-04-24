@@ -1,5 +1,5 @@
 {==============================================================================|
-| Project : Delphree - Synapse                                   | 001.007.000 |
+| Project : Delphree - Synapse                                   | 001.007.002 |
 |==============================================================================|
 | Content: MIME message object                                                 |
 |==============================================================================|
@@ -43,6 +43,7 @@ type
     FOrganization: string;
     FCustomHeaders: TStringList;
     FDate: TDateTime;
+    FXMailer: string;
   public
     constructor Create;
     destructor Destroy; override;
@@ -59,6 +60,7 @@ type
     property Organization: string read FOrganization Write FOrganization;
     property CustomHeaders: TStringList read FCustomHeaders;
     property Date: TDateTime read FDate Write FDate;
+    property XMailer: string read FXMailer Write FXMailer;
   end;
 
   TMimeMess = class(TObject)
@@ -118,28 +120,45 @@ begin
   FOrganization := '';
   FCustomHeaders.Clear;
   FDate := 0;
+  FXMailer := '';
 end;
 
 procedure TMessHeader.EncodeHeaders(const Value: TStringList);
 var
   n: Integer;
+  s: string;
 begin
   if FDate = 0 then
     FDate := Now;
   for n := FCustomHeaders.Count - 1 downto 0 do
     if FCustomHeaders[n] <> '' then
       Value.Insert(0, FCustomHeaders[n]);
-  Value.Insert(0, 'x-mailer: Synapse - Delphi & Kylix TCP/IP library by Lukas Gebauer');
+  if FXMailer = '' then
+    Value.Insert(0, 'x-mailer: Synapse - Delphi & Kylix TCP/IP library by Lukas Gebauer')
+  else
+    Value.Insert(0, 'x-mailer: ' + FXMailer);
   Value.Insert(0, 'MIME-Version: 1.0 (produced by Synapse)');
   if FOrganization <> '' then
     Value.Insert(0, 'Organization: ' + InlineCode(FOrganization));
+  s := '';
   for n := 0 to FCCList.Count - 1 do
-    Value.Insert(0, 'CC: ' + InlineEmail(FCCList[n]));
+    if s = '' then
+      s := InlineEmail(FCCList[n])
+    else
+      s := s + ' , ' + InlineEmail(FCCList[n]);
+  if s <> '' then
+    Value.Insert(0, 'CC: ' + s);
   Value.Insert(0, 'Date: ' + Rfc822DateTime(FDate));
   if FSubject <> '' then
     Value.Insert(0, 'Subject: ' + InlineCode(FSubject));
+  s := '';
   for n := 0 to FToList.Count - 1 do
-    Value.Insert(0, 'To: ' + InlineEmail(FToList[n]));
+    if s = '' then
+      s := InlineEmail(FToList[n])
+    else
+      s := s + ' , ' + InlineEmail(FToList[n]);
+  if s <> '' then
+    Value.Insert(0, 'To: ' + s);
   Value.Insert(0, 'From: ' + InlineEmail(FFrom));
 end;
 
@@ -157,6 +176,11 @@ begin
     s := NormalizeHeader(Value, x);
     if s = '' then
       Break;
+    if Pos('X-MAILER:', UpperCase(s)) = 1 then
+    begin
+      FXMailer := SeparateRight(s, ':');
+      continue;
+    end;
     if Pos('FROM:', UpperCase(s)) = 1 then
     begin
       FFrom := InlineDecode(SeparateRight(s, ':'), cp);

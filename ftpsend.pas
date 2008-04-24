@@ -1,5 +1,5 @@
 {==============================================================================|
-| Project : Delphree - Synapse                                   | 001.002.000 |
+| Project : Delphree - Synapse                                   | 001.002.002 |
 |==============================================================================|
 | Content: FTP client                                                          |
 |==============================================================================|
@@ -506,6 +506,8 @@ begin
 end;
 
 function TFTPSend.List(Directory: string; NameList: Boolean): Boolean;
+var
+  x: integer;
 begin
   Result := False;
   FDataStream.Clear;
@@ -515,9 +517,11 @@ begin
     Exit;
   FTPCommand('TYPE A');
   if NameList then
-    FTPCommand('NLST' + Directory)
+    x := FTPCommand('NLST' + Directory)
   else
-    FTPCommand('LIST' + Directory);
+    x := FTPCommand('LIST' + Directory);
+  if (x div 100) <> 1 then
+    Exit;
   Result := DataRead(FDataStream);
   FDataStream.Seek(0, soFromBeginning);
 end;
@@ -638,7 +642,7 @@ end;
 
 function TFTPSend.NoOp: Boolean;
 begin
-  Result := FTPCommand('NOOP') = 250;
+  Result := (FTPCommand('NOOP') div 100) = 2;
 end;
 
 function TFTPSend.RenameFile(const OldName, NewName: string): Boolean;

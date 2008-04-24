@@ -1,5 +1,5 @@
 {==============================================================================|
-| Project : Delphree - Synapse                                   | 001.007.000 |
+| Project : Delphree - Synapse                                   | 001.008.001 |
 |==============================================================================|
 | Content: MIME support procedures and functions                               |
 |==============================================================================|
@@ -57,6 +57,7 @@ type
     FFileName: string;
     FLines: TStringList;
     FDecodedLines: TMemoryStream;
+    FSkipLast: Boolean;
     procedure SetPrimary(Value: string);
     procedure SetEncoding(Value: string);
     procedure SetCharset(Value: string);
@@ -85,6 +86,7 @@ type
     property FileName: string read FFileName Write FFileName;
     property Lines: TStringList read FLines;
     property DecodedLines: TMemoryStream read FDecodedLines;
+    property SkipLast: Boolean read FSkipLast Write FSkipLast;
   end;
 
 const
@@ -160,6 +162,7 @@ begin
   FDecodedLines := TMemoryStream.Create;
   FTargetCharset := GetCurCP;
   FDefaultCharset := 'US-ASCII';
+  FSkipLast := True;
 end;
 
 destructor TMIMEPart.Destroy;
@@ -341,7 +344,10 @@ begin
         begin
           s := TrimRight(s);
           if s = ('--' + b + '--') then
-            Result := Value.Count - 1;
+            if FSkipLast then
+              Result := Value.Count - 1
+            else
+              Result := n + 1;
           Break;
         end;
       end;
