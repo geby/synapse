@@ -1,5 +1,5 @@
 {==============================================================================|
-| Project : Delphree - Synapse                                   | 002.001.000 |
+| Project : Delphree - Synapse                                   | 002.003.000 |
 |==============================================================================|
 | Content: support procedures and functions                                    |
 |==============================================================================|
@@ -41,10 +41,12 @@ uses
 
 function Timezone: string;
 function Rfc822DateTime(t: TDateTime): string;
+function CDateTime(t: TDateTime): string;
 function CodeInt(Value: Word): string;
 function DecodeInt(const Value: string; Index: Integer): Word;
 function IsIP(const Value: string): Boolean;
 function ReverseIP(Value: string): string;
+function IPToID(Host: string): string;
 procedure Dump(const Buffer, DumpFile: string);
 function SeparateLeft(const Value, Delimiter: string): string;
 function SeparateRight(const Value, Delimiter: string): string;
@@ -61,7 +63,43 @@ function RPos(const Sub, Value: String): Integer;
 function Fetch(var Value: string; const Delimiter: string): string;
 
 implementation
+{==============================================================================}
+var
+  SaveDayNames: array[1..7] of string;
+  SaveMonthNames: array[1..12] of string;
+const
+  MyDayNames: array[1..7] of string =
+  ('Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat');
+  MyMonthNames: array[1..12] of string =
+  ('Jan', 'Feb', 'Mar', 'Apr',
+    'May', 'Jun', 'Jul', 'Aug',
+    'Sep', 'Oct', 'Nov', 'Dec');
 
+procedure SaveNames;
+var
+  I: integer;
+begin
+  for I := Low(ShortDayNames) to High(ShortDayNames) do
+  begin
+    SaveDayNames[I] := ShortDayNames[I];
+    ShortDayNames[I] := MyDayNames[I];
+  end;
+  for I := Low(ShortMonthNames) to High(ShortMonthNames) do
+  begin
+    SaveMonthNames[I] := ShortMonthNames[I];
+    ShortMonthNames[I] := MyMonthNames[I];
+  end;
+end;
+
+procedure RestoreNames;
+var
+  I: integer;
+begin
+  for I := Low(ShortDayNames) to High(ShortDayNames) do
+    ShortDayNames[I] := SaveDayNames[I];
+  for I := Low(ShortMonthNames) to High(ShortMonthNames) do
+    ShortMonthNames[I] := SaveMonthNames[I];
+end;
 {==============================================================================}
 
 function Timezone: string;
@@ -107,39 +145,28 @@ end;
 {==============================================================================}
 
 function Rfc822DateTime(t: TDateTime): string;
-var
-  I: Integer;
-  SaveDayNames: array[1..7] of string;
-  SaveMonthNames: array[1..12] of string;
-const
-  MyDayNames: array[1..7] of string =
-  ('Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat');
-  MyMonthNames: array[1..12] of string =
-  ('Jan', 'Feb', 'Mar', 'Apr',
-    'May', 'Jun', 'Jul', 'Aug',
-    'Sep', 'Oct', 'Nov', 'Dec');
 begin
-  if ShortDayNames[1] = MyDayNames[1] then
-    Result := FormatDateTime('ddd, d mmm yyyy hh:mm:ss', t)
-  else
-  begin
-    for I := Low(ShortDayNames) to High(ShortDayNames) do
-    begin
-      SaveDayNames[I] := ShortDayNames[I];
-      ShortDayNames[I] := MyDayNames[I];
-    end;
-    for I := Low(ShortMonthNames) to High(ShortMonthNames) do
-    begin
-      SaveMonthNames[I] := ShortMonthNames[I];
-      ShortMonthNames[I] := MyMonthNames[I];
-    end;
+  SaveNames;
+  try
     Result := FormatDateTime('ddd, d mmm yyyy hh:mm:ss', t);
-    for I := Low(ShortDayNames) to High(ShortDayNames) do
-      ShortDayNames[I] := SaveDayNames[I];
-    for I := Low(ShortMonthNames) to High(ShortMonthNames) do
-      ShortMonthNames[I] := SaveMonthNames[I];
+    Result := Result + ' ' + Timezone;
+  finally
+    RestoreNames;
   end;
-  Result := Result + ' ' + Timezone;
+end;
+
+{==============================================================================}
+
+function CDateTime(t: TDateTime): string;
+begin
+  SaveNames;
+  try
+    Result := FormatDateTime('mmm dd hh:mm:ss', t);
+    if Result[5] = '0' then
+      Result[5] := ' ';
+  finally
+    RestoreNames;
+  end;
 end;
 
 {==============================================================================}
@@ -159,7 +186,7 @@ begin
     x := Ord(Value[Index])
   else
     x := 0;
-  if Length(Value) > (Index + 1) then
+  if Length(Value) >= (Index + 1) then
     y := Ord(Value[Index + 1])
   else
     y := 0;
@@ -204,6 +231,27 @@ begin
   if Length(Result) > 0 then
     if Result[1] = '.' then
       Delete(Result, 1, 1);
+end;
+
+{==============================================================================}
+//Hernan Sanchez
+function IPToID(Host: string): string;
+var
+  s, t: string;
+  i, x: Integer;
+begin
+  Result := '';
+  for x := 1 to 3 do
+  begin
+    t := '';
+    s := StrScan(PChar(Host), '.');
+    t := Copy(Host, 1, (Length(Host) - Length(s)));
+    Delete(Host, 1, (Length(Host) - Length(s) + 1));
+    i := StrToIntDef(t, 0);
+    Result := Result + Chr(i);
+  end;
+  i := StrToIntDef(Host, 0);
+  Result := Result + Chr(i);
 end;
 
 {==============================================================================}

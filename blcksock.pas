@@ -1,5 +1,5 @@
 {==============================================================================|
-| Project : Delphree - Synapse                                   | 003.003.000 |
+| Project : Delphree - Synapse                                   | 004.000.000 |
 |==============================================================================|
 | Content: Library base                                                        |
 |==============================================================================|
@@ -36,7 +36,7 @@ uses
 {$ELSE}
   Windows, WinSock,
 {$ENDIF}
-  synsock;
+  synsock, SynaUtil;
 
 const
   cLocalhost = 'localhost';
@@ -94,7 +94,7 @@ type
     destructor Destroy; override;
     procedure CloseSocket; virtual;
     procedure Bind(IP, Port: string);
-    procedure Connect(IP, Port: string);
+    procedure Connect(IP, Port: string); virtual;
     function SendBuffer(Buffer: Pointer; Length: Integer): Integer; virtual;
     procedure SendByte(Data: Byte); virtual;
     procedure SendString(const Data: string); virtual;
@@ -103,6 +103,7 @@ type
       Timeout: Integer): Integer; virtual;
     function RecvByte(Timeout: Integer): Byte; virtual;
     function RecvString(Timeout: Integer): string; virtual;
+    function RecvPacket(Timeout: Integer): string; virtual;
     function PeekBuffer(Buffer: Pointer; Length: Integer): Integer; virtual;
     function PeekByte(Timeout: Integer): Byte; virtual;
     function WaitingData: Integer;
@@ -112,19 +113,24 @@ type
     procedure ExceptCheck;
     function LocalName: string;
     procedure ResolveNameToIP(Name: string; IPList: TStrings);
-    function GetLocalSinIP: string;
-    function GetRemoteSinIP: string;
-    function GetLocalSinPort: Integer;
-    function GetRemoteSinPort: Integer;
+    function ResolveName(Name: string): string;
+    function ResolvePort(Port: string): Word;
+    procedure SetRemoteSin(IP, Port: string);
+    function GetLocalSinIP: string; virtual;
+    function GetRemoteSinIP: string; virtual;
+    function GetLocalSinPort: Integer; virtual;
+    function GetRemoteSinPort: Integer; virtual;
     function CanRead(Timeout: Integer): Boolean;
     function CanWrite(Timeout: Integer): Boolean;
-    function SendBufferTo(Buffer: Pointer; Length: Integer): Integer;
-    function RecvBufferFrom(Buffer: Pointer; Length: Integer): Integer;
+    function SendBufferTo(Buffer: Pointer; Length: Integer): Integer; virtual;
+    function RecvBufferFrom(Buffer: Pointer; Length: Integer): Integer; virtual;
     function GroupCanRead(const SocketList: TList; Timeout: Integer;
       const CanReadList: TList): Boolean;
 
     //See 'winsock2.txt' file in distribute package!
     function SetTimeout(Timeout: Integer): Boolean;
+    function SetSendTimeout(Timeout: Integer): Boolean;
+    function SetRecvTimeout(Timeout: Integer): Boolean;
 
     property LocalSin: TSockAddrIn read FLocalSin;
     property RemoteSin: TSockAddrIn read FRemoteSin;
@@ -141,18 +147,65 @@ type
     property OnStatus: THookSocketStatus read FOnStatus write FOnStatus;
   end;
 
-  TUDPBlockSocket = class(TBlockSocket)
+  TSocksBlockSocket = class(TBlockSocket)
+  protected
+    FSocksIP: string;
+    FSocksPort: string;
+    FSocksTimeout: integer;
+    FSocksUsername: string;
+    FSocksPassword: string;
+    FUsingSocks: Boolean;
+    FSocksResolver: Boolean;
+    FSocksLastError: integer;
+    FSocksResponseIP: string;
+    FSocksResponsePort: string;
+    FSocksLocalIP: string;
+    FSocksLocalPort: string;
+    FSocksRemoteIP: string;
+    FSocksRemotePort: string;
+    function SocksCode(IP, Port: string): string;
+    function SocksDecode(Value: string): integer;
   public
-    procedure CreateSocket; override;
-    function EnableBroadcast(Value: Boolean): Boolean;
+    constructor Create;
+    function SocksOpen: Boolean;
+    function SocksRequest(Cmd: Byte; const IP, Port: string): Boolean;
+    function SocksResponse: Boolean;
+  published
+    property SocksIP: string read FSocksIP write FSocksIP;
+    property SocksPort: string read FSocksPort write FSocksPort;
+    property SocksUsername: string read FSocksUsername write FSocksUsername;
+    property SocksPassword: string read FSocksPassword write FSocksPassword;
+    property UsingSocks: Boolean read FUsingSocks;
+    property SocksResolver: Boolean read FSocksResolver write FSocksResolver;
+    property SocksLastError: integer read FSocksLastError;
   end;
 
-  TTCPBlockSocket = class(TBlockSocket)
+  TTCPBlockSocket = class(TSocksBlockSocket)
   public
     procedure CreateSocket; override;
     procedure CloseSocket; override;
     procedure Listen;
     function Accept: TSocket;
+    procedure Connect(IP, Port: string); override;
+    function GetLocalSinIP: string; override;
+    function GetRemoteSinIP: string; override;
+    function GetLocalSinPort: Integer; override;
+    function GetRemoteSinPort: Integer; override;
+  end;
+
+  TUDPBlockSocket = class(TSocksBlockSocket)
+  protected
+    FSocksControlSock: TTCPBlockSocket;
+    function UdpAssociation: Boolean;
+  public
+    destructor Destroy; override;
+    procedure CreateSocket; override;
+    function EnableBroadcast(Value: Boolean): Boolean;
+    procedure Connect(IP, Port: string); override;
+    function SendBuffer(Buffer: Pointer; Length: Integer): Integer; override;
+    function RecvBuffer(Buffer: Pointer; Length: Integer): Integer; override;
+    function SendBufferTo(Buffer: Pointer; Length: Integer): Integer; override;
+    function RecvBufferFrom(Buffer: Pointer; Length: Integer): Integer; override;
   end;
 
   //See 'winsock2.txt' file in distribute package!
@@ -342,23 +395,19 @@ end;
 
 procedure TBlockSocket.SendByte(Data: Byte);
 begin
-  sockcheck(synsock.Send(FSocket, Data, 1, 0));
-  ExceptCheck;
-  DoStatus(HR_WriteCount, '1');
+  SendBuffer(@Data, 1);
 end;
 
 procedure TBlockSocket.SendString(const Data: string);
 begin
-  SockCheck(synsock.Send(FSocket, PChar(Data)^, Length(Data), 0));
-  ExceptCheck;
-  DoStatus(HR_WriteCount, IntToStr(Length(Data)));
+  SendBuffer(PChar(Data), Length(Data));
 end;
 
 function TBlockSocket.RecvBuffer(Buffer: Pointer; Length: Integer): Integer;
 begin
   Result := synsock.Recv(FSocket, Buffer^, Length, 0);
   if Result = 0 then
-    FLastError := WSAENOTCONN
+    FLastError := WSAECONNRESET
   else
     SockCheck(Result);
   ExceptCheck;
@@ -407,7 +456,7 @@ begin
         SetLength(st, l);
         x := synsock.Recv(FSocket, Pointer(st)^, l, 0);
         if x = 0 then
-          FLastError := WSAENOTCONN
+          FLastError := WSAECONNRESET
         else
           SockCheck(x);
         if FLastError <> 0 then
@@ -432,6 +481,38 @@ begin
   ExceptCheck;
 end;
 
+function TBlockSocket.RecvPacket(Timeout: Integer): string;
+var
+  x: integer;
+  s: string;
+begin
+  Result := '';
+  FLastError := 0;
+  x := -1;
+  if FBuffer <> '' then
+  begin
+    Result := FBuffer;
+    FBuffer := '';
+  end
+  else
+    if CanRead(Timeout) then
+    begin
+      x := WaitingData;
+      if x > 0 then
+      begin
+        SetLength(s, x);
+        x := RecvBuffer(Pointer(s), x);
+        Result := Copy(s, 1, x);
+      end;
+    end
+    else
+      FLastError := WSAETIMEDOUT;
+  ExceptCheck;
+  if x = 0 then
+    FLastError := WSAECONNRESET;
+end;
+
+
 function TBlockSocket.RecvByte(Timeout: Integer): Byte;
 var
   y: Integer;
@@ -443,7 +524,7 @@ begin
   begin
     y := synsock.Recv(FSocket, Data, 1, 0);
     if y = 0 then
-      FLastError := WSAENOTCONN
+      FLastError := WSAECONNRESET
     else
       SockCheck(y);
     Result := Data;
@@ -487,7 +568,7 @@ begin
         r := synsock.Recv(FSocket, Pointer(FBuffer)^, x, 0);
         SockCheck(r);
         if r = 0 then
-          FLastError := WSAENOTCONN;
+          FLastError := WSAECONNRESET;
         if FLastError <> 0 then
           Break;
         DoStatus(HR_ReadCount, IntToStr(r));
@@ -538,7 +619,7 @@ begin
   begin
     y := synsock.Recv(FSocket, Data, 1, MSG_PEEK);
     if y = 0 then
-      FLastError := WSAENOTCONN;
+      FLastError := WSAECONNRESET;
     SockCheck(y);
     Result := Data;
   end
@@ -640,9 +721,44 @@ begin
         Inc(i);
       end;
     end;
+    if IPList.Count = 0 then
+      IPList.Add('0.0.0.0');
   end
   else
     IPList.Add(Name);
+end;
+
+function TBlockSocket.ResolveName(Name: string): string;
+var
+  l: TStringList;
+begin
+  l := TStringList.Create;
+  try
+    ResolveNameToIP(Name, l);
+    Result := l[0];
+  finally
+    l.Free;
+  end;
+end;
+
+function TBlockSocket.ResolvePort(Port: string): Word;
+var
+  ProtoEnt: PProtoEnt;
+  ServEnt: PServEnt;
+begin
+  ProtoEnt := synsock.GetProtoByNumber(FProtocol);
+  ServEnt := nil;
+  if ProtoEnt <> nil then
+    ServEnt := synsock.GetServByName(PChar(Port), ProtoEnt^.p_name);
+  if ServEnt = nil then
+    Result := synsock.htons(StrToIntDef(Port, 0))
+  else
+    Result := ServEnt^.s_port;
+end;
+
+procedure TBlockSocket.SetRemoteSin(IP, Port: string);
+begin
+  SetSin(FRemoteSin, IP, Port);
 end;
 
 function TBlockSocket.GetLocalSinIP: string;
@@ -768,13 +884,23 @@ begin
 end;
 
 //See 'winsock2.txt' file in distribute package!
-
 function TBlockSocket.SetTimeout(Timeout: Integer): Boolean;
 begin
-  Result := synsock.SetSockOpt(FSocket, SOL_SOCKET,
-    SO_RCVTIMEO, @Timeout, SizeOf(Timeout)) <> SOCKET_ERROR;
-  Result := Result and (synsock.SetSockOpt(FSocket, SOL_SOCKET,
-    SO_SNDTIMEO, @Timeout, SizeOf(Timeout)) <> SOCKET_ERROR);
+  Result := SetSendTimeout(Timeout) and SetRecvTimeout(Timeout);
+end;
+
+//See 'winsock2.txt' file in distribute package!
+function TBlockSocket.SetSendTimeout(Timeout: Integer): Boolean;
+begin
+  Result := synsock.SetSockOpt(FSocket, SOL_SOCKET, SO_SNDTIMEO,
+    @Timeout, SizeOf(Timeout)) <> SOCKET_ERROR;
+end;
+
+//See 'winsock2.txt' file in distribute package!
+function TBlockSocket.SetRecvTimeout(Timeout: Integer): Boolean;
+begin
+  Result := synsock.SetSockOpt(FSocket, SOL_SOCKET, SO_RCVTIMEO,
+    @Timeout, SizeOf(Timeout)) <> SOCKET_ERROR;
 end;
 
 function TBlockSocket.GroupCanRead(const SocketList: TList; Timeout: Integer;
@@ -819,7 +945,6 @@ begin
   if assigned(OnStatus) then
     OnStatus(Self, Reason, Value);
 end;
-
 
 class function TBlockSocket.GetErrorDesc(ErrorCode: Integer): string;
 begin
@@ -935,6 +1060,156 @@ end;
 
 {======================================================================}
 
+constructor TSocksBlockSocket.Create;
+begin
+  inherited Create;
+  FSocksIP:= '';
+  FSocksPort:= '1080';
+  FSocksTimeout:= 300000;
+  FSocksUsername:= '';
+  FSocksPassword:= '';
+  FUsingSocks := False;
+  FSocksResolver := True;
+  FSocksLastError := 0;
+  FSocksResponseIP := '';
+  FSocksResponsePort := '';
+  FSocksLocalIP := '';
+  FSocksLocalPort := '';
+  FSocksRemoteIP := '';
+  FSocksRemotePort := '';
+end;
+
+function TSocksBlockSocket.SocksOpen: boolean;
+var
+  Buf: string;
+  n: integer;
+begin
+  Result := False;
+  FUsingSocks := False;
+  if FSocksUsername = '' then
+    Buf := #5 + #1 + #0
+  else
+    Buf := #5 + #2 + #2 +#0;
+  SendString(Buf);
+  Buf := RecvPacket(FSocksTimeout);
+  FBuffer := Copy(Buf, 3, Length(buf) - 2);
+  if Length(Buf) < 2 then
+    Exit;
+  if Buf[1] <> #5 then
+    Exit;
+  n := Ord(Buf[2]);
+  case n of
+    0: //not need authorisation
+      ;
+    2:
+      begin
+        Buf := #1 + char(Length(FSocksUsername)) + FSocksUsername
+          + char(Length(FSocksPassword)) + FSocksPassword;
+        SendString(Buf);
+        Buf := RecvPacket(FSocksTimeout);
+        FBuffer := Copy(Buf, 3, Length(buf) - 2);
+        if Length(Buf) < 2 then
+          Exit;
+        if Buf[2] <> #0 then
+          Exit;
+      end;
+  else
+    Exit;
+  end;
+  FUsingSocks := True;
+  Result := True;
+end;
+
+function TSocksBlockSocket.SocksRequest(Cmd: Byte;
+  const IP, Port: string): Boolean;
+var
+  Buf: string;
+begin
+  Result := False;
+  Buf := #5 + char(Cmd) + #0 + SocksCode(IP, Port);
+  SendString(Buf);
+  Result := FLastError = 0;
+end;
+
+function TSocksBlockSocket.SocksResponse: Boolean;
+var
+  Buf: string;
+  x: integer;
+begin
+  Result := False;
+  FSocksResponseIP := '';
+  FSocksResponsePort := '';
+  Buf := RecvPacket(FSocksTimeout);
+  if FLastError <> 0 then
+    Exit;
+  if Length(Buf) < 5 then
+    Exit;
+  if Buf[1] <> #5 then
+    Exit;
+  FSocksLastError := Ord(Buf[2]);
+  if FSocksLastError <> 0 then
+    Exit;
+  x := SocksDecode(Buf);
+  FBuffer := Copy(Buf, x, Length(buf) - x + 1);
+  Result := True;
+end;
+
+function TSocksBlockSocket.SocksCode(IP, Port: string): string;
+begin
+  if IsIP(IP) then
+    Result := #1 + IPToID(IP)
+  else
+    if FSocksResolver then
+      Result := #3 + char(Length(IP)) + IP
+    else
+      Result := #1 + IPToID(ResolveName(IP));
+  Result := Result + CodeInt(synsock.htons(ResolvePort(Port)));
+end;
+
+function TSocksBlockSocket.SocksDecode(Value: string): integer;
+var
+  Atyp: Byte;
+  y, n: integer;
+  w: Word;
+begin
+  FSocksResponsePort := '0';
+  Atyp := Ord(Value[4]);
+  Result := 5;
+  case Atyp of
+    1:
+      begin
+        if Length(Value) < 10 then
+          Exit;
+        FSocksResponseIP := Format('%d.%d.%d.%d',
+            [Ord(Value[5]), Ord(Value[6]), Ord(Value[7]), Ord(Value[8])]);
+        Result := 9;
+      end;
+    3:
+      begin
+        y := Ord(Value[5]);
+        if Length(Value) < (5 + y + 2) then
+          Exit;
+        for n := 6 to 6 + y do
+          FSocksResponseIP := FSocksResponseIP + Value[n];
+        Result := 5 + y +1;
+      end;
+  else
+    Exit;
+  end;
+  w := DecodeInt(Value, Result);
+  FSocksResponsePort := IntToStr(w);
+  Result := Result + 2;
+end;
+
+{======================================================================}
+
+destructor TUDPBlockSocket.Destroy;
+begin
+  if Assigned(FSocksControlSock) then
+    FSocksControlSock.Free;
+  inherited;
+end;
+
 procedure TUDPBlockSocket.CreateSocket;
 begin
   FSocket := synsock.Socket(PF_INET, Integer(SOCK_DGRAM), IPPROTO_UDP);
@@ -954,6 +1229,102 @@ begin
   ExceptCheck;
 end;
 
+procedure TUDPBlockSocket.Connect(IP, Port: string);
+begin
+  SetRemoteSin(IP, Port);
+  FBuffer := '';
+  DoStatus(HR_Connect, IP + ':' + Port);
+end;
+
+function TUDPBlockSocket.RecvBuffer(Buffer: Pointer; Length: Integer): Integer;
+begin
+  Result := RecvBufferFrom(Buffer, Length);
+end;
+
+function TUDPBlockSocket.SendBuffer(Buffer: Pointer; Length: Integer): Integer;
+begin
+  Result := SendBufferTo(Buffer, Length);
+end;
+
+function TUDPBlockSocket.UdpAssociation: Boolean;
+var
+  b: Boolean;
+begin
+  Result := True;
+  FUsingSocks := False;
+  if FSocksIP <> '' then
+  begin
+    Result := False;
+    if not Assigned(FSocksControlSock) then
+      FSocksControlSock := TTCPBlockSocket.Create;
+    FSocksControlSock.CloseSocket;
+    FSocksControlSock.CreateSocket;
+    FSocksControlSock.Connect(FSocksIP, FSocksPort);
+    if FSocksControlSock.LastError <> 0 then
+      Exit;
+    // if not assigned local port, assign it!
+    if GetLocalSinPort = 0 then
+      Bind(GetLocalSinIP, '0');
+    GetSins;
+    //open control TCP connection to SOCKS
+    b := FSocksControlSock.SocksOpen;
+    if b then
+      b := FSocksControlSock.SocksRequest(3, GetLocalSinIP,
+        IntToStr(GetLocalSinPort));
+    if b then
+      b := FSocksControlSock.SocksResponse;
+    if not b and (FLastError = 0) then
+      FLastError := WSANO_RECOVERY;
+    FUsingSocks :=FSocksControlSock.UsingSocks;
+    FSocksRemoteIP := FSocksControlSock.FSocksResponseIP;
+    FSocksRemotePort := FSocksControlSock.FSocksResponsePort;
+    Result := True;
+  end;
+end;
+
+function TUDPBlockSocket.SendBufferTo(Buffer: Pointer; Length: Integer): Integer;
+var
+  SIp: string;
+  SPort: integer;
+  Buf: string;
+begin
+  UdpAssociation;
+  if FUsingSocks then
+  begin
+    Sip := GetRemoteSinIp;
+    SPort := GetRemoteSinPort;
+    SetRemoteSin(FSocksRemoteIP, FSocksRemotePort);
+    SetLength(Buf,Length);
+    Move(Buffer^, PChar(Buf)^, Length);
+    Buf := #0 + #0 + #0 + SocksCode(Sip, IntToStr(SPort)) + Buf;
+    Result := inherited SendBufferTo(PChar(Buf), System.Length(buf));
+    SetRemoteSin(Sip, IntToStr(SPort));
+  end
+  else
+  begin
+    Result := inherited SendBufferTo(Buffer, Length);
+    GetSins;
+  end;
+end;
+
+function TUDPBlockSocket.RecvBufferFrom(Buffer: Pointer; Length: Integer): Integer;
+var
+  Buf: string;
+  x: integer;
+begin
+  Result := inherited RecvBufferFrom(Buffer, Length);
+  if FUsingSocks then
+  begin
+    SetLength(Buf, Result);
+    Move(Buffer^, PChar(Buf)^, Result);
+    x := SocksDecode(Buf);
+    Result := Result - x + 1;
+    Buf := Copy(Buf, x, Result);
+    Move(PChar(Buf)^, Buffer^, Result);
+    SetRemoteSin(FSocksResponseIP, FSocksResponsePort);
+  end;
+end;
+
 {======================================================================}
 
 procedure TTCPBlockSocket.CreateSocket;
@@ -970,9 +1341,36 @@ begin
 end;
 
 procedure TTCPBlockSocket.Listen;
+var
+  b: Boolean;
+  Sip,SPort: string;
 begin
-  SockCheck(synsock.Listen(FSocket, SOMAXCONN));
-  GetSins;
+  if FSocksIP = '' then
+  begin
+    SockCheck(synsock.Listen(FSocket, SOMAXCONN));
+    GetSins;
+  end
+  else
+  begin
+    Sip := GetLocalSinIP;
+    if Sip = '0.0.0.0' then
+      Sip := LocalName;
+    SPort := IntToStr(GetLocalSinPort);
+    Connect(FSocksIP, FSocksPort);
+    b := SocksOpen;
+    if b then
+      b := SocksRequest(2, Sip, SPort);
+    if b then
+      b := SocksResponse;
+    if not b and (FLastError = 0) then
+      FLastError := WSANO_RECOVERY;
+    FSocksLocalIP := FSocksResponseIP;
+    if FSocksLocalIP = '0.0.0.0' then
+      FSocksLocalIP := FSocksIP;
+    FSocksLocalPort := FSocksResponsePort;
+    FSocksRemoteIP := '';
+    FSocksRemotePort := '';
+  end;
   ExceptCheck;
   DoStatus(HR_Listen, '');
 end;
@@ -981,11 +1379,79 @@ function TTCPBlockSocket.Accept: TSocket;
 var
   Len: Integer;
 begin
-  Len := SizeOf(FRemoteSin);
-  Result := synsock.Accept(FSocket, @FRemoteSin, @Len);
-  SockCheck(Result);
+  if FUsingSocks then
+  begin
+    if not SocksResponse and (FLastError = 0) then
+      FLastError := WSANO_RECOVERY;
+    FSocksRemoteIP := FSocksResponseIP;
+    FSocksRemotePort := FSocksResponsePort;
+    Result := FSocket;
+  end
+  else
+  begin
+    Len := SizeOf(FRemoteSin);
+    Result := synsock.Accept(FSocket, @FRemoteSin, @Len);
+    SockCheck(Result);
+  end;
   ExceptCheck;
   DoStatus(HR_Accept, '');
+end;
+
+procedure TTCPBlockSocket.Connect(IP, Port: string);
+var
+  b: Boolean;
+begin
+  if FSocksIP = '' then
+    inherited Connect(IP, Port)
+  else
+  begin
+    inherited Connect(FSocksIP, FSocksPort);
+    b := SocksOpen;
+    if b then
+      b := SocksRequest(1, IP, Port);
+    if b then
+      b := SocksResponse;
+    if not b and (FLastError = 0) then
+      FLastError := WSANO_RECOVERY;
+    FSocksLocalIP := FSocksResponseIP;
+    FSocksLocalPort := FSocksResponsePort;
+    FSocksRemoteIP := IP;
+    FSocksRemotePort := Port;
+    ExceptCheck;
+    DoStatus(HR_Connect, IP + ':' + Port);
+  end;
+end;
+
+function TTCPBlockSocket.GetLocalSinIP: string;
+begin
+  if FUsingSocks then
+    Result := FSocksLocalIP
+  else
+    Result := inherited GetLocalSinIP;
+end;
+
+function TTCPBlockSocket.GetRemoteSinIP: string;
+begin
+  if FUsingSocks then
+    Result := FSocksRemoteIP
+  else
+    Result := inherited GetRemoteSinIP;
+end;
+
+function TTCPBlockSocket.GetLocalSinPort: Integer;
+begin
+  if FUsingSocks then
+    Result := StrToIntDef(FSocksLocalPort, 0)
+  else
+    Result := inherited GetLocalSinPort;
+end;
+
+function TTCPBlockSocket.GetRemoteSinPort: Integer;
+begin
+  if FUsingSocks then
+    Result := StrToIntDef(FSocksRemotePort, 0)
+  else
+    Result := inherited GetRemoteSinPort;
 end;
 
 {======================================================================}

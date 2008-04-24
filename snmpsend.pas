@@ -1,5 +1,5 @@
 {==============================================================================|
-| Project : Delphree - Synapse                                   | 002.003.003 |
+| Project : Delphree - Synapse                                   | 002.003.005 |
 |==============================================================================|
 | Content: SNMP client                                                         |
 |==============================================================================|
@@ -299,17 +299,13 @@ begin
   FReply.Clear;
   FBuffer := Query.EncodeBuf;
   FSock.Connect(FHost, cSnmpProtocol);
-  FHostIP := FSock.GetRemoteSinIP;
-  FSock.SendBuffer(PChar(FBuffer), Length(FBuffer));
-  if FSock.CanRead(FTimeout) then
+  FHostIP := '0.0.0.0';
+  FSock.SendString(FBuffer);
+  FBuffer := FSock.RecvPacket(FTimeout);
+  if FSock.LastError = 0 then
   begin
-    x := FSock.WaitingData;
-    if x > 0 then
-    begin
-      SetLength(FBuffer, x);
-      FSock.RecvBuffer(PChar(FBuffer), x);
-      Result := True;
-    end;
+    FHostIP := FSock.GetRemoteSinIP;
+    Result := True;
   end;
   if Result then
     Result := FReply.DecodeBuf(FBuffer);

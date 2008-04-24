@@ -1,5 +1,5 @@
 {==============================================================================|
-| Project : Delphree - Synapse                                   | 003.002.000 |
+| Project : Delphree - Synapse                                   | 004.000.000 |
 |==============================================================================|
 | Content: Charset conversion support                                          |
 |==============================================================================|
@@ -621,6 +621,43 @@ const
     $00B0, $00A8, $02D9, $0171, $0158, $0159, $25A0, $00A0
     );
 
+  // nothing fr replace
+  Replace_None: array[0..0] of Word =
+    (0);
+
+  //remove diakritics from Czech
+  Replace_Czech: array[0..55] of Word =
+    (
+      $00E1, $0061,
+      $010D, $0063,
+      $010F, $0064,
+      $010E, $0044,
+      $00E9, $0065,
+      $011B, $0065,
+      $00ED, $0069,
+      $00F3, $006F,
+      $0159, $0072,
+      $0161, $0073,
+      $0165, $0074,
+      $00FA, $0075,
+      $016F, $0075,
+      $00FD, $0079,
+      $017E, $007A,
+      $00C1, $0041,
+      $010C, $0043,
+      $00C9, $0045,
+      $011A, $0045,
+      $00CD, $0049,
+      $00D3, $004F,
+      $0158, $0052,
+      $0160, $0053,
+      $0164, $0053,
+      $00DA, $0054,
+      $016E, $0055,
+      $00DD, $0059,
+      $017D, $005A
+    );
+
 {==============================================================================}
 function UTF8toUCS4(const Value: string): string;
 function UCS4toUTF8(const Value: string): string;
@@ -628,6 +665,8 @@ function UTF7toUCS2(const Value: string): string;
 function UCS2toUTF7(const Value: string): string;
 function CharsetConversion(Value: string; CharFrom: TMimeChar;
   CharTo: TMimeChar): string;
+function CharsetConversionEx(Value: string; CharFrom: TMimeChar;
+  CharTo: TMimeChar; const TransformTable: array of Word): string;
 function GetCurCP: TMimeChar;
 function GetCPFromID(Value: string): TMimeChar;
 function GetIDFromCP(Value: TMimeChar): string;
@@ -654,7 +693,22 @@ var
   SetFour: set of TMimeChar = [UCS_4, UTF_8];
 
 {==============================================================================}
+function ReplaceUnicode(Value: Word; const TransformTable: array of Word): Word;
+var
+  n: integer;
+begin
+  if High(TransformTable) <> 0 then
+    for n := 0 to High(TransformTable) do
+      if not odd(n) then
+        if TransformTable[n] = Value then
+          begin
+            Value := TransformTable[n+1];
+            break;
+          end;
+  Result := Value;
+end;
 
+{==============================================================================}
 procedure CopyArray(const SourceTable: array of Word;
   var TargetTable: array of Word);
 var
@@ -665,7 +719,6 @@ begin
 end;
 
 {==============================================================================}
-
 procedure GetArray(CharSet: TMimeChar; var Result: array of Word);
 begin
   case CharSet of
@@ -723,7 +776,6 @@ begin
 end;
 
 {==============================================================================}
-
 procedure ReadMulti(const Value: string; var Index: Integer; mb: Byte;
   var b1, b2, b3, b4: Byte);
 var
@@ -752,7 +804,6 @@ begin
 end;
 
 {==============================================================================}
-
 function WriteMulti(b1, b2, b3, b4: Byte; mb: Byte): string;
 var
   b: array[0..3] of Byte;
@@ -768,7 +819,6 @@ begin
 end;
 
 {==============================================================================}
-
 function UTF8toUCS4(const Value: string): string;
 var
   n, x, ul, m: Integer;
@@ -819,7 +869,6 @@ begin
 end;
 
 {==============================================================================}
-
 function UCS4toUTF8(const Value: string): string;
 var
   s, l, k: string;
@@ -867,7 +916,6 @@ begin
 end;
 
 {==============================================================================}
-
 function UTF7toUCS2(const Value: string): string;
 var
   n: Integer;
@@ -908,7 +956,6 @@ begin
 end;
 
 {==============================================================================}
-
 function UCS2toUTF7(const Value: string): string;
 var
   s: string;
@@ -948,9 +995,15 @@ begin
 end;
 
 {==============================================================================}
-
 function CharsetConversion(Value: string; CharFrom: TMimeChar;
   CharTo: TMimeChar): string;
+begin
+  Result := CharsetConversionEx(Value, CharFrom, CharTo, Replace_None);
+end;
+
+{==============================================================================}
+function CharsetConversionEx(Value: string; CharFrom: TMimeChar;
+  CharTo: TMimeChar; const TransformTable: array of Word): string;
 var
   uni: Word;
   n, m: Integer;
@@ -986,6 +1039,7 @@ begin
       if b1 > 127 then
       begin
         uni := SourceTable[b1];
+        uni := ReplaceUnicode(uni, TransformTable);
         b1 := Lo(uni);
         b2 := Hi(uni);
       end;
@@ -1025,7 +1079,6 @@ begin
 end;
 
 {==============================================================================}
-
 {$IFDEF LINUX}
 
 function GetCurCP: TMimeChar;
@@ -1062,7 +1115,6 @@ end;
 {$ENDIF}
 
 {==============================================================================}
-
 function GetCPFromID(Value: string): TMimeChar;
 begin
   Value := UpperCase(Value);
@@ -1156,7 +1208,6 @@ begin
 end;
 
 {==============================================================================}
-
 function GetIDFromCP(Value: TMimeChar): string;
 begin
   case Value of
@@ -1222,7 +1273,6 @@ begin
 end;
 
 {==============================================================================}
-
 function NeedCharsetConversion(const Value: string): Boolean;
 var
   n: Integer;
@@ -1237,7 +1287,6 @@ begin
 end;
 
 {==============================================================================}
-
 function IdealCharsetCoding(const Value: string; CharFrom: TMimeChar;
   CharTo: TMimeSetChar): TMimeChar;
 var

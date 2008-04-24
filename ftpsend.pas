@@ -1,5 +1,5 @@
 {==============================================================================|
-| Project : Delphree - Synapse                                   | 001.000.000 |
+| Project : Delphree - Synapse                                   | 001.002.000 |
 |==============================================================================|
 | Content: FTP client                                                          |
 |==============================================================================|
@@ -44,8 +44,12 @@ const
 type
   TLogonActions = array [0..17] of byte;
 
+  TFTPStatus = procedure(Sender: TObject; Response: Boolean;
+    const Value: string) of object;
+
   TFTPSend = class(TObject)
   private
+    FOnStatus: TFTPStatus;
     FSock: TTCPBlockSocket;
     FDSock: TTCPBlockSocket;
     FTimeout: Integer;
@@ -77,6 +81,8 @@ type
     function AcceptDataSocket: Boolean;
     function DataRead(const DestStream: TStream): Boolean;
     function DataWrite(const SourceStream: TStream): Boolean;
+  protected
+    procedure DoStatus(Response: Boolean; const Value: string);
   public
     CustomLogon: TLogonActions;
     constructor Create;
@@ -125,6 +131,7 @@ type
     property CanResume: Boolean read FCanResume;
     property PassiveMode: Boolean read FPassiveMode Write FPassiveMode;
     property ForceDefaultPort: Boolean read FForceDefaultPort Write FForceDefaultPort;
+    property OnStatus: TFTPStatus read FOnStatus write FOnStatus;
   end;
 
 function FtpGetFile(const IP, Port, FileName, LocalFile,
@@ -172,6 +179,12 @@ begin
   inherited Destroy;
 end;
 
+procedure TFTPSend.DoStatus(Response: Boolean; const Value: string);
+begin
+  if assigned(OnStatus) then
+    OnStatus(Self, Response, Value);
+end;
+
 function TFTPSend.ReadResult: Integer;
 var
   s,c: string;
@@ -197,7 +210,9 @@ end;
 function TFTPSend.FTPCommand(const Value: string): integer;
 begin
   FSock.SendString(Value + CRLF);
+  DoStatus(False, Value);
   Result := ReadResult;
+  DoStatus(True, FResultString);
 end;
 
 // based on idea by Petr Esner <petr.esner@atlas.cz>
@@ -401,6 +416,7 @@ begin
     FDSock.Listen;
     FDSock.GetSins;
     FDataIP := FDSock.GetLocalSinIP;
+    FDataIP := FDSock.ResolveName(FDataIP);
     FDataPort := IntToStr(FDSock.GetLocalSinPort);
     s := StringReplace(FDataIP, '.', ',');
     s := 'PORT ' + s + ',' + IntToStr(FDSock.GetLocalSinPort div 256)
@@ -421,7 +437,8 @@ begin
     if FDSock.CanRead(FTimeout) then
     begin
       x := FDSock.Accept;
-      FDSock.CloseSocket;
+      if not FDSock.UsingSocks then
+        FDSock.CloseSocket;
       FDSock.Socket := x;
       Result := True;
     end;
@@ -430,7 +447,7 @@ end;
 
 function TFTPSend.DataRead(const DestStream: TStream): Boolean;
 var
-  x, y: integer;
+  x: integer;
   buf: string;
 begin
   Result := False;
@@ -438,18 +455,9 @@ begin
     if not AcceptDataSocket then
       Exit;
     repeat
-      if FDSock.CanRead(1000) then
-      begin
-        x := FDSock.WaitingData;
-        if x = 0 then
-          break
-        else
-        begin
-          setlength(buf, x);
-          y := FDSock.RecvBuffer(Pchar(buf),x);
-          DestStream.Write(Pointer(buf)^, y);
-        end;
-      end;
+      buf := FDSock.RecvPacket(FTimeout);
+      if FDSock.LastError = 0 then
+        DestStream.Write(Pointer(buf)^, Length(buf));
     until FDSock.LastError <> 0;
     x := ReadResult;
     if (x = 226) or (x = 250) then
@@ -702,6 +710,8 @@ begin
       Username := User;
       Password := Pass;
     end;
+    FTPHost := IP;
+    FTPPort := Port;
     if not Login then
       Exit;
     DirectFileName := LocalFile;
@@ -724,6 +734,8 @@ begin
       Username := User;
       Password := Pass;
     end;
+    FTPHost := IP;
+    FTPPort := Port;
     if not Login then
       Exit;
     DirectFileName := LocalFile;
@@ -757,6 +769,10 @@ begin
       ToFTP.Username := ToUser;
       ToFTP.Password := ToPass;
     end;
+    FromFTP.FTPHost := FromIP;
+    FromFTP.FTPPort := FromPort;
+    ToFTP.FTPHost := ToIP;
+    ToFTP.FTPPort := ToPort;
     if not FromFTP.Login then
       Exit;
     if not ToFTP.Login then

@@ -1,5 +1,5 @@
 {==============================================================================|
-| Project : Delphree - Synapse                                   | 002.002.003 |
+| Project : Delphree - Synapse                                   | 002.002.004 |
 |==============================================================================|
 | Content: SNMP traps                                                          |
 |==============================================================================|
@@ -278,27 +278,18 @@ function TTrapSNMP.Send: Integer;
 begin
   FTrap.EncodeTrap;
   FSock.Connect(SNMPHost, FTrap.TrapPort);
-  FSock.SendBuffer(PChar(FTrap.FBuffer), Length(FTrap.FBuffer));
+  FSock.SendString(FTrap.FBuffer);
   Result := 1;
 end;
 
 function TTrapSNMP.Recv: Integer;
-var
-  x: Integer;
 begin
   Result := 0;
   FSock.Bind('0.0.0.0', FTrap.TrapPort);
-  if FSock.CanRead(FTimeout) then
-  begin
-    x := FSock.WaitingData;
-    if x > 0 then
-    begin
-      SetLength(FTrap.FBuffer, x);
-      FSock.RecvBuffer(PChar(FTrap.FBuffer), x);
-      if FTrap.DecodeTrap then
-        Result := 1;
-    end;
-  end;
+  FTrap.FBuffer := FSock.RecvPacket(FTimeout);
+  if Fsock.Lasterror = 0 then
+    if FTrap.DecodeTrap then
+      Result := 1;
 end;
 
 function SendTrap(const Dest, Source, Enterprise, Community: string;

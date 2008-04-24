@@ -1,5 +1,5 @@
 {==============================================================================|
-| Project : Delphree - Synapse                                   | 001.005.000 |
+| Project : Delphree - Synapse                                   | 001.005.002 |
 |==============================================================================|
 | Content: MIME support procedures and functions                               |
 |==============================================================================|
@@ -239,7 +239,10 @@ begin
           FSecondary := '';
         case FPrimaryCode of
           MP_TEXT:
-            Charset := UpperCase(GetParameter(s, 'charset='));
+            begin
+              Charset := UpperCase(GetParameter(s, 'charset='));
+              FFileName := GetParameter(s, 'name=');
+            end;
           MP_MULTIPART:
             FBoundary := GetParameter(s, 'Boundary=');
           MP_MESSAGE:
@@ -316,7 +319,7 @@ begin
     begin
       e := False;
       for n := x2 + 1 to Value.Count - 1 do
-        if Pos('--' + FBoundary, Value[n]) = 1 then
+        if Pos('--' + b, Value[n]) = 1 then
         begin
           e := True;
           Break;
@@ -428,8 +431,6 @@ begin
             if FPrimaryCode = MP_TEXT then
               s := CharsetConversion(s, FTargetCharset, FCharsetCode);
             s := EncodeBase64(s);
-            if x <> 54 then
-              s := s + '=';
             FLines.Add(s);
           end;
         end

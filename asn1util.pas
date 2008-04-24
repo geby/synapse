@@ -1,5 +1,5 @@
 {==============================================================================|
-| Project : Delphree - Synapse                                   | 001.003.003 |
+| Project : Delphree - Synapse                                   | 001.003.004 |
 |==============================================================================|
 | Content: support for ASN.1 coding and decoding                               |
 |==============================================================================|
@@ -59,12 +59,10 @@ function ASNItem(var Start: Integer; const Buffer: string;
 function MibToId(Mib: string): string;
 function IdToMib(const Id: string): string;
 function IntMibToStr(const Value: string): string;
-function IPToID(Host: string): string;
 
 implementation
 
 {==============================================================================}
-
 function ASNEncOIDItem(Value: Integer): string;
 var
   x, xm: Integer;
@@ -85,7 +83,6 @@ begin
 end;
 
 {==============================================================================}
-
 function ASNDecOIDItem(var Start: Integer; const Buffer: string): Integer;
 var
   x: Integer;
@@ -103,7 +100,6 @@ begin
 end;
 
 {==============================================================================}
-
 function ASNEncLen(Len: Integer): string;
 var
   x, y: Integer;
@@ -126,7 +122,6 @@ begin
 end;
 
 {==============================================================================}
-
 function ASNDecLen(var Start: Integer; const Buffer: string): Integer;
 var
   x, n: Integer;
@@ -150,7 +145,6 @@ begin
 end;
 
 {==============================================================================}
-
 function ASNEncInt(Value: Integer): string;
 var
   x, y: Cardinal;
@@ -171,7 +165,6 @@ begin
 end;
 
 {==============================================================================}
-
 function ASNEncUInt(Value: Integer): string;
 var
   x, y: Integer;
@@ -192,14 +185,12 @@ begin
 end;
 
 {==============================================================================}
-
 function ASNObject(const Data: string; ASNType: Integer): string;
 begin
   Result := Char(ASNType) + ASNEncLen(Length(Data)) + Data;
 end;
 
 {==============================================================================}
-
 function ASNItem(var Start: Integer; const Buffer: string;
   var ValueType: Integer): string;
 var
@@ -298,7 +289,6 @@ begin
 end;
 
 {==============================================================================}
-
 function MibToId(Mib: string): string;
 var
   x: Integer;
@@ -335,7 +325,6 @@ begin
 end;
 
 {==============================================================================}
-
 function IdToMib(const Id: string): string;
 var
   x, y, n: Integer;
@@ -356,7 +345,6 @@ begin
 end;
 
 {==============================================================================}
-
 function IntMibToStr(const Value: string): string;
 var
   n, y: Integer;
@@ -368,25 +356,5 @@ begin
 end;
 
 {==============================================================================}
-//Hernan Sanchez
-
-function IPToID(Host: string): string;
-var
-  s, t: string;
-  i, x: Integer;
-begin
-  Result := '';
-  for x := 1 to 3 do
-  begin
-    t := '';
-    s := StrScan(PChar(Host), '.');
-    t := Copy(Host, 1, (Length(Host) - Length(s)));
-    Delete(Host, 1, (Length(Host) - Length(s) + 1));
-    i := StrToIntDef(t, 0);
-    Result := Result + Chr(i);
-  end;
-  i := StrToIntDef(Host, 0);
-  Result := Result + Chr(i);
-end;
 
 end.
