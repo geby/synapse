@@ -1,5 +1,5 @@
 {==============================================================================|
-| Project : Delphree - Synapse                                   | 002.002.000 |
+| Project : Delphree - Synapse                                   | 002.003.000 |
 |==============================================================================|
 | Content: SNMP client                                                         |
 |==============================================================================|
@@ -14,7 +14,7 @@
 | The Original Code is Synapse Delphi Library.                                 |
 |==============================================================================|
 | The Initial Developer of the Original Code is Lukas Gebauer (Czech Republic).|
-| Portions created by Lukas Gebauer are Copyright (c)2000.                     |
+| Portions created by Lukas Gebauer are Copyright (c)2000,2001.                |
 | All Rights Reserved.                                                         |
 |==============================================================================|
 | Contributor(s):                                                              |
@@ -67,7 +67,7 @@ TSNMPRec=class(TObject)
     SNMPMibList: TList;
     constructor Create;
     destructor Destroy; override;
-    procedure DecodeBuf(Buffer:string);
+    function DecodeBuf(Buffer:string):boolean;
     function EncodeBuf:string;
     procedure Clear;
     procedure MIBAdd(MIB,Value:string; ValueType:integer);
@@ -82,6 +82,7 @@ TSNMPSend=class(TObject)
   public
     Timeout:integer;
     Host:string;
+    HostIP:string;
     Query:TSNMPrec;
     Reply:TSNMPrec;
     constructor Create;
@@ -106,21 +107,32 @@ end;
 
 {TSNMPRec.Destroy}
 destructor TSNMPRec.Destroy;
+var
+  i:integer;
 begin
+  for i := 0 to SNMPMibList.count - 1 do
+    TSNMPMib(SNMPMibList[i]).Free;
   SNMPMibList.free;
   inherited destroy;
 end;
 
 {TSNMPRec.DecodeBuf}
-procedure TSNMPRec.DecodeBuf(Buffer:string);
+function TSNMPRec.DecodeBuf(Buffer:string):boolean;
 var
   Pos:integer;
   endpos:integer;
   sm,sv:string;
   svt: integer;
 begin
+  result:=false;
+  if length(buffer)<2
+    then exit;
+  if (ord(buffer[1]) and $20)=0
+    then exit;
   Pos:=2;
   Endpos:=ASNDecLen(Pos,buffer);
+  if length(buffer)<(Endpos+2)
+    then exit;
   Self.version:=StrToIntDef(ASNItem(Pos,buffer,svt),0);
   Self.community:=ASNItem(Pos,buffer,svt);
   Self.PDUType:=StrToIntDef(ASNItem(Pos,buffer,svt),0);
@@ -135,6 +147,7 @@ begin
       Sv:=ASNItem(Pos,buffer,svt);
       Self.MIBadd(sm,sv, svt);
     end;
+  result:=true;
 end;
 
 {TSNMPRec.EncodeBuf}
@@ -256,6 +269,7 @@ begin
   sock.createsocket;
   timeout:=5000;
   host:='localhost';
+  HostIP:='';
 end;
 
 {TSNMPSend.Destroy}
@@ -276,6 +290,7 @@ begin
   reply.clear;
   Buffer:=Query.Encodebuf;
   sock.connect(host,'161');
+  HostIP:=sock.GetRemoteSinIP;
   sock.SendBuffer(PChar(Buffer),Length(Buffer));
   if sock.canread(timeout)
     then begin
@@ -288,7 +303,7 @@ begin
         end;
     end;
   if Result
-    then reply.DecodeBuf(Buffer);
+    then result:=reply.DecodeBuf(Buffer);
 end;
 
 {==============================================================================}

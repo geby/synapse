@@ -1,5 +1,5 @@
 {==============================================================================|
-| Project : Delphree - Synapse                                   | 002.001.000 |
+| Project : Delphree - Synapse                                   | 002.002.000 |
 |==============================================================================|
 | Content: SNMP traps                                                          |
 |==============================================================================|
@@ -14,7 +14,7 @@
 | The Original Code is Synapse Delphi Library.                                 |
 |==============================================================================|
 | The Initial Developer of the Original Code is Lukas Gebauer (Czech Republic).|
-| Portions created by Hernan Sanchez are Copyright (c) 2000.                   |
+| Portions created by Hernan Sanchez are Copyright (c)2000,2001.               |
 | All Rights Reserved.                                                         |
 |==============================================================================|
 | Contributor(s):                                                              |
@@ -65,7 +65,7 @@ type
       procedure MIBDelete(Index: integer);
       function MIBGet(MIB: string): string;
       function EncodeTrap: integer;
-      function DecodeTrap: integer;
+      function DecodeTrap: boolean;
   end;
 
   TTrapSNMP = class(TObject)
@@ -99,7 +99,11 @@ begin
 end;
 
 destructor TTrapPDU.Destroy;
+var
+  i:integer;
 begin
+  for i := 0 to SNMPMibList.count - 1 do
+    TSNMPMib(SNMPMibList[i]).Free;
   SNMPMibList.free;
   inherited Destroy;
 end;
@@ -205,13 +209,18 @@ begin
   Result := 1;
 end;
 
-function TTrapPDU.DecodeTrap: integer;
+function TTrapPDU.DecodeTrap: boolean;
 var
   Pos, EndPos: integer;
   Sm, Sv: string;
   Svt:integer;
 begin
   clear;
+  result:=false;
+  if length(buffer)<2
+    then exit;
+  if (ord(buffer[1]) and $20)=0
+    then exit;
   Pos := 2;
   EndPos := ASNDecLen(Pos, Buffer);
   Version := StrToIntDef(ASNItem(Pos, Buffer,svt), 0);
@@ -230,7 +239,7 @@ begin
       Sv := ASNItem(Pos, Buffer,svt);
       MIBAdd(Sm, Sv, svt);
     end;
-  Result := 1;
+  Result := true;
 end;
 
 constructor TTrapSNMP.Create;
@@ -271,8 +280,8 @@ begin
         begin
           SetLength(Trap.Buffer, x);
           Sock.RecvBuffer(PChar(Trap.Buffer), x);
-          Trap.DecodeTrap;
-          Result := 1;
+          if Trap.DecodeTrap
+            then Result:=1;
         end;
     end;
 end;
