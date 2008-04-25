@@ -1,9 +1,9 @@
 {==============================================================================|
-| Project : Ararat Synapse                                       | 001.004.001 |
+| Project : Ararat Synapse                                       | 001.005.000 |
 |==============================================================================|
 | Content: LDAP client                                                         |
 |==============================================================================|
-| Copyright (c)1999-2005, Lukas Gebauer                                        |
+| Copyright (c)1999-2008, Lukas Gebauer                                        |
 | All rights reserved.                                                         |
 |                                                                              |
 | Redistribution and use in source and binary forms, with or without           |
@@ -122,6 +122,8 @@ type
     function Add: TLDAPAttribute;
     {:Delete one TLDAPAttribute object from list.}
     procedure Del(Index: integer);
+    {:Find and return attribute with requested name. Returns nil if not found.}
+    function Find(AttributeName: string): TLDAPAttribute;
     {:List of TLDAPAttribute objects.}
     property Items[Index: Integer]: TLDAPAttribute read GetAttribute; default;
   end;
@@ -410,6 +412,25 @@ begin
   if Assigned(x) then
     x.free;
   FAttributeList.Delete(Index);
+end;
+
+function TLDAPAttributeList.Find(AttributeName: string): TLDAPAttribute;
+var
+  n: integer;
+  x: TLDAPAttribute;
+begin
+  Result := nil;
+  AttributeName := lowercase(AttributeName);
+  for n := 0 to Count - 1 do
+  begin
+    x := GetAttribute(n);
+    if Assigned(x) then
+      if lowercase(x.AttributeName) = Attributename then
+      begin
+        result := x;
+        break;
+      end;
+  end;
 end;
 
 {==============================================================================}
