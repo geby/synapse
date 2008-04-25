@@ -1,9 +1,9 @@
 {==============================================================================|
-| Project : Ararat Synapse                                       | 002.007.008 |
+| Project : Ararat Synapse                                       | 002.007.009 |
 |==============================================================================|
 | Content: MIME support procedures and functions                               |
 |==============================================================================|
-| Copyright (c)1999-2007, Lukas Gebauer                                        |
+| Copyright (c)1999-2008, Lukas Gebauer                                        |
 | All rights reserved.                                                         |
 |                                                                              |
 | Redistribution and use in source and binary forms, with or without           |
@@ -33,7 +33,7 @@
 | DAMAGE.                                                                      |
 |==============================================================================|
 | The Initial Developer of the Original Code is Lukas Gebauer (Czech Republic).|
-| Portions created by Lukas Gebauer are Copyright (c)2000-2007.                |
+| Portions created by Lukas Gebauer are Copyright (c)2000-2008.                |
 | All Rights Reserved.                                                         |
 |==============================================================================|
 | Contributor(s):                                                              |
@@ -397,7 +397,9 @@ begin
   FDecodedLines := TMemoryStream.Create;
   FSubParts := TList.Create;
   FTargetCharset := GetCurCP;
-  FDefaultCharset := 'US-ASCII';
+  //was 'US-ASCII' before, but RFC-ignorant Outlook sometimes using default
+  //system charset instead.
+  FDefaultCharset := GetIDFromCP(GetCurCP);
   FMaxLineLength := 78;
   FSubLevel := 0;
   FMaxSubLevel := -1;
@@ -798,7 +800,8 @@ begin
   FDescription := '';
   Charset := FDefaultCharset;
   FFileName := '';
-  Encoding := '7BIT';
+  //was 7bit before, but this is more compatible with RFC-ignorant outlook
+  Encoding := '8BIT';
   FDisposition := '';
   FContentID := '';
   fn := '';
