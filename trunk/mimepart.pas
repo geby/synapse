@@ -1,5 +1,5 @@
 {==============================================================================|
-| Project : Ararat Synapse                                       | 002.007.007 |
+| Project : Ararat Synapse                                       | 002.007.008 |
 |==============================================================================|
 | Content: MIME support procedures and functions                               |
 |==============================================================================|
@@ -843,7 +843,7 @@ begin
       if Pos('CONTENT-ID:', su) = 1 then
         FContentID := Trim(SeparateRight(s, ':'));
     end;
-  if FFileName = '' then
+  if fn <> '' then
     FFileName := fn;
   FFileName := InlineDecode(FFileName, FTargetCharset);
   FFileName := ExtractFileName(FFileName);
