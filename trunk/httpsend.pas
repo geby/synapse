@@ -1,9 +1,9 @@
 {==============================================================================|
-| Project : Ararat Synapse                                       | 003.011.003 |
+| Project : Ararat Synapse                                       | 003.011.004 |
 |==============================================================================|
 | Content: HTTP client                                                         |
 |==============================================================================|
-| Copyright (c)1999-2007, Lukas Gebauer                                        |
+| Copyright (c)1999-2008, Lukas Gebauer                                        |
 | All rights reserved.                                                         |
 |                                                                              |
 | Redistribution and use in source and binary forms, with or without           |
@@ -539,11 +539,11 @@ begin
   if Status100Error = '' then
   begin
     repeat
-      s := FSock.RecvString(FTimeout);
-      if s <> '' then
-        Break;
-    until FSock.LastError <> 0;
-    repeat
+      repeat
+        s := FSock.RecvString(FTimeout);
+        if s <> '' then
+          Break;
+      until FSock.LastError <> 0;
       if Pos('HTTP/', UpperCase(s)) = 1 then
       begin
         FHeaders.Add(s);
