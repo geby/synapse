@@ -1,5 +1,5 @@
 {==============================================================================|
-| Project : Ararat Synapse                                       | 003.011.004 |
+| Project : Ararat Synapse                                       | 003.012.000 |
 |==============================================================================|
 | Content: HTTP client                                                         |
 |==============================================================================|
@@ -80,6 +80,7 @@ type
     FMimeType: string;
     FProtocol: string;
     FKeepAlive: Boolean;
+    FKeepAliveTimeout: integer;
     FStatus100: Boolean;
     FProxyHost: string;
     FProxyPort: string;
@@ -162,6 +163,9 @@ type
 
     {:If @true (default value), keepalives in HTTP protocol 1.1 is enabled.}
     property KeepAlive: Boolean read FKeepAlive Write FKeepAlive;
+
+    {:Define timeout for keepalives in seconds!}
+    property KeepAliveTimeout: integer read FKeepAliveTimeout Write FKeepAliveTimeout;
 
     {:if @true, then server is requested for 100status capability when uploading
      data. Default is @false (off).}
@@ -278,6 +282,7 @@ begin
   FDownloadSize := 0;
   FUploadSize := 0;
   FAddPortNumberToHost := true;
+  FKeepAliveTimeout := 300;
   Clear;
 end;
 
@@ -367,6 +372,8 @@ var
   s, su: string;
   HttpTunnel: Boolean;
   n: integer;
+  pp: string;
+  UsingProxy: boolean;
 begin
   {initial values}
   Result := False;
@@ -397,7 +404,7 @@ begin
     FSock.HTTPTunnelUser := '';
     FSock.HTTPTunnelPass := '';
   end;
-
+  UsingProxy := (FProxyHost <> '') and not(HttpTunnel);
   Sending := FDocument.Size > 0;
   {Headers for Sending data}
   status100 := FStatus100 and Sending and (FProtocol = '1.1');
@@ -431,12 +438,20 @@ begin
   if s <> '' then
     FHeaders.Insert(0, 'Cookie: ' + s);
   { setting KeepAlives }
-  if not FKeepAlive then
-    FHeaders.Insert(0, 'Connection: close');
+  pp := '';
+  if UsingProxy then
+    pp := 'Proxy-';
+  if FKeepAlive then
+  begin
+    FHeaders.Insert(0, pp + 'Connection: keep-alive');
+    FHeaders.Insert(0, 'Keep-Alive: ' + IntToStr(FKeepAliveTimeout));
+  end
+  else
+    FHeaders.Insert(0, pp + 'Connection: close');
   { set target servers/proxy, authorizations, etc... }
   if User <> '' then
     FHeaders.Insert(0, 'Authorization: Basic ' + EncodeBase64(User + ':' + Pass));
-  if (FProxyHost <> '') and (FProxyUser <> '') and not(HttpTunnel) then
+  if UsingProxy and (FProxyUser <> '') then
     FHeaders.Insert(0, 'Proxy-Authorization: Basic ' +
       EncodeBase64(FProxyUser + ':' + FProxyPass));
   if isIP6(Host) then
@@ -447,7 +462,7 @@ begin
      FHeaders.Insert(0, 'Host: ' + s + ':' + Port)
   else
      FHeaders.Insert(0, 'Host: ' + s);
-  if (FProxyHost <> '') and not(HttpTunnel)then
+  if UsingProxy then
     URI := Prot + '://' + s + ':' + Port + URI;
   if URI = '/*' then
     URI := '*';
@@ -455,7 +470,7 @@ begin
     FHeaders.Insert(0, UpperCase(Method) + ' ' + URI)
   else
     FHeaders.Insert(0, UpperCase(Method) + ' ' + URI + ' HTTP/' + FProtocol);
-  if (FProxyHost <> '') and not(HttpTunnel) then
+  if UsingProxy then
   begin
     FTargetHost := FProxyHost;
     FTargetPort := FProxyPort;
@@ -584,8 +599,18 @@ begin
         if Pos('CHUNKED', s) > 0 then
           FTransferEncoding := TE_CHUNKED;
       end;
-      if Pos('CONNECTION: CLOSE', su) = 1 then
-        ToClose := True;
+      if UsingProxy then
+      begin
+        if Pos('PROXY-CONNECTION:', su) = 1 then
+          if Pos('CLOSE', s) > 0 then
+            ToClose := True;
+      end
+      else
+      begin
+        if Pos('CONNECTION:', su) = 1 then
+          if Pos('CLOSE', s) > 0 then
+            ToClose := True;
+      end;
     until FSock.LastError <> 0;
   Result := FSock.LastError = 0;
   if not Result then
