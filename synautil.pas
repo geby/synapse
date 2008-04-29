@@ -1,9 +1,9 @@
 {==============================================================================|
-| Project : Ararat Synapse                                       | 004.011.003 |
+| Project : Ararat Synapse                                       | 004.012.000 |
 |==============================================================================|
 | Content: support procedures and functions                                    |
 |==============================================================================|
-| Copyright (c)1999-2005, Lukas Gebauer                                        |
+| Copyright (c)1999-2008, Lukas Gebauer                                        |
 | All rights reserved.                                                         |
 |                                                                              |
 | Redistribution and use in source and binary forms, with or without           |
@@ -33,7 +33,7 @@
 | DAMAGE.                                                                      |
 |==============================================================================|
 | The Initial Developer of the Original Code is Lukas Gebauer (Czech Republic).|
-| Portions created by Lukas Gebauer are Copyright (c) 1999-2005.               |
+| Portions created by Lukas Gebauer are Copyright (c) 1999-2008.               |
 | Portions created by Hernan Sanchez are Copyright (c) 2000.                   |
 | All Rights Reserved.                                                         |
 |==============================================================================|
@@ -305,6 +305,10 @@ function GetTempFile(const Dir, prefix: AnsiString): AnsiString;
 {:Return padded string. If length is greater, string is truncated. If length is
  smaller, string is padded by Pad character.}
 function PadString(const Value: AnsiString; len: integer; Pad: AnsiChar): AnsiString;
+
+{:Read header from "Value" stringlist beginning at "Index" position. If header
+ is Splitted into multiple lines, then this procedure de-split it into one line.}
+function NormalizeHeader(Value: TStrings; var Index: Integer): string;
 
 var
   {:can be used for your own months strings for @link(getmonthnumber)}
@@ -1755,6 +1759,35 @@ begin
     Result := Copy(value, 1, len)
   else
     Result := Value + StringOfChar(Pad, len - length(value));
+end;
+
+{==============================================================================}
+
+function NormalizeHeader(Value: TStrings; var Index: Integer): string;
+var
+  s, t: string;
+  n: Integer;
+begin
+  s := Value[Index];
+  Inc(Index);
+  if s <> '' then
+    while (Value.Count - 1) > Index do
+    begin
+      t := Value[Index];
+      if t = '' then
+        Break;
+      for n := 1 to Length(t) do
+        if t[n] = #9 then
+          t[n] := ' ';
+      if not(t[1] in [' ', '"', ':', '=']) then
+        Break
+      else
+      begin
+        s := s + ' ' + Trim(t);
+        Inc(Index);
+      end;
+    end;
+  Result := TrimRight(s);
 end;
 
 {==============================================================================}
