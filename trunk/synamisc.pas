@@ -1,9 +1,9 @@
 {==============================================================================|
-| Project : Ararat Synapse                                       | 001.001.004 |
+| Project : Ararat Synapse                                       | 001.002.000 |
 |==============================================================================|
 | Content: misc. procedures and functions                                      |
 |==============================================================================|
-| Copyright (c)1999-2003, Lukas Gebauer                                        |
+| Copyright (c)1999-2008, Lukas Gebauer                                        |
 | All rights reserved.                                                         |
 |                                                                              |
 | Redistribution and use in source and binary forms, with or without           |
@@ -33,7 +33,7 @@
 | DAMAGE.                                                                      |
 |==============================================================================|
 | The Initial Developer of the Original Code is Lukas Gebauer (Czech Republic).|
-| Portions created by Lukas Gebauer are Copyright (c) 2002-2003.               |
+| Portions created by Lukas Gebauer are Copyright (c) 2002-2008.               |
 | All Rights Reserved.                                                         |
 |==============================================================================|
 | Contributor(s):                                                              |
@@ -94,6 +94,9 @@ function GetDNS: string;
 {:Autodetect InternetExplorer proxy setting for given protocol. This function
 working only on windows!}
 function GetIEProxy(protocol: string): TProxySetting;
+
+{:Return all known IP addresses on local system. Addresses are divided by comma.}
+function GetLocalIPs: string;
 
 implementation
 
@@ -257,14 +260,19 @@ const
 begin
   Result := GetDNSbyIpHlp;
   if Result = '...' then
+  begin
     if Win32Platform = VER_PLATFORM_WIN32_NT then
     begin
       Result := ReadReg(NTdyn, 'NameServer');
       if result = '' then
         Result := ReadReg(NTfix, 'NameServer');
+      if result = '' then
+        Result := ReadReg(NTfix, 'DhcpNameServer');
     end
     else
       Result := ReadReg(W9xfix, 'NameServer');
+    Result := ReplaceString(trim(Result), ' ', ',');
+  end;
 end;
 {$ENDIF}
 
@@ -353,6 +361,28 @@ begin
   end;
 end;
 {$ENDIF}
+
+{==============================================================================}
+
+function GetLocalIPs: string;
+var
+  TcpSock: TTCPBlockSocket;
+  ipList: TStringList;
+begin
+  Result := '';
+  ipList := TStringList.Create;
+  try
+    TcpSock := TTCPBlockSocket.create;
+    try
+      TcpSock.ResolveNameToIP(TcpSock.LocalName, ipList);
+      Result := ipList.CommaText;
+    finally
+      TcpSock.Free;
+    end;
+  finally
+    ipList.Free;
+  end;
+end;
 
 {==============================================================================}
 
