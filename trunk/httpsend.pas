@@ -1,5 +1,5 @@
 {==============================================================================|
-| Project : Ararat Synapse                                       | 003.012.000 |
+| Project : Ararat Synapse                                       | 003.012.001 |
 |==============================================================================|
 | Content: HTTP client                                                         |
 |==============================================================================|
@@ -374,6 +374,8 @@ var
   n: integer;
   pp: string;
   UsingProxy: boolean;
+  l: TStringList;
+  x: integer;
 begin
   {initial values}
   Result := False;
@@ -579,39 +581,53 @@ begin
   { if need receive headers, receive and parse it }
   ToClose := FProtocol <> '1.1';
   if FHeaders.Count > 0 then
-    repeat
-      s := FSock.RecvString(FTimeout);
-      FHeaders.Add(s);
-      if s = '' then
-        Break;
-      su := UpperCase(s);
-      if Pos('CONTENT-LENGTH:', su) = 1 then
+  begin
+    l := TStringList.Create;
+    try
+      repeat
+        s := FSock.RecvString(FTimeout);
+        l.Add(s);
+        if s = '' then
+          Break;
+      until FSock.LastError <> 0;
+      x := 0;
+      while l.Count > x do
       begin
-        Size := StrToIntDef(Trim(SeparateRight(s, ' ')), -1);
-        if (Size <> -1) and (FTransferEncoding = TE_UNKNOWN) then
-          FTransferEncoding := TE_IDENTITY;
+        s := NormalizeHeader(l, x);
+        FHeaders.Add(s);
+        su := UpperCase(s);
+        if Pos('CONTENT-LENGTH:', su) = 1 then
+        begin
+          Size := StrToIntDef(Trim(SeparateRight(s, ' ')), -1);
+          if (Size <> -1) and (FTransferEncoding = TE_UNKNOWN) then
+            FTransferEncoding := TE_IDENTITY;
+        end;
+        if Pos('CONTENT-TYPE:', su) = 1 then
+          FMimeType := Trim(SeparateRight(s, ' '));
+        if Pos('TRANSFER-ENCODING:', su) = 1 then
+        begin
+          s := Trim(SeparateRight(su, ' '));
+          if Pos('CHUNKED', s) > 0 then
+            FTransferEncoding := TE_CHUNKED;
+        end;
+        if UsingProxy then
+        begin
+          if Pos('PROXY-CONNECTION:', su) = 1 then
+            if Pos('CLOSE', su) > 0 then
+              ToClose := True;
+        end
+        else
+        begin
+          if Pos('CONNECTION:', su) = 1 then
+            if Pos('CLOSE', su) > 0 then
+              ToClose := True;
+        end;
       end;
-      if Pos('CONTENT-TYPE:', su) = 1 then
-        FMimeType := Trim(SeparateRight(s, ' '));
-      if Pos('TRANSFER-ENCODING:', su) = 1 then
-      begin
-        s := Trim(SeparateRight(su, ' '));
-        if Pos('CHUNKED', s) > 0 then
-          FTransferEncoding := TE_CHUNKED;
-      end;
-      if UsingProxy then
-      begin
-        if Pos('PROXY-CONNECTION:', su) = 1 then
-          if Pos('CLOSE', s) > 0 then
-            ToClose := True;
-      end
-      else
-      begin
-        if Pos('CONNECTION:', su) = 1 then
-          if Pos('CLOSE', s) > 0 then
-            ToClose := True;
-      end;
-    until FSock.LastError <> 0;
+    finally
+      l.free;
+    end;
+  end;
+
   Result := FSock.LastError = 0;
   if not Result then
     Exit;

@@ -1,5 +1,5 @@
 {==============================================================================|
-| Project : Ararat Synapse                                       | 002.007.009 |
+| Project : Ararat Synapse                                       | 002.008.000 |
 |==============================================================================|
 | Content: MIME support procedures and functions                               |
 |==============================================================================|
@@ -347,41 +347,10 @@ const
     ('ZIP', 'application', 'ZIP')
     );
 
-{:Read header from "Value" stringlist beginning at "Index" position. If header
- is Splitted into multiple lines, then this procedure de-split it into one line.}
-function NormalizeHeader(Value: TStrings; var Index: Integer): string;
-
 {:Generates a unique boundary string.}
 function GenerateBoundary: string;
 
 implementation
-
-function NormalizeHeader(Value: TStrings; var Index: Integer): string;
-var
-  s, t: string;
-  n: Integer;
-begin
-  s := Value[Index];
-  Inc(Index);
-  if s <> '' then
-    while (Value.Count - 1) > Index do
-    begin
-      t := Value[Index];
-      if t = '' then
-        Break;
-      for n := 1 to Length(t) do
-        if t[n] = #9 then
-          t[n] := ' ';
-      if not(t[1] in [' ', '"', ':', '=']) then
-        Break
-      else
-      begin
-        s := s + ' ' + Trim(t);
-        Inc(Index);
-      end;
-    end;
-  Result := TrimRight(s);
-end;
 
 {==============================================================================}
 
