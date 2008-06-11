@@ -1,9 +1,9 @@
 {==============================================================================|
-| Project : Ararat Synapse                                       | 009.004.001 |
+| Project : Ararat Synapse                                       | 009.004.002 |
 |==============================================================================|
 | Content: Library base                                                        |
 |==============================================================================|
-| Copyright (c)1999-2007, Lukas Gebauer                                        |
+| Copyright (c)1999-2008, Lukas Gebauer                                        |
 | All rights reserved.                                                         |
 |                                                                              |
 | Redistribution and use in source and binary forms, with or without           |
@@ -33,7 +33,7 @@
 | DAMAGE.                                                                      |
 |==============================================================================|
 | The Initial Developer of the Original Code is Lukas Gebauer (Czech Republic).|
-| Portions created by Lukas Gebauer are Copyright (c)1999-2007.                |
+| Portions created by Lukas Gebauer are Copyright (c)1999-2008.                |
 | All Rights Reserved.                                                         |
 |==============================================================================|
 | Contributor(s):                                                              |
@@ -1987,29 +1987,25 @@ end;
 
 procedure TBlockSocket.InternalSendStream(const Stream: TStream; WithSize, Indy: boolean);
 var
-  si, l: integer;
-  x, y, yr: integer;
+  l: integer;
+  yr: integer;
   s: AnsiString;
   b: boolean;
 {$IFDEF CIL}
   buf: TMemory;
 {$ENDIF}
 begin
-  si := Stream.Size - Stream.Position;
-  if not indy then
-    l := SwapBytes(si)
-  else
-    l := si;
-  x := 0;
   b := true;
-  while x < si do
+  if WithSize then
   begin
-    y := si - x;
-    if y > FSendMaxChunk then
-      y := FSendMaxChunk;
+    l := Stream.Size - Stream.Position;;
+    if Indy then
+      l := SwapBytes(l);
+  end;
+  repeat
     {$IFDEF CIL}
-    Setlength(buf, y);
-    yr := Stream.read(buf, y);
+    Setlength(buf, FSendMaxChunk);
+    yr := Stream.read(buf, FSendMaxChunk);
     if yr > 0 then
     begin
       if WithSize and b then
@@ -2020,13 +2016,10 @@ begin
       SendBuffer(buf, yr);
       if FLastError <> 0 then
         break;
-      Inc(x, yr);
     end
-    else
-      break;
     {$ELSE}
-    Setlength(s, y);
-    yr := Stream.read(Pchar(s)^, y);
+    Setlength(s, FSendMaxChunk);
+    yr := Stream.read(Pchar(s)^, FSendMaxChunk);
     if yr > 0 then
     begin
       SetLength(s, yr);
@@ -2039,12 +2032,9 @@ begin
         SendString(s);
       if FLastError <> 0 then
         break;
-      Inc(x, yr);
     end
-    else
-      break;
     {$ENDIF}
-  end;
+  until yr <= 0;
 end;
 
 procedure TBlockSocket.SendStreamRaw(const Stream: TStream);
