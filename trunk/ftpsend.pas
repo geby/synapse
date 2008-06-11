@@ -1,9 +1,9 @@
 {==============================================================================|
-| Project : Ararat Synapse                                       | 003.005.000 |
+| Project : Ararat Synapse                                       | 003.005.001 |
 |==============================================================================|
 | Content: FTP client                                                          |
 |==============================================================================|
-| Copyright (c)1999-2007, Lukas Gebauer                                        |
+| Copyright (c)1999-2008, Lukas Gebauer                                        |
 | All rights reserved.                                                         |
 |                                                                              |
 | Redistribution and use in source and binary forms, with or without           |
@@ -33,7 +33,7 @@
 | DAMAGE.                                                                      |
 |==============================================================================|
 | The Initial Developer of the Original Code is Lukas Gebauer (Czech Republic).|
-| Portions created by Lukas Gebauer are Copyright (c) 1999-2007.               |
+| Portions created by Lukas Gebauer are Copyright (c) 1999-2008.               |
 | All Rights Reserved.                                                         |
 |==============================================================================|
 | Contributor(s):                                                              |
@@ -983,11 +983,11 @@ begin
   Result := DataRead(FDataStream);
   if (not NameList) and Result then
   begin
-    FDataStream.Seek(0, soFromBeginning);
+    FDataStream.Position := 0;
     FFTPList.Lines.LoadFromStream(FDataStream);
     FFTPList.ParseLines;
   end;
-  FDataStream.Seek(0, soFromBeginning);
+  FDataStream.Position := 0;
 end;
 
 function TFTPSend.RetrieveFile(const FileName: string; Restore: Boolean): Boolean;
@@ -1016,7 +1016,7 @@ begin
       FTPCommand('TYPE A');
     if Restore then
     begin
-      RetrStream.Seek(0, soFromEnd);
+      RetrStream.Position := RetrStream.Size;
       if (FTPCommand('REST ' + IntToStr(RetrStream.Size)) div 100) <> 3 then
         Exit;
     end
@@ -1027,7 +1027,7 @@ begin
       Exit;
     Result := DataRead(RetrStream);
     if not FDirectFile then
-      RetrStream.Seek(0, soFromBeginning);
+      RetrStream.Position := 0;
   finally
     if FDirectFile then
       RetrStream.Free;
@@ -1069,7 +1069,7 @@ begin
     if FCanResume then
       if (FTPCommand('REST ' + IntToStr(RestoreAt)) div 100) <> 3 then
         Exit;
-    SendStream.Seek(RestoreAt, soFromBeginning);
+    SendStream.Position := RestoreAt;
     if (FTPCommand(Command) div 100) <> 1 then
       Exit;
     Result := DataWrite(SendStream);
