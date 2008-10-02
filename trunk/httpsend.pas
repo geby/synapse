@@ -1,5 +1,5 @@
 {==============================================================================|
-| Project : Ararat Synapse                                       | 003.012.001 |
+| Project : Ararat Synapse                                       | 003.012.002 |
 |==============================================================================|
 | Content: HTTP client                                                         |
 |==============================================================================|
@@ -33,7 +33,7 @@
 | DAMAGE.                                                                      |
 |==============================================================================|
 | The Initial Developer of the Original Code is Lukas Gebauer (Czech Republic).|
-| Portions created by Lukas Gebauer are Copyright (c) 1999-2007.               |
+| Portions created by Lukas Gebauer are Copyright (c) 1999-2008.               |
 | All Rights Reserved.                                                         |
 |==============================================================================|
 | Contributor(s):                                                              |
@@ -679,7 +679,7 @@ begin
   begin
     FDownloadSize := Size;
     FSock.RecvStreamSize(FDocument, FTimeout, Size);
-    FDocument.Seek(0, soFromEnd);
+    FDocument.Position := FDocument.Size;
     Result := FSock.LastError = 0;
   end
   else

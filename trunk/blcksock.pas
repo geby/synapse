@@ -1,5 +1,5 @@
 {==============================================================================|
-| Project : Ararat Synapse                                       | 009.004.002 |
+| Project : Ararat Synapse                                       | 009.005.000 |
 |==============================================================================|
 | Content: Library base                                                        |
 |==============================================================================|
@@ -174,10 +174,10 @@ type
   {:Procedural type for OnStatus event. Sender is calling TBlockSocket object,
    Reason is one of set Status events and value is optional data.}
   THookSocketStatus = procedure(Sender: TObject; Reason: THookSocketReason;
-    const Value: string) of object;
+    const Value: String) of object;
 
   {:This procedural type is used for DataFilter hooks.}
-  THookDataFilter = procedure(Sender: TObject; var Value: string) of object;
+  THookDataFilter = procedure(Sender: TObject; var Value: AnsiString) of object;
 
   {:This procedural type is used for hook OnCreateSocket. By this hook you can
    insert your code after initialisation of socket. (you can set special socket
@@ -267,7 +267,7 @@ type
     FLocalSin: TVarSin;
     FRemoteSin: TVarSin;
     FTag: integer;
-    FBuffer: string;
+    FBuffer: AnsiString;
     FRaiseExcept: Boolean;
     FNonBlockMode: Boolean;
     FMaxLineLength: Integer;
@@ -440,7 +440,7 @@ type
 
     {:Similar to @link(RecvBufferEx), but readed data is stored in binary
      string, not in memory buffer.}
-    function RecvBufferStr(Length: Integer; Timeout: Integer): AnsiString; virtual;
+    function RecvBufferStr(Len: Integer; Timeout: Integer): AnsiString; virtual;
 
     {:Note: This is high-level receive function. It using internal
      @link(LineBuffer) and you can combine this function freely with other
@@ -698,7 +698,7 @@ type
     {:Buffer used by all high-level receiving functions. This buffer is used for
      optimized reading of data from socket. In normal cases you not need access
      to this buffer directly!}
-    property LineBuffer: string read FBuffer write FBuffer;
+    property LineBuffer: AnsiString read FBuffer write FBuffer;
 
     {:Size of Winsock receive buffer. If it is not supported by socket provider,
      it return as size one kilobyte.}
@@ -844,8 +844,8 @@ type
     FSocksRemotePort: string;
     FBypassFlag: Boolean;
     FSocksType: TSocksType;
-    function SocksCode(IP, Port: string): string;
-    function SocksDecode(Value: string): integer;
+    function SocksCode(IP, Port: string): Ansistring;
+    function SocksDecode(Value: Ansistring): integer;
   public
     constructor Create;
 
@@ -1154,13 +1154,13 @@ type
     FCiphers: string;
     FCertificateFile: string;
     FPrivateKeyFile: string;
-    FCertificate: string;
-    FPrivateKey: string;
-    FPFX: string;
+    FCertificate: Ansistring;
+    FPrivateKey: Ansistring;
+    FPFX: Ansistring;
     FPFXfile: string;
-    FCertCA: string;
+    FCertCA: Ansistring;
     FCertCAFile: string;
-    FTrustCertificate: string;
+    FTrustCertificate: Ansistring;
     FTrustCertificateFile: string;
     FVerifyCert: Boolean;
     FUsername: string;
@@ -1295,15 +1295,15 @@ type
 
     {:Used for loading certificate from binary string. See to plugin documentation
      if this method is supported and how!}
-    property Certificate: string read FCertificate write FCertificate;
+    property Certificate: Ansistring read FCertificate write FCertificate;
 
     {:Used for loading private key from binary string. See to plugin documentation
      if this method is supported and how!}
-    property PrivateKey: string read FPrivateKey write FPrivateKey;
+    property PrivateKey: Ansistring read FPrivateKey write FPrivateKey;
 
     {:Used for loading PFX from binary string. See to plugin documentation
      if this method is supported and how!}
-    property PFX: string read FPFX write FPFX;
+    property PFX: Ansistring read FPFX write FPFX;
 
     {:Used for loading PFX from disk file. See to plugin documentation
      if this method is supported and how!}
@@ -1315,11 +1315,11 @@ type
 
     {:Used for loading trusted certificates from binary string. See to plugin documentation
      if this method is supported and how!}
-    property TrustCertificate: string read FTrustCertificate write FTrustCertificate;
+    property TrustCertificate: Ansistring read FTrustCertificate write FTrustCertificate;
 
     {:Used for loading CA certificates from binary string. See to plugin documentation
      if this method is supported and how!}
-    property CertCA: string read FCertCA write FCertCA;
+    property CertCA: Ansistring read FCertCA write FCertCA;
 
     {:Used for loading CA certificates from disk file. See to plugin documentation
      if this method is supported and how!}
@@ -1677,7 +1677,7 @@ begin
     f := FFamily;
   FLastError := synsock.SetVarSin(sin, ip, port, FamilyToAF(f),
     GetSocketprotocol, GetSocketType, FPreferIP4);
-  DoStatus(HR_ResolvingEnd, IP + ':' + Port);
+  DoStatus(HR_ResolvingEnd, GetSinIP(sin) + ':' + IntTostr(GetSinPort(sin)));
 end;
 
 function TBlockSocket.GetSinIP(Sin: TVarSin): string;
@@ -1956,11 +1956,10 @@ procedure TBlockSocket.SendString(Data: AnsiString);
 var
   buf: TMemory;
 begin
-//  SendBuffer(PChar(Data), Length(Data));
   {$IFDEF CIL}
   buf := BytesOf(Data);
   {$ELSE}
-  buf := pchar(data);
+  buf := Pointer(data);
   {$ENDIF}
   SendBuffer(buf, Length(Data));
 end;
@@ -2019,7 +2018,7 @@ begin
     end
     {$ELSE}
     Setlength(s, FSendMaxChunk);
-    yr := Stream.read(Pchar(s)^, FSendMaxChunk);
+    yr := Stream.read(Pointer(s)^, FSendMaxChunk);
     if yr > 0 then
     begin
       SetLength(s, yr);
@@ -2124,7 +2123,7 @@ begin
   end;
 end;
 
-function TBlockSocket.RecvBufferStr(Length: Integer; Timeout: Integer): AnsiString;
+function TBlockSocket.RecvBufferStr(Len: Integer; Timeout: Integer): AnsiString;
 var
   x: integer;
 {$IFDEF CIL}
@@ -2132,11 +2131,11 @@ var
 {$ENDIF}
 begin
   Result := '';
-  if Length > 0 then
+  if Len > 0 then
   begin
     {$IFDEF CIL}
-    Setlength(Buf, Length);
-    x := RecvBufferEx(buf, Length , Timeout);
+    Setlength(Buf, Len);
+    x := RecvBufferEx(buf, Len , Timeout);
     if FLastError = 0 then
     begin
       SetLength(Buf, x);
@@ -2145,8 +2144,8 @@ begin
     else
       Result := '';
     {$ELSE}
-    Setlength(Result, Length);
-    x := RecvBufferEx(PChar(Result), Length , Timeout);
+    Setlength(Result, Len);
+    x := RecvBufferEx(Pointer(Result), Len , Timeout);
     if FLastError = 0 then
       SetLength(Result, x)
     else
@@ -2378,7 +2377,7 @@ begin
     s := RecvBufferStr(FSendMaxChunk, Timeout);
     if FLastError <> 0 then
       Exit;
-    Stream.Write(Pchar(s)^, FSendMaxChunk);
+    WriteStrToStream(Stream, s);
     {$ENDIF}
   end;
   n := Size mod FSendMaxChunk;
@@ -2394,7 +2393,7 @@ begin
     s := RecvBufferStr(n, Timeout);
     if FLastError <> 0 then
       Exit;
-    Stream.Write(Pchar(s)^, n);
+    WriteStrToStream(Stream, s);
     {$ENDIF}
   end;
 end;
@@ -2929,7 +2928,7 @@ end;
 
 procedure TBlockSocket.DoReadFilter(Buffer: TMemory; var Len: Integer);
 var
-  s: string;
+  s: AnsiString;
 begin
   if assigned(OnReadFilter) then
     if Len > 0 then
@@ -3252,7 +3251,7 @@ begin
   end;
 end;
 
-function TSocksBlockSocket.SocksCode(IP, Port: string): string;
+function TSocksBlockSocket.SocksCode(IP, Port: string): Ansistring;
 var
   ip6: TIp6Bytes;
   n: integer;
@@ -3294,7 +3293,7 @@ begin
   end;
 end;
 
-function TSocksBlockSocket.SocksDecode(Value: string): integer;
+function TSocksBlockSocket.SocksDecode(Value: Ansistring): integer;
 var
   Atyp: Byte;
   y, n: integer;
@@ -3435,7 +3434,7 @@ function TUDPBlockSocket.SendBufferTo(Buffer: TMemory; Length: Integer): Integer
 var
   SIp: string;
   SPort: integer;
-  Buf: string;
+  Buf: Ansistring;
 begin
   Result := 0;
   FUsingSocks := False;
@@ -3450,9 +3449,9 @@ begin
       SPort := GetRemoteSinPort;
       SetRemoteSin(FSocksRemoteIP, FSocksRemotePort);
       SetLength(Buf,Length);
-      Move(Buffer^, PChar(Buf)^, Length);
+      Move(Buffer^, Pointer(Buf)^, Length);
       Buf := #0 + #0 + #0 + SocksCode(Sip, IntToStr(SPort)) + Buf;
-      Result := inherited SendBufferTo(PChar(Buf), System.Length(buf));
+      Result := inherited SendBufferTo(Pointer(Buf), System.Length(buf));
       SetRemoteSin(Sip, IntToStr(SPort));
 {$ENDIF}
     end
@@ -3463,7 +3462,7 @@ end;
 
 function TUDPBlockSocket.RecvBufferFrom(Buffer: TMemory; Length: Integer): Integer;
 var
-  Buf: string;
+  Buf: Ansistring;
   x: integer;
 begin
   Result := inherited RecvBufferFrom(Buffer, Length);
@@ -3471,11 +3470,11 @@ begin
   begin
 {$IFNDEF CIL}
     SetLength(Buf, Result);
-    Move(Buffer^, PChar(Buf)^, Result);
+    Move(Buffer^, Pointer(Buf)^, Result);
     x := SocksDecode(Buf);
     Result := Result - x + 1;
     Buf := Copy(Buf, x, Result);
-    Move(PChar(Buf)^, Buffer^, Result);
+    Move(Pointer(Buf)^, Buffer^, Result);
     SetRemoteSin(FSocksResponseIP, FSocksResponsePort);
 {$ENDIF}
   end;
@@ -3496,14 +3495,14 @@ begin
       Multicast6.ipv6mr_multiaddr.u6_addr8[n] := Ip6[n];
     Multicast6.ipv6mr_interface := 0;
     SockCheck(synsock.SetSockOpt(FSocket, IPPROTO_IPV6, IPV6_JOIN_GROUP,
-      pchar(@Multicast6), SizeOf(Multicast6)));
+      PAnsiChar(@Multicast6), SizeOf(Multicast6)));
   end
   else
   begin
     Multicast.imr_multiaddr.S_addr := swapbytes(strtoip(MCastIP));
     Multicast.imr_interface.S_addr := INADDR_ANY;
     SockCheck(synsock.SetSockOpt(FSocket, IPPROTO_IP, IP_ADD_MEMBERSHIP,
-      pchar(@Multicast), SizeOf(Multicast)));
+      PAnsiChar(@Multicast), SizeOf(Multicast)));
   end;
   ExceptCheck;
 end;
@@ -3522,14 +3521,14 @@ begin
       Multicast6.ipv6mr_multiaddr.u6_addr8[n] := Ip6[n];
     Multicast6.ipv6mr_interface := 0;
     SockCheck(synsock.SetSockOpt(FSocket, IPPROTO_IPV6, IPV6_LEAVE_GROUP,
-      pchar(@Multicast6), SizeOf(Multicast6)));
+      PAnsiChar(@Multicast6), SizeOf(Multicast6)));
   end
   else
   begin
     Multicast.imr_multiaddr.S_addr := swapbytes(strtoip(MCastIP));
     Multicast.imr_interface.S_addr := INADDR_ANY;
     SockCheck(synsock.SetSockOpt(FSocket, IPPROTO_IP, IP_DROP_MEMBERSHIP,
-      pchar(@Multicast), SizeOf(Multicast)));
+      PAnsiChar(@Multicast), SizeOf(Multicast)));
   end;
   ExceptCheck;
 end;

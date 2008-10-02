@@ -1,9 +1,9 @@
 {==============================================================================|
-| Project : Ararat Synapse                                       | 001.000.002 |
+| Project : Ararat Synapse                                       | 001.001.000 |
 |==============================================================================|
 | Content: ICONV support for Win32, Linux and .NET                             |
 |==============================================================================|
-| Copyright (c)2004, Lukas Gebauer                                             |
+| Copyright (c)2004-2008, Lukas Gebauer                                        |
 | All rights reserved.                                                         |
 |                                                                              |
 | Redistribution and use in source and binary forms, with or without           |
@@ -33,7 +33,7 @@
 | DAMAGE.                                                                      |
 |==============================================================================|
 | The Initial Developer of the Original Code is Lukas Gebauer (Czech Republic).|
-| Portions created by Lukas Gebauer are Copyright (c)2004.                     |
+| Portions created by Lukas Gebauer are Copyright (c)2004-2008.                |
 | All Rights Reserved.                                                         |
 |==============================================================================|
 | Contributor(s):                                                              |
@@ -92,9 +92,9 @@ type
 var
   iconvLibHandle: TLibHandle = 0;
 
-function SynaIconvOpen(const tocode, fromcode: string): iconv_t;
-function SynaIconvOpenTranslit(const tocode, fromcode: string): iconv_t;
-function SynaIconvOpenIgnore(const tocode, fromcode: string): iconv_t;
+function SynaIconvOpen(const tocode, fromcode: Ansistring): iconv_t;
+function SynaIconvOpenTranslit(const tocode, fromcode: Ansistring): iconv_t;
+function SynaIconvOpenIgnore(const tocode, fromcode: Ansistring): iconv_t;
 function SynaIconv(cd: iconv_t; inbuf: AnsiString; var outbuf: AnsiString): integer;
 function SynaIconvClose(var cd: iconv_t): integer;
 function SynaIconvCtl(cd: iconv_t; request: integer; argument: argptr): integer;
@@ -139,7 +139,7 @@ uses SyncObjs;
 
 {$ELSE}
 type
-  Ticonv_open = function(tocode: pchar; fromcode: pchar): iconv_t; cdecl;
+  Ticonv_open = function(tocode: pAnsichar; fromcode: pAnsichar): iconv_t; cdecl;
   Ticonv = function(cd: iconv_t; var inbuf: pointer; var inbytesleft: size_t;
     var outbuf: pointer; var outbytesleft: size_t): size_t; cdecl;
   Ticonv_close = function(cd: iconv_t): integer; cdecl;
@@ -156,7 +156,7 @@ var
   IconvCS: TCriticalSection;
   Iconvloaded: boolean = false;
 
-function SynaIconvOpen (const tocode, fromcode: string): iconv_t;
+function SynaIconvOpen (const tocode, fromcode: Ansistring): iconv_t;
 begin
 {$IFDEF CIL}
   try
@@ -167,18 +167,18 @@ begin
   end;
 {$ELSE}
   if InitIconvInterface and Assigned(_iconv_open) then
-    Result := _iconv_open(PChar(tocode), PChar(fromcode))
+    Result := _iconv_open(PAnsiChar(tocode), PAnsiChar(fromcode))
   else
     Result := iconv_t(-1);
 {$ENDIF}
 end;
 
-function SynaIconvOpenTranslit (const tocode, fromcode: string): iconv_t;
+function SynaIconvOpenTranslit (const tocode, fromcode: Ansistring): iconv_t;
 begin
   Result := SynaIconvOpen(tocode + '//IGNORE//TRANSLIT', fromcode);
 end;
 
-function SynaIconvOpenIgnore (const tocode, fromcode: string): iconv_t;
+function SynaIconvOpenIgnore (const tocode, fromcode: Ansistring): iconv_t;
 begin
   Result := SynaIconvOpen(tocode + '//IGNORE', fromcode);
 end;
@@ -283,10 +283,10 @@ begin
       if (IconvLibHandle <> 0) then
       begin
 {$IFNDEF CIL}
-        _iconv_open := GetProcAddress(IconvLibHandle, Pchar('libiconv_open'));
-        _iconv := GetProcAddress(IconvLibHandle, Pchar('libiconv'));
-        _iconv_close := GetProcAddress(IconvLibHandle, Pchar('libiconv_close'));
-        _iconvctl := GetProcAddress(IconvLibHandle, Pchar('libiconvctl'));
+        _iconv_open := GetProcAddress(IconvLibHandle, PAnsiChar(AnsiString('libiconv_open')));
+        _iconv := GetProcAddress(IconvLibHandle, PAnsiChar(AnsiString('libiconv')));
+        _iconv_close := GetProcAddress(IconvLibHandle, PAnsiChar(AnsiString('libiconv_close')));
+        _iconvctl := GetProcAddress(IconvLibHandle, PAnsiChar(AnsiString('libiconvctl')));
 {$ENDIF}
         Result := True;
         Iconvloaded := True;

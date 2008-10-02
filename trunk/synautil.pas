@@ -1,5 +1,5 @@
 {==============================================================================|
-| Project : Ararat Synapse                                       | 004.012.000 |
+| Project : Ararat Synapse                                       | 004.013.000 |
 |==============================================================================|
 | Content: support procedures and functions                                    |
 |==============================================================================|
@@ -71,6 +71,11 @@ uses
   System.IO,
 {$ENDIF}
   SysUtils, Classes, SynaFpc;
+
+{$IFDEF VER100}
+type
+  int64 = integer;
+{$ENDIF}
 
 {:Return your timezone bias from UTC time in minutes.}
 function TimeZoneBias: integer;
@@ -226,7 +231,7 @@ function ParseURL(URL: string; var Prot, User, Pass, Host, Port, Path,
 
 {:Replaces all "Search" string values found within "Value" string, with the
  "Replace" string value.}
-function ReplaceString(Value, Search, Replace: string): string;
+function ReplaceString(Value, Search, Replace: AnsiString): AnsiString;
 
 {:It is like RPos, but search is from specified possition.}
 function RPosEx(const Sub, Value: string; From: integer): Integer;
@@ -1283,7 +1288,7 @@ end;
 
 {==============================================================================}
 
-function ReplaceString(Value, Search, Replace: string): string;
+function ReplaceString(Value, Search, Replace: AnsiString): AnsiString;
 var
   x, l, ls, lr: Integer;
 begin
@@ -1489,7 +1494,7 @@ end;
 {$IFNDEF CIL}
 function IncPoint(const p: pointer; Value: integer): pointer;
 begin
-  Result := PChar(p) + Value;
+  Result := PAnsiChar(p) + Value;
 end;
 {$ENDIF}
 
@@ -1664,7 +1669,7 @@ end;
 
 function SwapBytes(Value: integer): integer;
 var
-  s: string;
+  s: AnsiString;
   x, y, xl, yl: Byte;
 begin
   s := CodeLongInt(Value);
@@ -1691,7 +1696,7 @@ begin
   Result := StringOf(Buf);
 {$ELSE}
   Setlength(Result, Len);
-  x := Stream.read(Pchar(Result)^, Len);
+  x := Stream.read(PAnsiChar(Result)^, Len);
   SetLength(Result, x);
 {$ENDIF}
 end;
@@ -1708,7 +1713,7 @@ begin
   buf := BytesOf(Value);
   Stream.Write(buf,length(Value));
 {$ELSE}
-  Stream.Write(PChar(Value)^, Length(Value));
+  Stream.Write(PAnsiChar(Value)^, Length(Value));
 {$ENDIF}
 end;
 

@@ -1,9 +1,9 @@
 {==============================================================================|
-| Project : Ararat Synapse                                       | 001.000.002 |
+| Project : Ararat Synapse                                       | 001.001.000 |
 |==============================================================================|
 | Content: IP address support procedures and functions                         |
 |==============================================================================|
-| Copyright (c)2006, Lukas Gebauer                                             |
+| Copyright (c)2006-2008, Lukas Gebauer                                        |
 | All rights reserved.                                                         |
 |                                                                              |
 | Redistribution and use in source and binary forms, with or without           |
@@ -33,7 +33,7 @@
 | DAMAGE.                                                                      |
 |==============================================================================|
 | The Initial Developer of the Original Code is Lukas Gebauer (Czech Republic).|
-| Portions created by Lukas Gebauer are Copyright (c) 2006.                    |
+| Portions created by Lukas Gebauer are Copyright (c) 2006-2008.               |
 | All Rights Reserved.                                                         |
 |==============================================================================|
 | Contributor(s):                                                              |
@@ -71,7 +71,7 @@ function IsIP(const Value: string): Boolean;
 function IsIP6(const Value: string): Boolean;
 
 {:Returns a string with the "Host" ip address converted to binary form.}
-function IPToID(Host: string): string;
+function IPToID(Host: string): Ansistring;
 
 {:Convert IPv6 address from their string form to binary byte array.}
 function StrToIp6(value: string): TIp6Bytes;
@@ -180,7 +180,7 @@ begin
 end;
 
 {==============================================================================}
-function IPToID(Host: string): string;
+function IPToID(Host: string): Ansistring;
 var
   s: string;
   i, x: Integer;
