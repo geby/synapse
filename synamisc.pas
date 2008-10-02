@@ -1,5 +1,5 @@
 {==============================================================================|
-| Project : Ararat Synapse                                       | 001.002.000 |
+| Project : Ararat Synapse                                       | 001.003.000 |
 |==============================================================================|
 | Content: misc. procedures and functions                                      |
 |==============================================================================|
@@ -104,8 +104,8 @@ implementation
 procedure WakeOnLan(MAC, IP: string);
 var
   sock: TUDPBlockSocket;
-  HexMac: string;
-  data: string;
+  HexMac: Ansistring;
+  data: Ansistring;
   n: integer;
   b: Byte;
 begin
@@ -144,7 +144,7 @@ end;
 function GetDNSbyIpHlp: string;
 type
   PTIP_ADDRESS_STRING = ^TIP_ADDRESS_STRING;
-  TIP_ADDRESS_STRING = array[0..15] of char;
+  TIP_ADDRESS_STRING = array[0..15] of Ansichar;
   PTIP_ADDR_STRING = ^TIP_ADDR_STRING;
   TIP_ADDR_STRING = packed record
     Next: PTIP_ADDR_STRING;
@@ -154,12 +154,12 @@ type
   end;
   PTFixedInfo = ^TFixedInfo;
   TFixedInfo = packed record
-    HostName: array[1..128 + 4] of char;
-    DomainName: array[1..128 + 4] of char;
+    HostName: array[1..128 + 4] of Ansichar;
+    DomainName: array[1..128 + 4] of Ansichar;
     CurrentDNSServer: PTIP_ADDR_STRING;
     DNSServerList: TIP_ADDR_STRING;
     NodeType: UINT;
-    ScopeID: array[1..256 + 4] of char;
+    ScopeID: array[1..256 + 4] of Ansichar;
     EnableRouting: UINT;
     EnableProxy: UINT;
     EnableDNS: UINT;
@@ -180,7 +180,7 @@ begin
   if IpHlpModule = 0 then
     exit;
   try
-    GetNetworkParams := GetProcAddress(IpHlpModule,'GetNetworkParams');
+    GetNetworkParams := GetProcAddress(IpHlpModule,PAnsiChar(AnsiString('GetNetworkParams')));
     if @GetNetworkParams = nil then
       Exit;
     err := GetNetworkParams(Nil, @InfoSize);
@@ -225,7 +225,7 @@ begin
     DataType := REG_SZ;
     DataSize := SizeOf(Temp);
     if RegQueryValueEx(OpenKey, Vn, nil, @DataType, @Temp, @DataSize) = ERROR_SUCCESS then
-      Result := string(Temp);
+      SetString(Result, Temp, DataSize div SizeOf(Char) - 1);
     RegCloseKey(OpenKey);
    end;
 end ;
@@ -316,7 +316,7 @@ begin
   if WininetModule = 0 then
     exit;
   try
-    InternetQueryOption := GetProcAddress(WininetModule,'InternetQueryOptionA');
+    InternetQueryOption := GetProcAddress(WininetModule,PAnsiChar(AnsiString('InternetQueryOptionA')));
     if @InternetQueryOption = nil then
       Exit;
 

@@ -1,5 +1,5 @@
 {==============================================================================|
-| Project : Ararat Synapse                                       | 001.000.000 |
+| Project : Ararat Synapse                                       | 001.001.000 |
 |==============================================================================|
 | Content: Socket debug tools                                                  |
 |==============================================================================|
@@ -61,14 +61,14 @@ type
     class procedure HookMonitor(Sender: TObject; Writing: Boolean; const Buffer: TMemory; Len: Integer);
   end;
 
-procedure AppendToLog(const value: string);
+procedure AppendToLog(const value: Ansistring);
 
 var
   LogFile: string;
 
 implementation
 
-procedure AppendToLog(const value: string);
+procedure AppendToLog(const value: Ansistring);
 var
   st: TFileStream;
   s: string;
@@ -132,7 +132,7 @@ end;
 
 class procedure TSynaDebug.HookMonitor(Sender: TObject; Writing: Boolean; const Buffer: TMemory; Len: Integer);
 var
-  s, d: string;
+  s, d: Ansistring;
 begin
   setlength(s, len);
   move(Buffer^, pointer(s)^, len);

@@ -1,9 +1,9 @@
 {==============================================================================|
-| Project : Ararat Synapse                                       | 007.002.000 |
+| Project : Ararat Synapse                                       | 007.003.000 |
 |==============================================================================|
 | Content: Serial port support                                                 |
 |==============================================================================|
-| Copyright (c)2001-2007, Lukas Gebauer                                        |
+| Copyright (c)2001-2008, Lukas Gebauer                                        |
 | All rights reserved.                                                         |
 |                                                                              |
 | Redistribution and use in source and binary forms, with or without           |
@@ -33,7 +33,7 @@
 | DAMAGE.                                                                      |
 |==============================================================================|
 | The Initial Developer of the Original Code is Lukas Gebauer (Czech Republic).|
-| Portions created by Lukas Gebauer are Copyright (c)2001-2007.                |
+| Portions created by Lukas Gebauer are Copyright (c)2001-2008.                |
 | All Rights Reserved.                                                         |
 |==============================================================================|
 | Contributor(s):                                                              |
@@ -1254,7 +1254,7 @@ var
   s: string;
   l: Integer;
   CorCRLF: Boolean;
-  t: string;
+  t: ansistring;
   tl: integer;
   ti: LongWord;
 begin
