@@ -1,9 +1,9 @@
 {==============================================================================|
-| Project : Ararat Synapse                                       | 001.001.000 |
+| Project : Ararat Synapse                                       | 001.002.000 |
 |==============================================================================|
 | Content: IP address support procedures and functions                         |
 |==============================================================================|
-| Copyright (c)2006-2008, Lukas Gebauer                                        |
+| Copyright (c)2006-2009, Lukas Gebauer                                        |
 | All rights reserved.                                                         |
 |                                                                              |
 | Redistribution and use in source and binary forms, with or without           |
@@ -90,6 +90,9 @@ function ReverseIP(Value: AnsiString): AnsiString;
 
 {:Convert IPv6 address to reverse form.}
 function ReverseIP6(Value: AnsiString): AnsiString;
+
+{:Expand short form of IPv6 address to long form.}
+function ExpandIP6(Value: AnsiString): AnsiString;
 
 
 implementation
@@ -230,11 +233,35 @@ end;
 
 {==============================================================================}
 
+function ExpandIP6(Value: AnsiString): AnsiString;
+var
+ n: integer;
+ s: ansistring;
+ x: integer;
+begin
+  Result := '';
+  if value = '' then
+    exit;
+  x := countofchar(value, ':');
+  if x > 7 then
+    exit;
+  if value[1] = ':' then
+    value := '0' + value;
+  if value[length(value)] = ':' then
+    value := value + '0';
+  x := 8 - x;
+  s := '';
+  for n := 1 to x do
+    s := s + ':0';
+  s := s + ':';
+  Result := replacestring(value, '::', s);
+end;
+{==============================================================================}
+
 function StrToIp6(Value: string): TIp6Bytes;
 var
  IPv6: TIp6Words;
  Index: Integer;
- ZeroAt: Integer;
  n: integer;
  b1, b2: byte;
  s: string;
@@ -245,8 +272,9 @@ begin
   for n := 0 to 7 do
     Ipv6[n] := 0;
   Index := 0;
-  ZeroAt := -1;
-
+  Value := ExpandIP6(value);
+  if value = '' then
+    exit;
   while Value <> '' do
   begin
     if Index > 7 then
@@ -256,7 +284,6 @@ begin
       break;
     if s = '' then
     begin
-      ZeroAt := Index;
       IPv6[Index] := 0;
     end
     else
@@ -268,14 +295,6 @@ begin
     end;
     Inc(Index);
   end;
-  if ZeroAt >= 0 then
-  Begin
-    x := Index - ZeroAt - 1;
-    for n := 1 to x do
-      IPv6[7 - n + 1] := Ipv6[ZeroAt + x - 1 + n];
-    for n := ZeroAt + 1 to Index - 1 do
-      IPv6[n] := 0;
-  End;
   for n := 0 to 7 do
   begin
     b1 := ipv6[n] div 256;
