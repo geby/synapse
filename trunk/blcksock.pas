@@ -1,5 +1,5 @@
 {==============================================================================|
-| Project : Ararat Synapse                                       | 009.005.000 |
+| Project : Ararat Synapse                                       | 009.006.000 |
 |==============================================================================|
 | Content: Library base                                                        |
 |==============================================================================|
@@ -1508,6 +1508,9 @@ var
   li: TLinger;
   x: integer;
   buf: TMemory;
+{$IFNDEF WIN32}
+  timeval: TTimeval;
+{$ENDIF}
 begin
   case value.Option of
     SOT_Linger:
@@ -1552,21 +1555,37 @@ begin
       begin
         {$IFDEF CIL}
         buf := System.BitConverter.GetBytes(value.Value);
-        {$ELSE}
-        buf := @Value.Value;
-        {$ENDIF}
         synsock.SetSockOpt(FSocket, integer(SOL_SOCKET), integer(SO_RCVTIMEO),
           buf, SizeOf(Value.Value));
+        {$ELSE}
+          {$IFDEF WIN32}
+        buf := @Value.Value;
+        synsock.SetSockOpt(FSocket, integer(SOL_SOCKET), integer(SO_RCVTIMEO),
+          buf, SizeOf(Value.Value));
+          {$ELSE}
+        timeval.tv_sec:=Value.Value div 1000;
+        timeval.tv_usec:=(Value.Value mod 1000) * 1000;
+        synsock.SetSockOpt(FSocket, integer(SOL_SOCKET), integer(SO_RCVTIMEO),
+          @timeval, SizeOf(timeval));
+          {$ENDIF}
+        {$ENDIF}
       end;
     SOT_SendTimeout:
       begin
         {$IFDEF CIL}
         buf := System.BitConverter.GetBytes(value.Value);
         {$ELSE}
+          {$IFDEF WIN32}
         buf := @Value.Value;
-        {$ENDIF}
         synsock.SetSockOpt(FSocket, integer(SOL_SOCKET), integer(SO_SNDTIMEO),
           buf, SizeOf(Value.Value));
+          {$ELSE}
+        timeval.tv_sec:=Value.Value div 1000;
+        timeval.tv_usec:=(Value.Value mod 1000) * 1000;
+        synsock.SetSockOpt(FSocket, integer(SOL_SOCKET), integer(SO_SNDTIMEO),
+          @timeval, SizeOf(timeval));
+          {$ENDIF}
+        {$ENDIF}
       end;
     SOT_Reuse:
       begin
