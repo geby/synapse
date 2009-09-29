@@ -515,7 +515,7 @@ end;
 
 function Bind(s: TSocket; const addr: TVarSin): Integer;
 begin
-  if fpBind(s, @addr, SizeOfVarSin(addr)) then
+  if fpBind(s, @addr, SizeOfVarSin(addr)) = 0 then
     Result := 0
   else
     Result := SOCKET_ERROR;
