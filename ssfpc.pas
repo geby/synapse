@@ -1,9 +1,9 @@
 {==============================================================================|
-| Project : Ararat Synapse                                       | 001.000.005 |
+| Project : Ararat Synapse                                       | 001.001.000 |
 |==============================================================================|
 | Content: Socket Independent Platform Layer - FreePascal definition include   |
 |==============================================================================|
-| Copyright (c)2006, Lukas Gebauer                                             |
+| Copyright (c)2006-2009, Lukas Gebauer                                        |
 | All rights reserved.                                                         |
 |                                                                              |
 | Redistribution and use in source and binary forms, with or without           |
@@ -33,7 +33,7 @@
 | DAMAGE.                                                                      |
 |==============================================================================|
 | The Initial Developer of the Original Code is Lukas Gebauer (Czech Republic).|
-| Portions created by Lukas Gebauer are Copyright (c)2006.                     |
+| Portions created by Lukas Gebauer are Copyright (c)2006-2009.                |
 | All Rights Reserved.                                                         |
 |==============================================================================|
 | Contributor(s):                                                              |
@@ -45,6 +45,7 @@
 {:@exclude}
 
 {$IFDEF FPC}
+{For FreePascal 2.x.x}
 
 //{$DEFINE FORCEOLDAPI}
 {Note about define FORCEOLDAPI:
@@ -514,7 +515,7 @@ end;
 
 function Bind(s: TSocket; const addr: TVarSin): Integer;
 begin
-  if sockets.Bind(s, addr, SizeOfVarSin(addr)) then
+  if fpBind(s, @addr, SizeOfVarSin(addr)) then
     Result := 0
   else
     Result := SOCKET_ERROR;
@@ -522,7 +523,7 @@ end;
 
 function Connect(s: TSocket; const name: TVarSin): Integer;
 begin
-  if sockets.Connect(s, name, SizeOfVarSin(name)) then
+  if fpConnect(s, @name, SizeOfVarSin(name)) then
     Result := 0
   else
     Result := SOCKET_ERROR;
@@ -534,7 +535,7 @@ var
 begin
   len := SizeOf(name);
   FillChar(name, len, 0);
-  Result := sockets.GetSocketName(s, name, Len);
+  Result := fpGetSocketName(s, @name, @Len);
 end;
 
 function GetPeerName(s: TSocket; var name: TVarSin): Integer;
@@ -543,7 +544,7 @@ var
 begin
   len := SizeOf(name);
   FillChar(name, len, 0);
-  Result := sockets.GetPeerName(s, name, Len);
+  Result := fpGetPeerName(s, @name, @Len);
 end;
 
 function GetHostName: string;
@@ -553,17 +554,17 @@ end;
 
 function Send(s: TSocket; Buf: TMemory; len, flags: Integer): Integer;
 begin
-  Result := sockets.Send(s, Buf^, len, flags);
+  Result := fpSend(s, pointer(Buf), len, flags);
 end;
 
 function Recv(s: TSocket; Buf: TMemory; len, flags: Integer): Integer;
 begin
-  Result := sockets.Recv(s, Buf^, len, flags);
+  Result := fpRecv(s, pointer(Buf), len, flags);
 end;
 
 function SendTo(s: TSocket; Buf: TMemory; len, flags: Integer; addrto: TVarSin): Integer;
 begin
-  Result := sockets.SendTo(s, Buf^, len, flags, addrto, SizeOfVarSin(addrto));
+  Result := fpSendTo(s, pointer(Buf), len, flags, @addrto, SizeOfVarSin(addrto));
 end;
 
 function RecvFrom(s: TSocket; Buf: TMemory; len, flags: Integer; var from: TVarSin): Integer;
@@ -571,7 +572,7 @@ var
   x: integer;
 begin
   x := SizeOf(from);
-  Result := sockets.RecvFrom(s, Buf^, len, flags, from, x);
+  Result := sockets.RecvFrom(s, pointer(Buf), len, flags, @from, @x);
 end;
 
 function Accept(s: TSocket; var addr: TVarSin): TSocket;
@@ -579,24 +580,24 @@ var
   x: integer;
 begin
   x := SizeOf(addr);
-  Result := sockets.Accept(s, addr, x);
+  Result := fpAccept(s, @addr, @x);
 end;
 
 function Shutdown(s: TSocket; how: Integer): Integer;
 begin
-  Result := sockets.Shutdown(s, how);
+  Result := fpShutdown(s, how);
 end;
 
 function SetSockOpt(s: TSocket; level, optname: Integer; optval: Tmemory;
   optlen: Integer): Integer;
 begin
-  Result := sockets.SetSocketOptions(s, level, optname, optval^, optlen);
+  Result := fpsetsockopt(s, level, optname, pointer(optval), optlen);
 end;
 
 function GetSockOpt(s: TSocket; level, optname: Integer; optval: Tmemory;
   var optlen: Integer): Integer;
 begin
-  Result := sockets.GetSocketOptions(s, level, optname, optval^, optlen);
+  Result := fpgetsockopt(s, level, optname, pointer(optval), @optlen);
 end;
 
 function  ntohs(netshort: word): word;
@@ -611,7 +612,7 @@ end;
 
 function  Listen(s: TSocket; backlog: Integer): Integer;
 begin
-  if sockets.Listen(s, backlog) then
+  if fpListen(s, backlog) then
     Result := 0
   else
     Result := SOCKET_ERROR;
@@ -639,7 +640,7 @@ end;
 
 function Socket(af, Struc, Protocol: Integer): TSocket;
 begin
-  Result := sockets.Socket(af, struc, protocol);
+  Result := fpSocket(af, struc, protocol);
 end;
 
 function Select(nfds: Integer; readfds, writefds, exceptfds: PFDSet;
