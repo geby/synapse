@@ -523,7 +523,7 @@ end;
 
 function Connect(s: TSocket; const name: TVarSin): Integer;
 begin
-  if fpConnect(s, @name, SizeOfVarSin(name)) then
+  if fpConnect(s, @name, SizeOfVarSin(name)) = 0 then
     Result := 0
   else
     Result := SOCKET_ERROR;
@@ -535,7 +535,7 @@ var
 begin
   len := SizeOf(name);
   FillChar(name, len, 0);
-  Result := fpGetSocketName(s, @name, @Len);
+  Result := fpGetSockName(s, @name, @Len);
 end;
 
 function GetPeerName(s: TSocket; var name: TVarSin): Integer;
@@ -572,7 +572,7 @@ var
   x: integer;
 begin
   x := SizeOf(from);
-  Result := sockets.RecvFrom(s, pointer(Buf), len, flags, @from, @x);
+  Result := fpRecvFrom(s, pointer(Buf), len, flags, @from, @x);
 end;
 
 function Accept(s: TSocket; var addr: TVarSin): TSocket;
@@ -612,7 +612,7 @@ end;
 
 function  Listen(s: TSocket; backlog: Integer): Integer;
 begin
-  if fpListen(s, backlog) then
+  if fpListen(s, backlog) = 0 then
     Result := 0
   else
     Result := SOCKET_ERROR;
