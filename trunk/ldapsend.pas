@@ -1,5 +1,5 @@
 {==============================================================================|
-| Project : Ararat Synapse                                       | 001.006.000 |
+| Project : Ararat Synapse                                       | 001.006.001 |
 |==============================================================================|
 | Content: LDAP client                                                         |
 |==============================================================================|
@@ -935,7 +935,7 @@ begin
   else
   begin
     digreq := ASNObject(ASNEncInt(FVersion), ASN1_INT)
-      + ASNObject('', ASN1_NULL)
+      + ASNObject('', ASN1_OCTSTR)
       + ASNObject(ASNObject('DIGEST-MD5', ASN1_OCTSTR), $A3);
     digreq := ASNObject(digreq, LDAP_ASN1_BIND_REQUEST);
     Fsock.SendString(BuildPacket(digreq));
@@ -947,9 +947,9 @@ begin
       x := 1;
       t := ASNItem(x, s, xt);
       s := ASNObject(ASNEncInt(FVersion), ASN1_INT)
-        + ASNObject('', ASN1_NULL)
-        + ASNObject(ASNObject('DIGEST-MD5', ASN1_OCTSTR), $A3)
-        + ASNObject(LdapSasl(t), ASN1_OCTSTR);
+        + ASNObject('', ASN1_OCTSTR)
+        + ASNObject(ASNObject('DIGEST-MD5', ASN1_OCTSTR)
+          + ASNObject(LdapSasl(t), ASN1_OCTSTR), $A3);
       s := ASNObject(s, LDAP_ASN1_BIND_REQUEST);
       Fsock.SendString(BuildPacket(s));
       s := ReceiveResponse;
