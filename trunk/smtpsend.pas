@@ -1,5 +1,5 @@
 {==============================================================================|
-| Project : Ararat Synapse                                       | 003.004.003 |
+| Project : Ararat Synapse                                       | 003.004.004 |
 |==============================================================================|
 | Content: SMTP client                                                         |
 |==============================================================================|
@@ -464,13 +464,13 @@ end;
 function TSMTPSend.Reset: Boolean;
 begin
   FSock.SendString('RSET' + CRLF);
-  Result := ReadResult = 250;
+  Result := ReadResult div 100 = 2;
 end;
 
 function TSMTPSend.NoOp: Boolean;
 begin
   FSock.SendString('NOOP' + CRLF);
-  Result := ReadResult = 250;
+  Result := ReadResult div 100 = 2;
 end;
 
 function TSMTPSend.MailFrom(const Value: string; Size: Integer): Boolean;
@@ -481,13 +481,13 @@ begin
   if FESMTPsize and (Size > 0) then
     s := s + ' SIZE=' + IntToStr(Size);
   FSock.SendString(s + CRLF);
-  Result := ReadResult = 250;
+  Result := ReadResult div 100 = 2;
 end;
 
 function TSMTPSend.MailTo(const Value: string): Boolean;
 begin
   FSock.SendString('RCPT TO:<' + Value + '>' + CRLF);
-  Result := ReadResult = 250;
+  Result := ReadResult div 100 = 2;
 end;
 
 function TSMTPSend.MailData(const Value: TStrings): Boolean;
@@ -519,7 +519,7 @@ begin
   if t <> '' then
     FSock.SendString(t);
   FSock.SendString('.' + CRLF);
-  Result := ReadResult = 250;
+  Result := ReadResult div 100 = 2;
 end;
 
 function TSMTPSend.Etrn(const Value: string): Boolean;
