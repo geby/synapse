@@ -1,9 +1,9 @@
 {==============================================================================|
-| Project : Ararat Synapse                                       | 003.004.004 |
+| Project : Ararat Synapse                                       | 003.005.000 |
 |==============================================================================|
 | Content: SMTP client                                                         |
 |==============================================================================|
-| Copyright (c)1999-2007, Lukas Gebauer                                        |
+| Copyright (c)1999-2009, Lukas Gebauer                                        |
 | All rights reserved.                                                         |
 |                                                                              |
 | Redistribution and use in source and binary forms, with or without           |
@@ -33,7 +33,7 @@
 | DAMAGE.                                                                      |
 |==============================================================================|
 | The Initial Developer of the Original Code is Lukas Gebauer (Czech Republic).|
-| Portions created by Lukas Gebauer are Copyright (c) 1999-2007.               |
+| Portions created by Lukas Gebauer are Copyright (c) 1999-2009.               |
 | All Rights Reserved.                                                         |
 |==============================================================================|
 | Contributor(s):                                                              |
@@ -94,6 +94,7 @@ type
     function ReadResult: Integer;
     function AuthLogin: Boolean;
     function AuthCram: Boolean;
+    function AuthPlain: Boolean;
     function Helo: Boolean;
     function Ehlo: Boolean;
     function Connect: Boolean;
@@ -347,7 +348,7 @@ end;
 
 function TSMTPSend.AuthCram: Boolean;
 var
-  s: string;
+  s: ansistring;
 begin
   Result := False;
   FSock.SendString('AUTH CRAM-MD5' + CRLF);
@@ -358,6 +359,16 @@ begin
   s := HMAC_MD5(s, FPassword);
   s := FUsername + ' ' + StrToHex(s);
   FSock.SendString(EncodeBase64(s) + CRLF);
+  Result := ReadResult = 235;
+end;
+
+function TSMTPSend.AuthPlain: Boolean;
+var
+  s: ansistring;
+begin
+  Result := False;
+  s := ansichar(0) + FUsername + ansichar(0) + FPassword;
+  FSock.SendString('AUTH PLAIN ' + EncodeBase64(s) + CRLF);
   Result := ReadResult = 235;
 end;
 
@@ -441,7 +452,9 @@ begin
       begin
         if Pos('CRAM-MD5', auths) > 0 then
           FAuthDone := AuthCram;
-        if (Pos('LOGIN', auths) > 0) and (not FauthDone) then
+        if (not FauthDone) and (Pos('PLAIN', auths) > 0) then
+          FAuthDone := AuthPlain;
+        if (not FauthDone) and (Pos('LOGIN', auths) > 0) then
           FAuthDone := AuthLogin;
       end;
     end;
