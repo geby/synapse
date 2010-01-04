@@ -1,9 +1,9 @@
 {==============================================================================|
-| Project : Ararat Synapse                                       | 001.001.000 |
+| Project : Ararat Synapse                                       | 001.001.001 |
 |==============================================================================|
 | Content: Trivial FTP (TFTP) client and server                                |
 |==============================================================================|
-| Copyright (c)1999-2004, Lukas Gebauer                                        |
+| Copyright (c)1999-2010, Lukas Gebauer                                        |
 | All rights reserved.                                                         |
 |                                                                              |
 | Redistribution and use in source and binary forms, with or without           |
@@ -33,7 +33,7 @@
 | DAMAGE.                                                                      |
 |==============================================================================|
 | The Initial Developer of the Original Code is Lukas Gebauer (Czech Republic).|
-| Portions created by Lukas Gebauer are Copyright (c)2003-2004.                |
+| Portions created by Lukas Gebauer are Copyright (c)2003-2010.                |
 | All Rights Reserved.                                                         |
 |==============================================================================|
 | Contributor(s):                                                              |
@@ -134,6 +134,7 @@ constructor TTFTPSend.Create;
 begin
   inherited Create;
   FSock := TUDPBlockSocket.Create;
+  FSock.Owner := self;
   FTargetPort := cTFTPProtocol;
   FData := TMemoryStream.Create;
   FErrorCode := 0;

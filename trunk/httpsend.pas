@@ -1,9 +1,9 @@
 {==============================================================================|
-| Project : Ararat Synapse                                       | 003.012.002 |
+| Project : Ararat Synapse                                       | 003.012.003 |
 |==============================================================================|
 | Content: HTTP client                                                         |
 |==============================================================================|
-| Copyright (c)1999-2008, Lukas Gebauer                                        |
+| Copyright (c)1999-2010, Lukas Gebauer                                        |
 | All rights reserved.                                                         |
 |                                                                              |
 | Redistribution and use in source and binary forms, with or without           |
@@ -33,7 +33,7 @@
 | DAMAGE.                                                                      |
 |==============================================================================|
 | The Initial Developer of the Original Code is Lukas Gebauer (Czech Republic).|
-| Portions created by Lukas Gebauer are Copyright (c) 1999-2008.               |
+| Portions created by Lukas Gebauer are Copyright (c) 1999-2010.               |
 | All Rights Reserved.                                                         |
 |==============================================================================|
 | Contributor(s):                                                              |
@@ -264,6 +264,7 @@ begin
   FCookies := TStringList.Create;
   FDocument := TMemoryStream.Create;
   FSock := TTCPBlockSocket.Create;
+  FSock.Owner := self;
   FSock.ConvertLineEnd := True;
   FSock.SizeRecvBuffer := c64k;
   FSock.SizeSendBuffer := c64k;

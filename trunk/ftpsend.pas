@@ -1,9 +1,9 @@
 {==============================================================================|
-| Project : Ararat Synapse                                       | 003.005.001 |
+| Project : Ararat Synapse                                       | 003.005.002 |
 |==============================================================================|
 | Content: FTP client                                                          |
 |==============================================================================|
-| Copyright (c)1999-2008, Lukas Gebauer                                        |
+| Copyright (c)1999-2010, Lukas Gebauer                                        |
 | All rights reserved.                                                         |
 |                                                                              |
 | Redistribution and use in source and binary forms, with or without           |
@@ -33,7 +33,7 @@
 | DAMAGE.                                                                      |
 |==============================================================================|
 | The Initial Developer of the Original Code is Lukas Gebauer (Czech Republic).|
-| Portions created by Lukas Gebauer are Copyright (c) 1999-2008.               |
+| Portions created by Lukas Gebauer are Copyright (c) 1999-2010.               |
 | All Rights Reserved.                                                         |
 |==============================================================================|
 | Contributor(s):                                                              |
@@ -465,8 +465,10 @@ begin
   FFullResult := TStringList.Create;
   FDataStream := TMemoryStream.Create;
   FSock := TTCPBlockSocket.Create;
+  FSock.Owner := self;
   FSock.ConvertLineEnd := True;
   FDSock := TTCPBlockSocket.Create;
+  FDSock.Owner := self;
   FFtpList := TFTPList.Create;
   FTimeout := 300000;
   FTargetPort := cFtpProtocol;

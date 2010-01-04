@@ -1,9 +1,9 @@
 {==============================================================================|
-| Project : Ararat Synapse                                       | 003.005.000 |
+| Project : Ararat Synapse                                       | 003.005.001 |
 |==============================================================================|
 | Content: SMTP client                                                         |
 |==============================================================================|
-| Copyright (c)1999-2009, Lukas Gebauer                                        |
+| Copyright (c)1999-2010, Lukas Gebauer                                        |
 | All rights reserved.                                                         |
 |                                                                              |
 | Redistribution and use in source and binary forms, with or without           |
@@ -33,7 +33,7 @@
 | DAMAGE.                                                                      |
 |==============================================================================|
 | The Initial Developer of the Original Code is Lukas Gebauer (Czech Republic).|
-| Portions created by Lukas Gebauer are Copyright (c) 1999-2009.               |
+| Portions created by Lukas Gebauer are Copyright (c) 1999-2010.               |
 | All Rights Reserved.                                                         |
 |==============================================================================|
 | Contributor(s):                                                              |
@@ -261,6 +261,7 @@ begin
   FFullResult := TStringList.Create;
   FESMTPcap := TStringList.Create;
   FSock := TTCPBlockSocket.Create;
+  FSock.Owner := self;
   FSock.ConvertLineEnd := true;
   FTimeout := 60000;
   FTargetPort := cSmtpProtocol;

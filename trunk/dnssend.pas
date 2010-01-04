@@ -1,9 +1,9 @@
 {==============================================================================|
-| Project : Ararat Synapse                                       | 002.007.004 |
+| Project : Ararat Synapse                                       | 002.007.005 |
 |==============================================================================|
 | Content: DNS client                                                          |
 |==============================================================================|
-| Copyright (c)1999-2007, Lukas Gebauer                                        |
+| Copyright (c)1999-2010, Lukas Gebauer                                        |
 | All rights reserved.                                                         |
 |                                                                              |
 | Redistribution and use in source and binary forms, with or without           |
@@ -33,7 +33,7 @@
 | DAMAGE.                                                                      |
 |==============================================================================|
 | The Initial Developer of the Original Code is Lukas Gebauer (Czech Republic).|
-| Portions created by Lukas Gebauer are Copyright (c)2000-2007.                |
+| Portions created by Lukas Gebauer are Copyright (c)2000-2010.                |
 | All Rights Reserved.                                                         |
 |==============================================================================|
 | Contributor(s):                                                              |
@@ -212,7 +212,9 @@ constructor TDNSSend.Create;
 begin
   inherited Create;
   FSock := TUDPBlockSocket.Create;
+  FSock.Owner := self;
   FTCPSock := TTCPBlockSocket.Create;
+  FTCPSock.Owner := self;
   FUseTCP := False;
   FTimeout := 10000;
   FTargetPort := cDnsProtocol;
