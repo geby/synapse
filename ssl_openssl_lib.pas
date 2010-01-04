@@ -1,9 +1,9 @@
 {==============================================================================|
-| Project : Ararat Synapse                                       | 003.005.000 |
+| Project : Ararat Synapse                                       | 003.005.001 |
 |==============================================================================|
 | Content: SSL support by OpenSSL                                              |
 |==============================================================================|
-| Copyright (c)1999-2008, Lukas Gebauer                                        |
+| Copyright (c)1999-2010, Lukas Gebauer                                        |
 | All rights reserved.                                                         |
 |                                                                              |
 | Redistribution and use in source and binary forms, with or without           |
@@ -33,7 +33,7 @@
 | DAMAGE.                                                                      |
 |==============================================================================|
 | The Initial Developer of the Original Code is Lukas Gebauer (Czech Republic).|
-| Portions created by Lukas Gebauer are Copyright (c)2002-2008.                |
+| Portions created by Lukas Gebauer are Copyright (c)2002-2010.                |
 | All Rights Reserved.                                                         |
 |==============================================================================|
 | Contributor(s):                                                              |
@@ -1352,7 +1352,7 @@ procedure ErrErrorString(e: integer; var buf: Ansistring; len: integer);
 begin
   if InitSSLInterface and Assigned(_ErrErrorString) then
     _ErrErrorString(e, Pointer(buf), len);
-  buf := PChar(Buf);
+  buf := PAnsiChar(Buf);
 end;
 
 function ErrGetError: integer;
