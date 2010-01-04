@@ -1,9 +1,9 @@
 {==============================================================================|
-| Project : Ararat Synapse                                       | 009.006.000 |
+| Project : Ararat Synapse                                       | 009.007.000 |
 |==============================================================================|
 | Content: Library base                                                        |
 |==============================================================================|
-| Copyright (c)1999-2008, Lukas Gebauer                                        |
+| Copyright (c)1999-2010, Lukas Gebauer                                        |
 | All rights reserved.                                                         |
 |                                                                              |
 | Redistribution and use in source and binary forms, with or without           |
@@ -33,7 +33,7 @@
 | DAMAGE.                                                                      |
 |==============================================================================|
 | The Initial Developer of the Original Code is Lukas Gebauer (Czech Republic).|
-| Portions created by Lukas Gebauer are Copyright (c)1999-2008.                |
+| Portions created by Lukas Gebauer are Copyright (c)1999-2010.                |
 | All Rights Reserved.                                                         |
 |==============================================================================|
 | Contributor(s):                                                              |
@@ -309,6 +309,7 @@ type
     FSocket: TSocket;
     FLastError: Integer;
     FLastErrorDesc: string;
+    FOwner: TObject;
     procedure SetDelayedOption(const Value: TSynaOption);
     procedure DelayedOption(const Value: TSynaOption);
     procedure ProcessDelayedOptions;
@@ -821,6 +822,8 @@ type
       on real socket operations too!
       Note: Each heartbeat slowing socket processing.}
     property HeartbeatRate: integer read FHeartbeatRate Write FHeartbeatRate;
+    {:What class own this socket? Used by protocol implementation classes.}
+    property Owner: TObject read FOwner Write FOwner;
   end;
 
   {:@abstract(Support for SOCKS4 and SOCKS5 proxy)
@@ -1457,6 +1460,7 @@ begin
   FStopFlag := False;
   FNonblockSendTimeout := 15000;
   FHeartbeatRate := 0;
+  FOwner := nil;
 {$IFNDEF ONCEWINSOCK}
   if Stub = '' then
     Stub := DLLStackName;
