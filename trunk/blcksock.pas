@@ -1,5 +1,5 @@
 {==============================================================================|
-| Project : Ararat Synapse                                       | 009.007.000 |
+| Project : Ararat Synapse                                       | 009.008.000 |
 |==============================================================================|
 | Content: Library base                                                        |
 |==============================================================================|
@@ -383,6 +383,16 @@ type
      type of created socket is determined by address resolving of destination
      address. (Not work properly on prilimitary winsock IPv6 support!)}
     procedure Connect(IP, Port: string); virtual;
+
+    {:Sets socket to receive mode for new incoming connections. It is necessary
+     to use @link(TBlockSocket.BIND) function call before this method to select
+     receiving port!}
+    procedure Listen; virtual;
+
+    {:Waits until new incoming connection comes. After it comes a new socket is
+     automatically created (socket handler is returned by this function as
+     result).}
+    function Accept: TSocket; virtual;
 
     {:Sends data of LENGTH from BUFFER address via connected socket. System
      automatically splits data to packets.}
@@ -942,7 +952,7 @@ type
 
      If you use SOCKS, activate incoming TCP connection by this proxy. (By BIND
      method of SOCKS.)}
-    procedure Listen; virtual;
+    procedure Listen; override;
 
     {:Waits until new incoming connection comes. After it comes a new socket is
      automatically created (socket handler is returned by this function as
@@ -951,7 +961,7 @@ type
      If you use SOCKS, new socket is not created! In this case is used same
      socket as socket for listening! So, you can accept only one connection in
      SOCKS mode.}
-    function Accept: TSocket;
+    function Accept: TSocket; override;
 
     {:Connects socket to remote IP address and PORT. The same rules as with
      @link(TBlockSocket.BIND) method are valid. The only exception is that PORT
@@ -1136,6 +1146,30 @@ type
 
     {:Return value of protocol type for socket creation. For RAW returns
      IPPROTO_RAW.}
+    function GetSocketProtocol: integer; override;
+  end;
+
+  {:@abstract(Implementation of PGM-message socket.)
+   Not all systems supports this protocol!}
+  TPGMMessageBlockSocket = class(TBlockSocket)
+  public
+    {:Return value of socket type. For PGM-message return SOCK_RDM.}
+    function GetSocketType: integer; override;
+
+    {:Return value of protocol type for socket creation. For PGM-message returns
+     IPPROTO_RM.}
+    function GetSocketProtocol: integer; override;
+  end;
+
+  {:@abstract(Implementation of PGM-stream socket.)
+   Not all systems supports this protocol!}
+  TPGMStreamBlockSocket = class(TBlockSocket)
+  public
+    {:Return value of socket type. For PGM-stream return SOCK_STREAM.}
+    function GetSocketType: integer; override;
+
+    {:Return value of protocol type for socket creation. For PGM-stream returns
+     IPPROTO_RM.}
     function GetSocketProtocol: integer; override;
   end;
 
@@ -1842,6 +1876,22 @@ begin
   end;
   ExceptCheck;
   DoStatus(HR_Connect, IP + ':' + Port);
+end;
+
+procedure TBlockSocket.Listen;
+begin
+  SockCheck(synsock.Listen(FSocket, SOMAXCONN));
+  GetSins;
+  ExceptCheck;
+  DoStatus(HR_Listen, '');
+end;
+
+function TBlockSocket.Accept: TSocket;
+begin
+  Result := synsock.Accept(FSocket, FRemoteSin);
+///    SockCheck(Result);
+  ExceptCheck;
+  DoStatus(HR_Accept, '');
 end;
 
 procedure TBlockSocket.GetSinLocal;
@@ -3671,8 +3721,7 @@ var
 begin
   if FSocksIP = '' then
   begin
-    SockCheck(synsock.Listen(FSocket, SOMAXCONN));
-    GetSins;
+    inherited Listen;
   end
   else
   begin
@@ -3694,9 +3743,9 @@ begin
     FSocksLocalPort := FSocksResponsePort;
     FSocksRemoteIP := '';
     FSocksRemotePort := '';
+    ExceptCheck;
+    DoStatus(HR_Listen, '');
   end;
-  ExceptCheck;
-  DoStatus(HR_Listen, '');
 end;
 
 function TTCPBlockSocket.Accept: TSocket;
@@ -3708,14 +3757,13 @@ begin
     FSocksRemoteIP := FSocksResponseIP;
     FSocksRemotePort := FSocksResponsePort;
     Result := FSocket;
+    ExceptCheck;
+    DoStatus(HR_Accept, '');
   end
   else
   begin
-    Result := synsock.Accept(FSocket, FRemoteSin);
-///    SockCheck(Result);
+    result := inherited Accept;
   end;
-  ExceptCheck;
-  DoStatus(HR_Accept, '');
 end;
 
 procedure TTCPBlockSocket.Connect(IP, Port: string);
@@ -3956,6 +4004,30 @@ end;
 function TRAWBlockSocket.GetSocketProtocol: integer;
 begin
   Result := integer(IPPROTO_RAW);
+end;
+
+{======================================================================}
+
+function TPGMmessageBlockSocket.GetSocketType: integer;
+begin
+  Result := integer(SOCK_RDM);
+end;
+
+function TPGMmessageBlockSocket.GetSocketProtocol: integer;
+begin
+  Result := integer(IPPROTO_RM);
+end;
+
+{======================================================================}
+
+function TPGMstreamBlockSocket.GetSocketType: integer;
+begin
+  Result := integer(SOCK_STREAM);
+end;
+
+function TPGMstreamBlockSocket.GetSocketProtocol: integer;
+begin
+  Result := integer(IPPROTO_RM);
 end;
 
 {======================================================================}
