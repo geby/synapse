@@ -1,9 +1,9 @@
 {==============================================================================|
-| Project : Ararat Synapse                                       | 002.002.000 |
+| Project : Ararat Synapse                                       | 002.002.001 |
 |==============================================================================|
 | Content: Socket Independent Platform Layer - Win32 definition include        |
 |==============================================================================|
-| Copyright (c)1999-2008, Lukas Gebauer                                        |
+| Copyright (c)1999-2010, Lukas Gebauer                                        |
 | All rights reserved.                                                         |
 |                                                                              |
 | Redistribution and use in source and binary forms, with or without           |
@@ -33,7 +33,7 @@
 | DAMAGE.                                                                      |
 |==============================================================================|
 | The Initial Developer of the Original Code is Lukas Gebauer (Czech Republic).|
-| Portions created by Lukas Gebauer are Copyright (c)2003.                     |
+| Portions created by Lukas Gebauer are Copyright (c)2003-2010.                |
 | All Rights Reserved.                                                         |
 |==============================================================================|
 | Contributor(s):                                                              |
@@ -311,6 +311,7 @@ const
   IPPROTO_UDP    =   17;	{ User Datagram Protocol		}
   IPPROTO_IPV6   =   41;
   IPPROTO_ICMPV6 =   58;
+  IPPROTO_RM     =  113;
 
   IPPROTO_RAW    =   255;
   IPPROTO_MAX    =   256;
