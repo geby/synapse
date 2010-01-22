@@ -1,5 +1,5 @@
 {==============================================================================|
-| Project : Ararat Synapse                                       | 003.005.001 |
+| Project : Ararat Synapse                                       | 003.006.000 |
 |==============================================================================|
 | Content: SSL support by OpenSSL                                              |
 |==============================================================================|
@@ -318,6 +318,11 @@ var
     SetLastError = False, CallingConvention= CallingConvention.cdecl,
     EntryPoint = 'SSL_CTX_load_verify_locations')]
     function SslCtxLoadVerifyLocations(ctx: PSSL_CTX; CAfile: string; CApath: String):Integer; external;
+
+  [DllImport(DLLSSLName, CharSet = CharSet.Ansi,
+    SetLastError = False, CallingConvention= CallingConvention.cdecl,
+    EntryPoint = 'SSL_CTX_ctrl')]
+    function SslCtxCtrl(ctx: PSSL_CTX; cmd: integer; larg: integer; parg: IntPtr): integer; external;
 
   [DllImport(DLLSSLName, CharSet = CharSet.Ansi,
     SetLastError = False, CallingConvention= CallingConvention.cdecl,
@@ -674,6 +679,7 @@ var
   procedure SslCtxSetDefaultPasswdCbUserdata(ctx: PSSL_CTX; u: SslPtr);
 //  function SslCtxLoadVerifyLocations(ctx: PSSL_CTX; const CAfile: PChar; const CApath: PChar):Integer;
   function SslCtxLoadVerifyLocations(ctx: PSSL_CTX; const CAfile: AnsiString; const CApath: AnsiString):Integer;
+  function SslCtxCtrl(ctx: PSSL_CTX; cmd: integer; larg: integer; parg: SslPtr): integer;
   function SslNew(ctx: PSSL_CTX):PSSL;
   procedure SslFree(ssl: PSSL);
   function SslAccept(ssl: PSSL):Integer;
@@ -782,6 +788,7 @@ type
   TSslCtxSetDefaultPasswdCb = procedure(ctx: PSSL_CTX; cb: SslPtr); cdecl;
   TSslCtxSetDefaultPasswdCbUserdata = procedure(ctx: PSSL_CTX; u: SslPtr); cdecl;
   TSslCtxLoadVerifyLocations = function(ctx: PSSL_CTX; const CAfile: PAnsiChar; const CApath: PAnsiChar):Integer; cdecl;
+  TSslCtxCtrl = function(ctx: PSSL_CTX; cmd: integer; larg: integer; parg: SslPtr): integer; cdecl;
   TSslNew = function(ctx: PSSL_CTX):PSSL; cdecl;
   TSslFree = procedure(ssl: PSSL); cdecl;
   TSslAccept = function(ssl: PSSL):Integer; cdecl;
@@ -880,6 +887,7 @@ var
   _SslCtxSetDefaultPasswdCb: TSslCtxSetDefaultPasswdCb = nil;
   _SslCtxSetDefaultPasswdCbUserdata: TSslCtxSetDefaultPasswdCbUserdata = nil;
   _SslCtxLoadVerifyLocations: TSslCtxLoadVerifyLocations = nil;
+  _SslCtxCtrl: TSslCtxCtrl = nil;
   _SslNew: TSslNew = nil;
   _SslFree: TSslFree = nil;
   _SslAccept: TSslAccept = nil;
@@ -1131,6 +1139,14 @@ function SslCtxLoadVerifyLocations(ctx: PSSL_CTX; const CAfile: AnsiString; cons
 begin
   if InitSSLInterface and Assigned(_SslCtxLoadVerifyLocations) then
     Result := _SslCtxLoadVerifyLocations(ctx, SslPtr(CAfile), SslPtr(CApath))
+  else
+    Result := 0;
+end;
+
+function SslCtxCtrl(ctx: PSSL_CTX; cmd: integer; larg: integer; parg: SslPtr): integer;
+begin
+  if InitSSLInterface and Assigned(_SslCtxCtrl) then
+    Result := _SslCtxCtrl(ctx, cmd, larg, parg)
   else
     Result := 0;
 end;
@@ -1736,6 +1752,7 @@ begin
         _SslCtxSetDefaultPasswdCb := GetProcAddr(SSLLibHandle, 'SSL_CTX_set_default_passwd_cb');
         _SslCtxSetDefaultPasswdCbUserdata := GetProcAddr(SSLLibHandle, 'SSL_CTX_set_default_passwd_cb_userdata');
         _SslCtxLoadVerifyLocations := GetProcAddr(SSLLibHandle, 'SSL_CTX_load_verify_locations');
+        _SslCtxCtrl := GetProcAddr(SSLLibHandle, 'SSL_CTX_ctrl');
         _SslNew := GetProcAddr(SSLLibHandle, 'SSL_new');
         _SslFree := GetProcAddr(SSLLibHandle, 'SSL_free');
         _SslAccept := GetProcAddr(SSLLibHandle, 'SSL_accept');
@@ -1919,6 +1936,7 @@ begin
     _SslCtxSetDefaultPasswdCb := nil;
     _SslCtxSetDefaultPasswdCbUserdata := nil;
     _SslCtxLoadVerifyLocations := nil;
+    _SslCtxCtrl := nil;
     _SslNew := nil;
     _SslFree := nil;
     _SslAccept := nil;
