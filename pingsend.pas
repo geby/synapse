@@ -1,5 +1,5 @@
 {==============================================================================|
-| Project : Ararat Synapse                                       | 004.000.001 |
+| Project : Ararat Synapse                                       | 004.000.002 |
 |==============================================================================|
 | Content: PING sender                                                         |
 |==============================================================================|
@@ -66,6 +66,12 @@ Note: This unit is NOT portable to .NET!
 {$IFDEF CIL}
   Sorry, this unit is not for .NET!
 {$ENDIF}
+//old Delphi does not have MSWINDOWS define.
+{$IFDEF WIN32}
+  {$IFNDEF MSWINDOWS}
+    {$DEFINE MSWINDOWS}
+  {$ENDIF}
+{$ENDIF}
 
 unit pingsend;
 
@@ -74,7 +80,7 @@ interface
 uses
   SysUtils,
   synsock, blcksock, synautil, synafpc, synaip
-{$IFDEF WIN32}
+{$IFDEF MSWINDOWS}
   , windows
 {$ENDIF}
   ;
@@ -205,7 +211,7 @@ type
     proto: Byte;
   end;
 
-{$IFDEF WIN32}
+{$IFDEF MSWINDOWS}
 const
   DLLIcmpName = 'iphlpapi.dll';
 type
@@ -332,7 +338,7 @@ begin
   FReplyError := IE_Other;
   GenErrorDesc;
   FBuffer := StringOfChar(#55, SizeOf(TICMPEchoHeader) + FPacketSize);
-{$IFDEF WIN32}
+{$IFDEF MSWINDOWS}
   b := IsHostIP6(host);
   if not(b) and IcmpHelper4 then
     result := InternalPingIpHlp(host)
@@ -400,7 +406,7 @@ begin
       break;
     if fSock.IP6used then
     begin
-{$IFNDEF WIN32}
+{$IFNDEF MSWINDOWS}
       IcmpEchoHeaderPtr := Pointer(FBuffer);
 {$ELSE}
 //WinXP SP1 with networking update doing this think by another way ;-O
@@ -474,7 +480,7 @@ var
   x: integer;
 begin
   Result := 0;
-{$IFDEF WIN32}
+{$IFDEF MSWINDOWS}
   s := StringOfChar(#0, SizeOf(TICMP6Packet)) + Value;
   ICMP6Ptr := Pointer(s);
   x := synsock.WSAIoctl(FSock.Socket, SIO_ROUTING_INTERFACE_QUERY,
@@ -566,7 +572,7 @@ begin
 end;
 
 function TPINGSend.InternalPingIpHlp(const Host: string): Boolean;
-{$IFDEF WIN32}
+{$IFDEF MSWINDOWS}
 var
   PingIp6: boolean;
   PingHandle: integer;
@@ -679,7 +685,7 @@ begin
   end;
 end;
 
-{$IFDEF WIN32}
+{$IFDEF MSWINDOWS}
 initialization
 begin
   IcmpHelper4 := false;

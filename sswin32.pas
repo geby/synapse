@@ -44,8 +44,6 @@
 
 {:@exclude}
 
-{$IFDEF WIN32}
-
 //{$DEFINE WINSOCK1}
 {Note about define WINSOCK1:
 If you activate this compiler directive, then socket interface level 1.1 is
@@ -389,8 +387,13 @@ type
   TServEnt = packed record
     s_name: PAnsiChar;
     s_aliases: ^PAnsiChar;
+{$ifdef WIN64}
+    s_proto: PAnsiChar;
+    s_port: Smallint;
+{$else} 
     s_port: Smallint;
     s_proto: PAnsiChar;
+{$endif}
   end;
 
   PProtoEnt = ^TProtoEnt;
@@ -719,11 +722,19 @@ type
   TWSAData = packed record
     wVersion: Word;
     wHighVersion: Word;
+{$ifdef win64}
+    iMaxSockets : Word;
+    iMaxUdpDg : Word;
+    lpVendorInfo : PAnsiChar;
+    szDescription : array[0..WSADESCRIPTION_LEN] of AnsiChar;
+    szSystemStatus : array[0..WSASYS_STATUS_LEN] of AnsiChar;
+{$else}     
     szDescription: array[0..WSADESCRIPTION_LEN] of AnsiChar;
     szSystemStatus: array[0..WSASYS_STATUS_LEN] of AnsiChar;
     iMaxSockets: Word;
     iMaxUdpDg: Word;
     lpVendorInfo: PAnsiChar;
+{$endif}
   end;
 
   function IN6_IS_ADDR_UNSPECIFIED(const a: PInAddr6): boolean;
@@ -1582,5 +1593,3 @@ finalization
 begin
   SynSockCS.Free;
 end;
-
-{$ENDIF}
