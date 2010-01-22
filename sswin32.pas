@@ -1,5 +1,5 @@
 {==============================================================================|
-| Project : Ararat Synapse                                       | 002.002.002 |
+| Project : Ararat Synapse                                       | 002.002.003 |
 |==============================================================================|
 | Content: Socket Independent Platform Layer - Win32 definition include        |
 |==============================================================================|
@@ -258,7 +258,11 @@ type
   u_long = Longint;
   pu_long = ^u_long;
   pu_short = ^u_short;
+{$IFDEF FPC}
+  TSocket = ptruint;
+{$ELSE}
   TSocket = u_int;
+{$ENDIF}
   TAddrFamily = integer;
 
   TMemory = pointer;
