@@ -1,5 +1,5 @@
 {==============================================================================|
-| Project : Ararat Synapse                                       | 003.006.000 |
+| Project : Ararat Synapse                                       | 003.006.001 |
 |==============================================================================|
 | Content: SSL support by OpenSSL                                              |
 |==============================================================================|
@@ -60,6 +60,13 @@ Special thanks to Gregor Ibic <gregor.ibic@intelicom.si>
   (*$HPPEMIT 'namespace ssl_openssl_lib { using System::Shortint; }' *)
 {$ENDIF}
 
+//old Delphi does not have MSWINDOWS define.
+{$IFDEF WIN32}
+  {$IFNDEF MSWINDOWS}
+    {$DEFINE MSWINDOWS}
+  {$ENDIF}
+{$ENDIF}
+
 {:@abstract(OpenSSL support)
 
 This unit is Pascal interface to OpenSSL library (used by @link(ssl_openssl) unit).
@@ -77,7 +84,7 @@ uses
 {$ENDIF}
   Classes,
   synafpc,
-{$IFNDEF WIN32}
+{$IFNDEF MSWINDOWS}
   Libc, SysUtils;
 {$ELSE}
   Windows;
@@ -95,7 +102,7 @@ const
   {$ENDIF}
 {$ELSE}
 var
-  {$IFNDEF WIN32}
+  {$IFNDEF MSWINDOWS}
   DLLSSLName: string = 'libssl.so';
   DLLUtilName: string = 'libcrypto.so';
   {$ELSE}

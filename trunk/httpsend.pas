@@ -1,5 +1,5 @@
 {==============================================================================|
-| Project : Ararat Synapse                                       | 003.012.003 |
+| Project : Ararat Synapse                                       | 003.012.004 |
 |==============================================================================|
 | Content: HTTP client                                                         |
 |==============================================================================|
@@ -51,6 +51,12 @@ Used RFC: RFC-1867, RFC-1947, RFC-2388, RFC-2616
   {$MODE DELPHI}
 {$ENDIF}
 {$H+}
+//old Delphi does not have MSWINDOWS define.
+{$IFDEF WIN32}
+  {$IFNDEF MSWINDOWS}
+    {$DEFINE MSWINDOWS}
+  {$ENDIF}
+{$ENDIF}
 
 unit httpsend;
 
@@ -322,7 +328,7 @@ begin
   if FProtocol = '0.9' then
     Result := FHeaders[0] + CRLF
   else
-{$IFNDEF WIN32}
+{$IFNDEF MSWINDOWS}
     Result := AdjustLineBreaks(FHeaders.Text, tlbsCRLF);
 {$ELSE}
     Result := FHeaders.Text;

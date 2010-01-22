@@ -1,9 +1,9 @@
 {==============================================================================|
-| Project : Ararat Synapse                                       | 004.013.000 |
+| Project : Ararat Synapse                                       | 004.014.000 |
 |==============================================================================|
 | Content: support procedures and functions                                    |
 |==============================================================================|
-| Copyright (c)1999-2008, Lukas Gebauer                                        |
+| Copyright (c)1999-2010, Lukas Gebauer                                        |
 | All rights reserved.                                                         |
 |                                                                              |
 | Redistribution and use in source and binary forms, with or without           |
@@ -33,7 +33,7 @@
 | DAMAGE.                                                                      |
 |==============================================================================|
 | The Initial Developer of the Original Code is Lukas Gebauer (Czech Republic).|
-| Portions created by Lukas Gebauer are Copyright (c) 1999-2008.               |
+| Portions created by Lukas Gebauer are Copyright (c) 1999-2010.               |
 | Portions created by Hernan Sanchez are Copyright (c) 2000.                   |
 | All Rights Reserved.                                                         |
 |==============================================================================|
@@ -53,18 +53,25 @@
 {$R-}
 {$H+}
 
+//old Delphi does not have MSWINDOWS define.
+{$IFDEF WIN32}
+  {$IFNDEF MSWINDOWS}
+    {$DEFINE MSWINDOWS}
+  {$ENDIF}
+{$ENDIF}
+
 unit synautil;
 
 interface
 
 uses
-{$IFDEF WIN32}
+{$IFDEF MSWINDOWS}
   Windows,
 {$ELSE}
   {$IFDEF FPC}
-  UnixUtil, Unix, BaseUnix,
+    UnixUtil, Unix, BaseUnix,
   {$ELSE}
-  Libc,
+    Libc,
   {$ENDIF}
 {$ENDIF}
 {$IFDEF CIL}
@@ -349,7 +356,7 @@ var
 {==============================================================================}
 
 function TimeZoneBias: integer;
-{$IFNDEF WIN32}
+{$IFNDEF MSWINDOWS}
 {$IFNDEF FPC}
 var
   t: TTime_T;
@@ -700,7 +707,7 @@ end;
 {==============================================================================}
 
 function GetUTTime: TDateTime;
-{$IFDEF WIN32}
+{$IFDEF MSWINDOWS}
 {$IFNDEF FPC}
 var
   st: TSystemTime;
@@ -742,7 +749,7 @@ end;
 {==============================================================================}
 
 function SetUTTime(Newdt: TDateTime): Boolean;
-{$IFDEF WIN32}
+{$IFDEF MSWINDOWS}
 {$IFNDEF FPC}
 var
   st: TSystemTime;
@@ -795,7 +802,7 @@ end;
 
 {==============================================================================}
 
-{$IFNDEF WIN32}
+{$IFNDEF MSWINDOWS}
 function GetTick: LongWord;
 var
   Stamp: TTimeStamp;
@@ -1720,7 +1727,7 @@ end;
 {==============================================================================}
 function GetTempFile(const Dir, prefix: AnsiString): AnsiString;
 {$IFNDEF FPC}
-{$IFDEF WIN32}
+{$IFDEF MSWINDOWS}
 var
   Path: AnsiString;
   x: integer;
@@ -1730,7 +1737,7 @@ begin
 {$IFDEF FPC}
   Result := GetTempFileName(Dir, Prefix);
 {$ELSE}
-  {$IFNDEF WIN32}
+  {$IFNDEF MSWINDOWS}
     Result := tempnam(Pointer(Dir), Pointer(prefix));
   {$ELSE}
     {$IFDEF CIL}
