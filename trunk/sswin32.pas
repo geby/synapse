@@ -1,5 +1,5 @@
 {==============================================================================|
-| Project : Ararat Synapse                                       | 002.002.001 |
+| Project : Ararat Synapse                                       | 002.002.002 |
 |==============================================================================|
 | Content: Socket Independent Platform Layer - Win32 definition include        |
 |==============================================================================|
@@ -1179,7 +1179,7 @@ begin
       Sin.sin_family := AF_INET;
       ProtoEnt := synsock.GetProtoByNumber(SockProtocol);
       ServEnt := nil;
-      if ProtoEnt <> nil then
+      if (ProtoEnt <> nil) and (StrToIntDef(Port,-1) =-1) then
         ServEnt := synsock.GetServByName(PAnsiChar(Port), ProtoEnt^.p_name);
       if ServEnt = nil then
         Sin.sin_port := synsock.htons(StrToIntDef(Port, 0))
