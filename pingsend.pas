@@ -190,7 +190,7 @@ implementation
 
 type
   {:Record for ICMP ECHO packet header.}
-  TIcmpEchoHeader = record
+  TIcmpEchoHeader = packed record
     i_type: Byte;
     i_code: Byte;
     i_checkSum: Word;
@@ -201,7 +201,7 @@ type
 
   {:record used internally by TPingSend for compute checksum of ICMPv6 packet
    pseudoheader.}
-  TICMP6Packet = record
+  TICMP6Packet = packed record
     in_source: TInAddr6;
     in_dest: TInAddr6;
     Length: integer;
@@ -215,7 +215,7 @@ type
 const
   DLLIcmpName = 'iphlpapi.dll';
 type
-  TIP_OPTION_INFORMATION = packed record
+  TIP_OPTION_INFORMATION = record
     TTL: Byte;
     TOS: Byte;
     Flags: Byte;
@@ -224,7 +224,7 @@ type
   end;
   PIP_OPTION_INFORMATION = ^TIP_OPTION_INFORMATION;
 
-  TICMP_ECHO_REPLY = packed record
+  TICMP_ECHO_REPLY = record
     Address: TInAddr;
     Status: integer;
     RoundTripTime: integer;
@@ -235,7 +235,7 @@ type
   end;
   PICMP_ECHO_REPLY = ^TICMP_ECHO_REPLY;
 
-  TICMPV6_ECHO_REPLY = packed record
+  TICMPV6_ECHO_REPLY = record
     Address: TSockAddrIn6;
     Status: integer;
     RoundTripTime: integer;
