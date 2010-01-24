@@ -1,5 +1,5 @@
 {==============================================================================|
-| Project : Ararat Synapse                                       | 009.008.001 |
+| Project : Ararat Synapse                                       | 009.008.002 |
 |==============================================================================|
 | Content: Library base                                                        |
 |==============================================================================|
@@ -690,9 +690,12 @@ type
     {:Return value of protocol type for socket creation.}
     function GetSocketProtocol: integer; Virtual;
 
-    {:WSA structure with information about socket provider. On linux is this
-     structure simulated!}
+    {:WSA structure with information about socket provider. On non-windows 
+     platforms this structure is simulated!}
     property WSAData: TWSADATA read GetWsaData;
+
+    {:FDset structure prepared for usage with this socket.}
+    property FDset: TFDSet read FFDset;
 
     {:Structure describing local socket side.}
     property LocalSin: TVarSin read FLocalSin write FLocalSin;
