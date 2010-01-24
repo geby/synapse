@@ -288,7 +288,7 @@ const
   FD_SETSIZE     =   64;
 type
   PFDSet = ^TFDSet;
-  TFDSet = packed record
+  TFDSet = record
     fd_count: u_int;
     fd_array: array[0..FD_SETSIZE-1] of TSocket;
   end;
@@ -300,7 +300,7 @@ const
 
 type
   PTimeVal = ^TTimeVal;
-  TTimeVal = packed record
+  TTimeVal = record
     tv_sec: Longint;
     tv_usec: Longint;
   end;
@@ -321,14 +321,14 @@ const
 type
 
   PInAddr = ^TInAddr;
-  TInAddr = packed record
+  TInAddr = record
     case integer of
       0: (S_bytes: packed array [0..3] of byte);
       1: (S_addr: u_long);
   end;
 
   PSockAddrIn = ^TSockAddrIn;
-  TSockAddrIn = packed record
+  TSockAddrIn = record
     case Integer of
       0: (sin_family: u_short;
           sin_port: u_short;
@@ -344,7 +344,7 @@ type
   end;
 
   PInAddr6 = ^TInAddr6;
-  TInAddr6 = packed record
+  TInAddr6 = record
     case integer of
       0: (S6_addr: packed array [0..15] of byte);
       1: (u6_addr8: packed array [0..15] of byte);
@@ -353,7 +353,7 @@ type
   end;
 
   PSockAddrIn6 = ^TSockAddrIn6;
-  TSockAddrIn6 = packed record
+  TSockAddrIn6 = record
 		sin6_family:   u_short;     // AF_INET6
 		sin6_port:     u_short;     // Transport level port number
 		sin6_flowinfo: u_long;	    // IPv6 flow information
@@ -369,7 +369,7 @@ type
   end;
 
   PHostEnt = ^THostEnt;
-  THostEnt = packed record
+  THostEnt = record
     h_name: PAnsiChar;
     h_aliases: ^PAnsiChar;
     h_addrtype: Smallint;
@@ -380,7 +380,7 @@ type
   end;
 
   PNetEnt = ^TNetEnt;
-  TNetEnt = packed record
+  TNetEnt = record
     n_name: PAnsiChar;
     n_aliases: ^PAnsiChar;
     n_addrtype: Smallint;
@@ -388,7 +388,7 @@ type
   end;
 
   PServEnt = ^TServEnt;
-  TServEnt = packed record
+  TServEnt = record
     s_name: PAnsiChar;
     s_aliases: ^PAnsiChar;
 {$ifdef WIN64}
@@ -401,7 +401,7 @@ type
   end;
 
   PProtoEnt = ^TProtoEnt;
-  TProtoEnt = packed record
+  TProtoEnt = record
     p_name: PAnsiChar;
     p_aliases: ^PAnsichar;
     p_proto: Smallint;
@@ -534,7 +534,7 @@ type
 
   { Structure used by kernel to pass protocol information in raw sockets. }
   PSockProto = ^TSockProto;
-  TSockProto = packed record
+  TSockProto = record
     sp_family: u_short;
     sp_protocol: u_short;
   end;
@@ -561,7 +561,7 @@ const
 type
 { Structure used for manipulating linger option. }
   PLinger = ^TLinger;
-  TLinger = packed record
+  TLinger = record
     l_onoff: u_short;
     l_linger: u_short;
   end;
@@ -723,7 +723,7 @@ const
   WSASYS_STATUS_LEN      =   128;
 type
   PWSAData = ^TWSAData;
-  TWSAData = packed record
+  TWSAData = record
     wVersion: Word;
     wHighVersion: Word;
 {$ifdef win64}
