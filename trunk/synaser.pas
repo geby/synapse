@@ -1,9 +1,9 @@
 {==============================================================================|
-| Project : Ararat Synapse                                       | 007.003.000 |
+| Project : Ararat Synapse                                       | 007.004.000 |
 |==============================================================================|
 | Content: Serial port support                                                 |
 |==============================================================================|
-| Copyright (c)2001-2008, Lukas Gebauer                                        |
+| Copyright (c)2001-2010, Lukas Gebauer                                        |
 | All rights reserved.                                                         |
 |                                                                              |
 | Redistribution and use in source and binary forms, with or without           |
@@ -33,7 +33,7 @@
 | DAMAGE.                                                                      |
 |==============================================================================|
 | The Initial Developer of the Original Code is Lukas Gebauer (Czech Republic).|
-| Portions created by Lukas Gebauer are Copyright (c)2001-2008.                |
+| Portions created by Lukas Gebauer are Copyright (c)2001-2010.                |
 | All Rights Reserved.                                                         |
 |==============================================================================|
 | Contributor(s):                                                              |
@@ -69,9 +69,16 @@ case with my USB modem):
 #)
 }
 
+//old Delphi does not have MSWINDOWS define.
+{$IFDEF WIN32}
+  {$IFNDEF MSWINDOWS}
+    {$DEFINE MSWINDOWS}
+  {$ENDIF}
+{$ENDIF}
+
 {$IFDEF FPC}
   {$MODE DELPHI}
-  {$IFDEF WIN32}
+  {$IFDEF MSWINDOWS}
     {$ASMMODE intel}
   {$ENDIF}
   {define working mode w/o LIBC for fpc}
@@ -86,7 +93,7 @@ unit synaser;
 interface
 
 uses
-{$IFNDEF WIN32}
+{$IFNDEF MSWINDOWS}
   {$IFNDEF NO_LIBC}
   Libc,
   KernelIoctl,
@@ -156,7 +163,7 @@ const
   {:stopbit value for 2 stopbits}
   SB2 = 2;
 
-{$IFNDEF WIN32}
+{$IFNDEF MSWINDOWS}
 const
   INVALID_HANDLE_VALUE = THandle(-1);
   CS7fix = $0000020;
@@ -280,7 +287,7 @@ type
     FAtTimeout: integer;
     FInterPacketTimeout: Boolean;
     FComNr: integer;
-{$IFDEF WIN32}
+{$IFDEF MSWINDOWS}
     FPortAddr: Word;
     function CanEvent(Event: dword; Timeout: integer): boolean;
     procedure DecodeCommError(Error: DWord); virtual;
@@ -298,7 +305,7 @@ type
     procedure GetComNr(Value: string); virtual;
     function PreTestFailing: boolean; virtual;{HGJ}
     function TestCtrlLine: Boolean; virtual;
-{$IFNDEF WIN32}
+{$IFNDEF MSWINDOWS}
     procedure DcbToTermios(const dcb: TDCB; var term: termios); virtual;
     procedure TermiosToDcb(const term: termios; var dcb: TDCB); virtual;
 {$ENDIF}
@@ -313,7 +320,7 @@ type
     {: data Control Block with communication parameters. Usable only when you
      need to call API directly.}
     DCB: Tdcb;
-{$IFNDEF WIN32}
+{$IFNDEF MSWINDOWS}
     TermiosStruc: termios;
 {$ENDIF}
     {:Object constructor.}
@@ -778,7 +785,7 @@ begin
   DoStatus(HR_SerialClose, FDevice);
 end;
 
-{$IFDEF WIN32}
+{$IFDEF MSWINDOWS}
 function TBlockSerial.GetPortAddr: Word;
 begin
   Result := 0;
@@ -878,7 +885,7 @@ begin
 end;
 
 procedure TBlockSerial.Connect(comport: string);
-{$IFDEF WIN32}
+{$IFDEF MSWINDOWS}
 var
   CommTimeouts: TCommTimeouts;
 {$ENDIF}
@@ -892,7 +899,7 @@ begin
   FBuffer := '';
   FDevice := comport;
   GetComNr(comport);
-{$IFDEF WIN32}
+{$IFDEF MSWINDOWS}
   SetLastError (sOK);
 {$ELSE}
   {$IFNDEF FPC}
@@ -901,7 +908,7 @@ begin
   fpSetErrno(sOK);
   {$ENDIF}
 {$ENDIF}
-{$IFNDEF WIN32}
+{$IFNDEF MSWINDOWS}
   if FComNr <> PortIsClosed then
     FDevice := '/dev/ttyS' + IntToStr(FComNr);
   // Comport already owned by another process?          {HGJ}
@@ -968,7 +975,7 @@ begin
 end;
 
 function TBlockSerial.SendBuffer(buffer: pointer; length: integer): integer;
-{$IFDEF WIN32}
+{$IFDEF MSWINDOWS}
 var
   Overlapped: TOverlapped;
   x, y, Err: DWord;
@@ -983,7 +990,7 @@ begin
     Flush;
     RTS := True;
   end;
-{$IFNDEF WIN32}
+{$IFNDEF MSWINDOWS}
   result := FileWrite(integer(Fhandle), Buffer^, Length);
   serialcheck(result);
 {$ELSE}
@@ -1085,7 +1092,7 @@ begin
 end;
 
 function TBlockSerial.RecvBuffer(buffer: pointer; length: integer): integer;
-{$IFNDEF WIN32}
+{$IFNDEF MSWINDOWS}
 begin
   Result := 0;
   if PreTestFailing then   {HGJ}
@@ -1407,7 +1414,7 @@ begin
     RecvStreamSize(Stream, Timeout, x);
 end;
 
-{$IFNDEF WIN32}
+{$IFNDEF MSWINDOWS}
 function TBlockSerial.WaitingData: integer;
 begin
 {$IFNDEF FPC}
@@ -1447,7 +1454,7 @@ begin
   	Result := Waitingdata;
 end;
 
-{$IFNDEF WIN32}
+{$IFNDEF MSWINDOWS}
 function TBlockSerial.SendingData: integer;
 begin
   SetSynaError(sOK);
@@ -1467,7 +1474,7 @@ begin
 end;
 {$ENDIF}
 
-{$IFNDEF WIN32}
+{$IFNDEF MSWINDOWS}
 procedure TBlockSerial.DcbToTermios(const dcb: TDCB; var term: termios);
 var
   n: integer;
@@ -1590,7 +1597,7 @@ begin
 end;
 {$ENDIF}
 
-{$IFNDEF WIN32}
+{$IFNDEF MSWINDOWS}
 procedure TBlockSerial.SetCommState;
 begin
   DcbToTermios(dcb, termiosstruc);
@@ -1607,7 +1614,7 @@ begin
 end;
 {$ENDIF}
 
-{$IFNDEF WIN32}
+{$IFNDEF MSWINDOWS}
 procedure TBlockSerial.GetCommState;
 begin
   SerialCheck(tcgetattr(integer(FHandle), termiosstruc));
@@ -1626,7 +1633,7 @@ end;
 
 procedure TBlockSerial.SetSizeRecvBuffer(size: integer);
 begin
-{$IFDEF WIN32}
+{$IFDEF MSWINDOWS}
   SetupComm(Fhandle, size, 0);
   GetCommState;
   dcb.XonLim := size div 4;
@@ -1639,7 +1646,7 @@ end;
 function TBlockSerial.GetDSR: Boolean;
 begin
   ModemStatus;
-{$IFNDEF WIN32}
+{$IFNDEF MSWINDOWS}
   Result := (FModemWord and TIOCM_DSR) > 0;
 {$ELSE}
   Result := (FModemWord and MS_DSR_ON) > 0;
@@ -1648,7 +1655,7 @@ end;
 
 procedure TBlockSerial.SetDTRF(Value: Boolean);
 begin
-{$IFNDEF WIN32}
+{$IFNDEF MSWINDOWS}
   ModemStatus;
   if Value then
     FModemWord := FModemWord or TIOCM_DTR
@@ -1670,7 +1677,7 @@ end;
 function TBlockSerial.GetCTS: Boolean;
 begin
   ModemStatus;
-{$IFNDEF WIN32}
+{$IFNDEF MSWINDOWS}
   Result := (FModemWord and TIOCM_CTS) > 0;
 {$ELSE}
   Result := (FModemWord and MS_CTS_ON) > 0;
@@ -1679,7 +1686,7 @@ end;
 
 procedure TBlockSerial.SetRTSF(Value: Boolean);
 begin
-{$IFNDEF WIN32}
+{$IFNDEF MSWINDOWS}
   ModemStatus;
   if Value then
     FModemWord := FModemWord or TIOCM_RTS
@@ -1701,7 +1708,7 @@ end;
 function TBlockSerial.GetCarrier: Boolean;
 begin
   ModemStatus;
-{$IFNDEF WIN32}
+{$IFNDEF MSWINDOWS}
   Result := (FModemWord and TIOCM_CAR) > 0;
 {$ELSE}
   Result := (FModemWord and MS_RLSD_ON) > 0;
@@ -1711,14 +1718,14 @@ end;
 function TBlockSerial.GetRing: Boolean;
 begin
   ModemStatus;
-{$IFNDEF WIN32}
+{$IFNDEF MSWINDOWS}
   Result := (FModemWord and TIOCM_RNG) > 0;
 {$ELSE}
   Result := (FModemWord and MS_RING_ON) > 0;
 {$ENDIF}
 end;
 
-{$IFDEF WIN32}
+{$IFDEF MSWINDOWS}
 function TBlockSerial.CanEvent(Event: dword; Timeout: integer): boolean;
 var
   ex: DWord;
@@ -1753,7 +1760,7 @@ begin
 end;
 {$ENDIF}
 
-{$IFNDEF WIN32}
+{$IFNDEF MSWINDOWS}
 function TBlockSerial.CanRead(Timeout: integer): boolean;
 var
   FDSet: TFDSet;
@@ -1794,7 +1801,7 @@ begin
 end;
 {$ENDIF}
 
-{$IFNDEF WIN32}
+{$IFNDEF MSWINDOWS}
 function TBlockSerial.CanWrite(Timeout: integer): boolean;
 var
   FDSet: TFDSet;
@@ -1858,7 +1865,7 @@ end;
 procedure TBlockSerial.EnableRTSToggle(Value: boolean);
 begin
   SetSynaError(sOK);
-{$IFNDEF WIN32}
+{$IFNDEF MSWINDOWS}
   FRTSToggle := Value;
   if Value then
     RTS:=False;
@@ -1883,7 +1890,7 @@ end;
 
 procedure TBlockSerial.Flush;
 begin
-{$IFNDEF WIN32}
+{$IFNDEF MSWINDOWS}
   SerialCheck(tcdrain(integer(FHandle)));
 {$ELSE}
   SetSynaError(sOK);
@@ -1893,7 +1900,7 @@ begin
   ExceptCheck;
 end;
 
-{$IFNDEF WIN32}
+{$IFNDEF MSWINDOWS}
 procedure TBlockSerial.Purge;
 begin
   {$IFNDEF FPC}
@@ -1921,7 +1928,7 @@ end;
 function TBlockSerial.ModemStatus: integer;
 begin
   Result := 0;
-{$IFNDEF WIN32}
+{$IFNDEF MSWINDOWS}
   {$IFNDEF FPC}
   SerialCheck(ioctl(integer(FHandle), TIOCMGET, @Result));
   {$ELSE}
@@ -1938,7 +1945,7 @@ end;
 
 procedure TBlockSerial.SetBreak(Duration: integer);
 begin
-{$IFNDEF WIN32}
+{$IFNDEF MSWINDOWS}
   SerialCheck(tcsendbreak(integer(FHandle), Duration));
 {$ELSE}
   SetCommBreak(FHandle);
@@ -1949,7 +1956,7 @@ begin
 {$ENDIF}
 end;
 
-{$IFDEF WIN32}
+{$IFDEF MSWINDOWS}
 procedure TBlockSerial.DecodeCommError(Error: DWord);
 begin
   if (Error and DWord(CE_FRAME)) > 1 then
@@ -2050,7 +2057,7 @@ end;
 function TBlockSerial.SerialCheck(SerialResult: integer): integer;
 begin
   if SerialResult = integer(INVALID_HANDLE_VALUE) then
-{$IFDEF WIN32}
+{$IFDEF MSWINDOWS}
     result := GetLastError
 {$ELSE}
   {$IFNDEF FPC}
@@ -2236,7 +2243,7 @@ end;
 {$ENDIF}
 {----------------------------------------------------------------}
 
-{$IFDEF WIN32}
+{$IFDEF MSWINDOWS}
 function GetSerialPortNames: string;
 var
   reg: TRegistry;
@@ -2265,7 +2272,7 @@ begin
   end;
 end;
 {$ENDIF}
-{$IFNDEF WIN32}
+{$IFNDEF MSWINDOWS}
 function GetSerialPortNames: string;
 var
   Index: Integer;
