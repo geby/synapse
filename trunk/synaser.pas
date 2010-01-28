@@ -264,7 +264,7 @@ type
     FDevice: string;
     FLastError: integer;
     FLastErrorDesc: string;
-    FBuffer: string;
+    FBuffer: AnsiString;
     FRaiseExcept: boolean;
     FRecvBuffer: integer;
     FSendBuffer: integer;
@@ -393,14 +393,14 @@ type
 
      Since no terminator is appended, you can use this function for sending
      binary data too.}
-    procedure SendString(data: string); virtual;
+    procedure SendString(data: AnsiString); virtual;
 
     {:send four bytes as integer.}
     procedure SendInteger(Data: integer); virtual;
 
     {:send data as one block. Each block begins with integer value with Length
      of block.}
-    procedure SendBlock(const Data: string); virtual;
+    procedure SendBlock(const Data: AnsiString); virtual;
 
     {:send content of stream from current position}
     procedure SendStreamRaw(const Stream: TStream); virtual;
@@ -431,12 +431,12 @@ type
 
     {:It is like recvBufferEx, but data is readed to dynamicly allocated binary
      string.}
-    function RecvBufferStr(Length: Integer; Timeout: Integer): string; virtual;
+    function RecvBufferStr(Length: Integer; Timeout: Integer): AnsiString; virtual;
 
     {:Read all available data and return it in the function result string. This
      function may be combined with @link(RecvString), @link(RecvByte) or related
      methods.}
-    function RecvPacket(Timeout: Integer): string; virtual;
+    function RecvPacket(Timeout: Integer): AnsiString; virtual;
 
     {:Waits until one data byte is received which is returned as the function
      result. If no data is received within the Timeout (in milliseconds) period,
@@ -447,7 +447,7 @@ type
      is terminated by the Terminator string. The resulting string is returned
      without this termination string! If no data is received within the Timeout
      (in milliseconds) period, @link(LastError) is set to @link(ErrTimeout).}
-    function RecvTerminated(Timeout: Integer; const Terminator: string): string; virtual;
+    function RecvTerminated(Timeout: Integer; const Terminator: AnsiString): AnsiString; virtual;
 
     {:This method waits until a terminated data string is received. The string
      is terminated by a CR/LF sequence. The resulting string is returned without
@@ -460,7 +460,7 @@ type
      This method serves for line protocol implementation and uses its own
      buffers to maximize performance. Therefore do NOT use this method with the
      @link(RecvBuffer) method to receive data as it may cause data loss.}
-    function Recvstring(timeout: integer): string; virtual;
+    function Recvstring(timeout: integer): AnsiString; virtual;
 
     {:Waits until four data bytes are received which is returned as the function
      integer result. If no data is received within the Timeout (in milliseconds) period,
@@ -470,7 +470,7 @@ type
     {:Waits until one data block is received. See @link(sendblock). If no data
      is received within the Timeout (in milliseconds) period, @link(LastError)
      is set to @link(ErrTimeout).}
-    function RecvBlock(Timeout: Integer): string; virtual;
+    function RecvBlock(Timeout: Integer): AnsiString; virtual;
 
     {:Receive all data to stream, until some error occured. (for example timeout)}
     procedure RecvStreamRaw(const Stream: TStream; Timeout: Integer); virtual;
@@ -561,7 +561,7 @@ type
      Now you can send AT commands to the modem. If you need to transfer data to
      the modem on the other side of the line, you must first switch to data mode
      using the @link(ATConnect) method.}
-    function ATCommand(value: string): string; virtual;
+    function ATCommand(value: AnsiString): AnsiString; virtual;
 
     {:This function is used to send connect type AT commands to the modem. It is
      for commands to switch to connected state. (ATD, ATA, ATO,...)
@@ -580,7 +580,7 @@ type
      modem on other side of the line. Now you can transfer your data.
      If the connection attempt failed (@link(ATResult) is @False), then the
      modem is still in AT command mode.}
-    function ATConnect(value: string): string; virtual;
+    function ATConnect(value: AnsiString): AnsiString; virtual;
 
     {:If you "manually" call API functions, forward their return code in
      the SerialResult parameter to this function, which evaluates it and sets
@@ -667,7 +667,7 @@ type
     property Handle: THandle read Fhandle write FHandle;
 
     {:Internally used read buffer.}
-    property LineBuffer: string read FBuffer write FBuffer;
+    property LineBuffer: AnsiString read FBuffer write FBuffer;
 
     {:If @true, communication errors raise exceptions. If @false (default), only
      the @link(LastError) value is set.}
@@ -1030,7 +1030,7 @@ begin
   SendBuffer(@Data, 1);
 end;
 
-procedure TBlockSerial.SendString(data: string);
+procedure TBlockSerial.SendString(data: AnsiString);
 begin
   SendBuffer(Pointer(Data), Length(Data));
 end;
@@ -1040,7 +1040,7 @@ begin
   SendBuffer(@data, SizeOf(Data));
 end;
 
-procedure TBlockSerial.SendBlock(const Data: string);
+procedure TBlockSerial.SendBlock(const Data: AnsiString);
 begin
   SendInteger(Length(data));
   SendString(Data);
@@ -1050,7 +1050,7 @@ procedure TBlockSerial.SendStreamRaw(const Stream: TStream);
 var
   si: integer;
   x, y, yr: integer;
-  s: string;
+  s: AnsiString;
 begin
   si := Stream.Size - Stream.Position;
   x := 0;
@@ -1136,7 +1136,7 @@ end;
 
 function TBlockSerial.RecvBufferEx(buffer: pointer; length: integer; timeout: integer): integer;
 var
-  s: string;
+  s: AnsiString;
   rl, l: integer;
   ti: LongWord;
 begin
@@ -1172,7 +1172,7 @@ begin
   Result := rl;
 end;
 
-function TBlockSerial.RecvBufferStr(Length: Integer; Timeout: Integer): string;
+function TBlockSerial.RecvBufferStr(Length: Integer; Timeout: Integer): AnsiString;
 var
   x: integer;
 begin
@@ -1191,7 +1191,7 @@ begin
   end;
 end;
 
-function TBlockSerial.RecvPacket(Timeout: Integer): string;
+function TBlockSerial.RecvPacket(Timeout: Integer): AnsiString;
 var
   x: integer;
 begin
@@ -1255,10 +1255,10 @@ begin
   ExceptCheck;
 end;
 
-function TBlockSerial.RecvTerminated(Timeout: Integer; const Terminator: string): string;
+function TBlockSerial.RecvTerminated(Timeout: Integer; const Terminator: AnsiString): AnsiString;
 var
   x: Integer;
-  s: string;
+  s: AnsiString;
   l: Integer;
   CorCRLF: Boolean;
   t: ansistring;
@@ -1332,9 +1332,9 @@ begin
 end;
 
 
-function TBlockSerial.RecvString(Timeout: Integer): string;
+function TBlockSerial.RecvString(Timeout: Integer): AnsiString;
 var
-  s: string;
+  s: AnsiString;
 begin
   Result := '';
   s := RecvTerminated(Timeout, #13 + #10);
@@ -1344,7 +1344,7 @@ end;
 
 function TBlockSerial.RecvInteger(Timeout: Integer): Integer;
 var
-  s: string;
+  s: AnsiString;
 begin
   Result := 0;
   s := RecvBufferStr(4, Timeout);
@@ -1352,7 +1352,7 @@ begin
     Result := (ord(s[1]) + ord(s[2]) * 256) + (ord(s[3]) + ord(s[4]) * 256) * 65536;
 end;
 
-function TBlockSerial.RecvBlock(Timeout: Integer): string;
+function TBlockSerial.RecvBlock(Timeout: Integer): AnsiString;
 var
   x: integer;
 begin
@@ -1364,7 +1364,7 @@ end;
 
 procedure TBlockSerial.RecvStreamRaw(const Stream: TStream; Timeout: Integer);
 var
-  s: string;
+  s: AnsiString;
 begin
   repeat
     s := RecvPacket(Timeout);
@@ -1375,7 +1375,7 @@ end;
 
 procedure TBlockSerial.RecvStreamSize(const Stream: TStream; Timeout: Integer; Size: Integer);
 var
-  s: string;
+  s: AnsiString;
   n: integer;
 begin
   for n := 1 to (Size div cSerialChunk) do
@@ -1991,9 +1991,9 @@ begin
   result := ((not FTestDSR) or DSR) and ((not FTestCTS) or CTS);
 end;
 
-function TBlockSerial.ATCommand(value: string): string;
+function TBlockSerial.ATCommand(value: AnsiString): AnsiString;
 var
-  s: string;
+  s: AnsiString;
   ConvSave: Boolean;
 begin
   result := '';
@@ -2020,9 +2020,9 @@ begin
 end;
 
 
-function TBlockSerial.ATConnect(value: string): string;
+function TBlockSerial.ATConnect(value: AnsiString): AnsiString;
 var
-  s: string;
+  s: AnsiString;
   ConvSave: Boolean;
 begin
   result := '';
@@ -2173,7 +2173,8 @@ begin
     // Allow all users to enjoy the benefits of cpom
     s := 'chmod a+rw ' + LockfileName;
 {$IFNDEF FPC}
-    Libc.system(pchar(s));
+    FileSetReadOnly( LockfileName, False ) ;
+ // Libc.system(pchar(s));
 {$ELSE}
     fpSystem(s);
 {$ENDIF}
