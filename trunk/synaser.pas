@@ -169,7 +169,7 @@ const
   CS7fix = $0000020;
 
 type
-  TDCB = packed record
+  TDCB = record
     DCBlength: DWORD;
     BaudRate: DWORD;
     Flags: Longint;
@@ -189,8 +189,11 @@ type
   PDCB = ^TDCB;
 
 const
-//  MaxRates = 30;
+{$IFDEF LINUX}
+  MaxRates = 30;
+{$ELSE}
   MaxRates = 19;  //FPC on some platforms not know high speeds?
+{$ENDIF}
   Rates: array[0..MaxRates, 0..1] of cardinal =
   (
     (0, B0),
@@ -212,8 +215,9 @@ const
     (57600, B57600),
     (115200, B115200),
     (230400, B230400),
-    (460800, B460800){,
-    (500000, B500000),
+    (460800, B460800)
+{$IFDEF LINUX}
+    ,(500000, B500000),
     (576000, B576000),
     (921600, B921600),
     (1000000, B1000000),
@@ -223,7 +227,8 @@ const
     (2500000, B2500000),
     (3000000, B3000000),
     (3500000, B3500000),
-    (4000000, B4000000)}
+    (4000000, B4000000)
+{$ENDIF}
     );
 {$ENDIF}
 
@@ -759,7 +764,7 @@ end;
 
 class function TBlockSerial.GetVersion: string;
 begin
-	Result := 'SynaSer 6.3.5';
+	Result := 'SynaSer 7.4.0';
 end;
 
 procedure TBlockSerial.CloseSocket;
@@ -769,7 +774,7 @@ begin
     Purge;
     RTS := False;
     DTR := False;
-    FileClose(integer(FHandle));
+    FileClose(FHandle);
   end;
   if InstanceActive then
   begin
@@ -856,6 +861,7 @@ procedure TBlockSerial.Config(baud, bits: integer; parity: char; stop: integer;
   softflow, hardflow: boolean);
 begin
   FillChar(dcb, SizeOf(dcb), 0);
+  GetCommState;
   dcb.DCBlength := SizeOf(dcb);
   dcb.BaudRate := baud;
   dcb.ByteSize := bits;
@@ -923,7 +929,10 @@ begin
 {$ELSE}
   FHandle := THandle(fpOpen(FDevice, O_RDWR or O_SYNC));
 {$ENDIF}
-  SerialCheck(integer(FHandle));
+  if FHandle = INVALID_HANDLE_VALUE then  //because THandle is not integer on all platforms!
+    SerialCheck(-1)
+  else
+    SerialCheck(0);
   {$IFDEF LINUX}
   if FLastError <> sOK then
     if FLinuxLock then
@@ -937,7 +946,10 @@ begin
     FDevice := '\\.\COM' + IntToStr(FComNr + 1);
   FHandle := THandle(CreateFile(PChar(FDevice), GENERIC_READ or GENERIC_WRITE,
     0, nil, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL or FILE_FLAG_OVERLAPPED, 0));
-  SerialCheck(integer(FHandle));
+  if FHandle = INVALID_HANDLE_VALUE then  //because THandle is not integer on all platforms!
+    SerialCheck(-1)
+  else
+    SerialCheck(0);
   ExceptCheck;
   if FLastError <> sOK then
     Exit;
@@ -955,7 +967,7 @@ begin
   if not TestCtrlLine then  {HGJ}
   begin
     SetSynaError(ErrNoDeviceAnswer);
-    FileClose(integer(FHandle));         {HGJ}
+    FileClose(FHandle);         {HGJ}
     {$IFDEF LINUX}
     if FLinuxLock then
       cpomReleaseComport;                {HGJ}
@@ -991,7 +1003,7 @@ begin
     RTS := True;
   end;
 {$IFNDEF MSWINDOWS}
-  result := FileWrite(integer(Fhandle), Buffer^, Length);
+  result := FileWrite(Fhandle, Buffer^, Length);
   serialcheck(result);
 {$ELSE}
   FillChar(Overlapped, Sizeof(Overlapped), 0);
@@ -1098,7 +1110,7 @@ begin
   if PreTestFailing then   {HGJ}
     Exit;                  {HGJ}
   LimitBandwidth(Length, FMaxRecvBandwidth, FNextRecv);
-  result := FileRead(integer(FHandle), Buffer^, length);
+  result := FileRead(FHandle, Buffer^, length);
   serialcheck(result);
 {$ELSE}
 var
@@ -1418,7 +1430,7 @@ end;
 function TBlockSerial.WaitingData: integer;
 begin
 {$IFNDEF FPC}
-  serialcheck(ioctl(integer(FHandle), FIONREAD, @result));
+  serialcheck(ioctl(FHandle, FIONREAD, @result));
 {$ELSE}
   serialcheck(fpIoctl(FHandle, FIONREAD, @result));
 {$ENDIF}
@@ -1601,7 +1613,7 @@ end;
 procedure TBlockSerial.SetCommState;
 begin
   DcbToTermios(dcb, termiosstruc);
-  SerialCheck(tcsetattr(integer(FHandle), TCSANOW, termiosstruc));
+  SerialCheck(tcsetattr(FHandle, TCSANOW, termiosstruc));
   ExceptCheck;
 end;
 {$ELSE}
@@ -1617,7 +1629,7 @@ end;
 {$IFNDEF MSWINDOWS}
 procedure TBlockSerial.GetCommState;
 begin
-  SerialCheck(tcgetattr(integer(FHandle), termiosstruc));
+  SerialCheck(tcgetattr(FHandle, termiosstruc));
   ExceptCheck;
   TermiostoDCB(termiosstruc, dcb);
 end;
@@ -1662,9 +1674,9 @@ begin
   else
     FModemWord := FModemWord and not TIOCM_DTR;
   {$IFNDEF FPC}
-  ioctl(integer(FHandle), TIOCMSET, @FModemWord);
+  ioctl(FHandle, TIOCMSET, @FModemWord);
   {$ELSE}
-  fpioctl(integer(FHandle), TIOCMSET, @FModemWord);
+  fpioctl(FHandle, TIOCMSET, @FModemWord);
   {$ENDIF}
 {$ELSE}
   if Value then
@@ -1693,9 +1705,9 @@ begin
   else
     FModemWord := FModemWord and not TIOCM_RTS;
   {$IFNDEF FPC}
-  ioctl(integer(FHandle), TIOCMSET, @FModemWord);
+  ioctl(FHandle, TIOCMSET, @FModemWord);
   {$ELSE}
-  fpioctl(integer(FHandle), TIOCMSET, @FModemWord);
+  fpioctl(FHandle, TIOCMSET, @FModemWord);
   {$ENDIF}
 {$ELSE}
   if Value then
@@ -1775,12 +1787,12 @@ begin
     TimeVal := nil;
   {$IFNDEF FPC}
   FD_ZERO(FDSet);
-  FD_SET(integer(FHandle), FDSet);
-  x := Select(integer(FHandle) + 1, @FDSet, nil, nil, TimeVal);
+  FD_SET(FHandle, FDSet);
+  x := Select(FHandle + 1, @FDSet, nil, nil, TimeVal);
   {$ELSE}
   fpFD_ZERO(FDSet);
-  fpFD_SET(integer(FHandle), FDSet);
-  x := fpSelect(integer(FHandle) + 1, @FDSet, nil, nil, TimeVal);
+  fpFD_SET(FHandle, FDSet);
+  x := fpSelect(FHandle + 1, @FDSet, nil, nil, TimeVal);
   {$ENDIF}
   SerialCheck(x);
   if FLastError <> sOK then
@@ -1816,12 +1828,12 @@ begin
     TimeVal := nil;
   {$IFNDEF FPC}
   FD_ZERO(FDSet);
-  FD_SET(integer(FHandle), FDSet);
-  x := Select(integer(FHandle) + 1, nil, @FDSet, nil, TimeVal);
+  FD_SET(FHandle, FDSet);
+  x := Select(FHandle + 1, nil, @FDSet, nil, TimeVal);
   {$ELSE}
   fpFD_ZERO(FDSet);
-  fpFD_SET(integer(FHandle), FDSet);
-  x := fpSelect(integer(FHandle) + 1, nil, @FDSet, nil, TimeVal);
+  fpFD_SET(FHandle, FDSet);
+  x := fpSelect(FHandle + 1, nil, @FDSet, nil, TimeVal);
   {$ENDIF}
   SerialCheck(x);
   if FLastError <> sOK then
@@ -1891,7 +1903,7 @@ end;
 procedure TBlockSerial.Flush;
 begin
 {$IFNDEF MSWINDOWS}
-  SerialCheck(tcdrain(integer(FHandle)));
+  SerialCheck(tcdrain(FHandle));
 {$ELSE}
   SetSynaError(sOK);
   if not Flushfilebuffers(FHandle) then
@@ -1904,9 +1916,9 @@ end;
 procedure TBlockSerial.Purge;
 begin
   {$IFNDEF FPC}
-  SerialCheck(ioctl(integer(FHandle), TCFLSH, TCIOFLUSH));
+  SerialCheck(ioctl(FHandle, TCFLSH, TCIOFLUSH));
   {$ELSE}
-  SerialCheck(fpioctl(integer(FHandle), TCFLSH, TCIOFLUSH));
+  SerialCheck(fpioctl(FHandle, TCFLSH, TCIOFLUSH));
   {$ENDIF}
   FBuffer := '';
   ExceptCheck;
@@ -1930,9 +1942,9 @@ begin
   Result := 0;
 {$IFNDEF MSWINDOWS}
   {$IFNDEF FPC}
-  SerialCheck(ioctl(integer(FHandle), TIOCMGET, @Result));
+  SerialCheck(ioctl(FHandle, TIOCMGET, @Result));
   {$ELSE}
-  SerialCheck(fpioctl(integer(FHandle), TIOCMGET, @Result));
+  SerialCheck(fpioctl(FHandle, TIOCMGET, @Result));
   {$ENDIF}
 {$ELSE}
   SetSynaError(sOK);
@@ -1946,7 +1958,7 @@ end;
 procedure TBlockSerial.SetBreak(Duration: integer);
 begin
 {$IFNDEF MSWINDOWS}
-  SerialCheck(tcsendbreak(integer(FHandle), Duration));
+  SerialCheck(tcsendbreak(FHandle, Duration));
 {$ELSE}
   SetCommBreak(FHandle);
   Sleep(Duration);
