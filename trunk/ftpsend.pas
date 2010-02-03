@@ -1,5 +1,5 @@
 {==============================================================================|
-| Project : Ararat Synapse                                       | 003.005.002 |
+| Project : Ararat Synapse                                       | 003.005.003 |
 |==============================================================================|
 | Content: FTP client                                                          |
 |==============================================================================|
@@ -53,6 +53,11 @@ Used RFC: RFC-959, RFC-2228, RFC-2428
 {$ENDIF}
 {$H+}
 
+{$IFDEF UNICODE}
+  {$WARN IMPLICIT_STRING_CAST OFF}
+  {$WARN IMPLICIT_STRING_CAST_LOSS OFF}
+{$ENDIF}
+
 unit ftpsend;
 
 interface
@@ -84,18 +89,17 @@ type
    listing of FTP server.}
   TFTPListRec = class(TObject)
   private
-    FFileName: string;
+    FFileName: String;
     FDirectory: Boolean;
     FReadable: Boolean;
     FFileSize: Longint;
     FFileTime: TDateTime;
     FOriginalLine: string;
     FMask: string;
-    FPermission: string;
+    FPermission: String;
   public
     {: You can assign another TFTPListRec to this object.}
     procedure Assign(Value: TFTPListRec); virtual;
-  published
     {:name of file}
     property FileName: string read FFileName write FFileName;
     {:if name is subdirectory not file.}
@@ -135,16 +139,16 @@ type
     YearTime: string;
     Year: string;
     Hours: string;
-    HoursModif: string;
+    HoursModif: Ansistring;
     Minutes: string;
     Seconds: string;
-    Size: string;
-    Permissions: string;
+    Size: Ansistring;
+    Permissions: Ansistring;
     DirFlag: string;
     function GetListItem(Index: integer): TFTPListRec; virtual;
     function ParseEPLF(Value: string): Boolean; virtual;
     procedure ClearStore; virtual;
-    function ParseByMask(Value, NextValue, Mask: string): Integer; virtual;
+    function ParseByMask(Value, NextValue, Mask: ansistring): Integer; virtual;
     function CheckValues: Boolean; virtual;
     procedure FillRecord(const Value: TFTPListRec); virtual;
   public
@@ -510,7 +514,7 @@ end;
 
 function TFTPSend.ReadResult: Integer;
 var
-  s, c: string;
+  s, c: AnsiString;
 begin
   FFullResult.Clear;
   c := '';
@@ -820,7 +824,7 @@ end;
 procedure TFTPSend.ParseRemoteEPSV(Value: string);
 var
   n: integer;
-  s, v: string;
+  s, v: AnsiString;
 begin
   s := SeparateRight(Value, '(');
   s := Trim(SeparateLeft(s, ')'));
@@ -1338,11 +1342,11 @@ begin
   DirFlag := '';
 end;
 
-function TFTPList.ParseByMask(Value, NextValue, Mask: string): Integer;
+function TFTPList.ParseByMask(Value, NextValue, Mask: AnsiString): Integer;
 var
   Ivalue, IMask: integer;
-  MaskC, LastMaskC: Char;
-  c: char;
+  MaskC, LastMaskC: AnsiChar;
+  c: AnsiChar;
   s: string;
 begin
   ClearStore;

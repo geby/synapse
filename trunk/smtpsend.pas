@@ -53,6 +53,11 @@ Used RFC: RFC-1869, RFC-1870, RFC-1893, RFC-2034, RFC-2104, RFC-2195, RFC-2487,
 {$ENDIF}
 {$H+}
 
+{$IFDEF UNICODE}
+  {$WARN IMPLICIT_STRING_CAST OFF}
+  {$WARN IMPLICIT_STRING_CAST_LOSS OFF}
+{$ENDIF}
+
 unit smtpsend;
 
 interface
@@ -316,7 +321,7 @@ end;
 
 function TSMTPSend.ReadResult: Integer;
 var
-  s: string;
+  s: String;
 begin
   Result := 0;
   FFullResult.Clear;

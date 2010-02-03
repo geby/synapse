@@ -53,6 +53,11 @@ Used RFC: RFC-1350
 {$Q-}
 {$H+}
 
+{$IFDEF UNICODE}
+  {$WARN IMPLICIT_STRING_CAST OFF}
+  {$WARN IMPLICIT_STRING_CAST_LOSS OFF}
+{$ENDIF}
+
 unit ftptsend;
 
 interface

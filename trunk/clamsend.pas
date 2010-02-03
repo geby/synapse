@@ -54,6 +54,11 @@ daemon from ClamAV. See more about ClamAV on @LINK(http://www.clamav.net)
 {$Q-}
 {$H+}
 
+{$IFDEF UNICODE}
+  {$WARN IMPLICIT_STRING_CAST OFF}
+  {$WARN IMPLICIT_STRING_CAST_LOSS OFF}
+{$ENDIF}
+
 unit clamsend;
 
 interface
@@ -249,7 +254,6 @@ end;
 function TClamSend.ScanStream2(const Value: TStream): AnsiString;
 var
   i: integer;
-  s: AnsiString;
 begin
   Result := '';
   if not FSession then

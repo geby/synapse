@@ -1,5 +1,5 @@
 {==============================================================================|
-| Project : Ararat Synapse                                       | 002.007.005 |
+| Project : Ararat Synapse                                       | 002.007.006 |
 |==============================================================================|
 | Content: DNS client                                                          |
 |==============================================================================|
@@ -53,6 +53,11 @@ Used RFC: RFC-1035, RFC-1183, RFC1706, RFC1712, RFC2163, RFC2230
 {$ENDIF}
 {$Q-}
 {$H+}
+
+{$IFDEF UNICODE}
+  {$WARN IMPLICIT_STRING_CAST OFF}
+  {$WARN IMPLICIT_STRING_CAST_LOSS OFF}
+{$ENDIF}
 
 unit dnssend;
 
@@ -248,13 +253,13 @@ begin
     for n := 1 to Length(Value) do
       if Value[n] = '.' then
       begin
-        Result := Result + Char(Length(s)) + s;
+        Result := Result + AnsiChar(Length(s)) + s;
         s := '';
       end
       else
         s := s + Value[n];
     if s <> '' then
-      Result := Result + Char(Length(s)) + s;
+      Result := Result + AnsiChar(Length(s)) + s;
     Result := Result + #0;
   end;
 end;
