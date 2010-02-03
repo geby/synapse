@@ -1183,10 +1183,10 @@ begin
       Sin.sin_family := AF_INET;
       ProtoEnt := synsock.GetProtoByNumber(SockProtocol);
       ServEnt := nil;
-      if (ProtoEnt <> nil) and (StrToIntDef(Port,-1) =-1) then
+      if (ProtoEnt <> nil) and (StrToIntDef(string(Port),-1) =-1) then
         ServEnt := synsock.GetServByName(PAnsiChar(Port), ProtoEnt^.p_name);
       if ServEnt = nil then
-        Sin.sin_port := synsock.htons(StrToIntDef(Port, 0))
+        Sin.sin_port := synsock.htons(StrToIntDef(string(Port), 0))
       else
         Sin.sin_port := ServEnt^.s_port;
       if IP = cBroadcast then
@@ -1298,7 +1298,7 @@ var
   IP: u_long;
   PAdrPtr: PaPInAddr;
   i: Integer;
-  s: AnsiString;
+  s: String;
   InAddr: TInAddr;
 begin
   IPList.Clear;
@@ -1328,7 +1328,7 @@ begin
       end;
     end
     else
-      IPList.Add(Name);
+      IPList.Add(string(Name));
   end
   else
   begin
@@ -1358,7 +1358,7 @@ begin
             if r = 0 then
             begin
               host := PAnsiChar(host);
-              IPList.Add(host);
+              IPList.Add(string(host));
             end;
           end;
           AddrNext := AddrNext^.ai_next;
@@ -1391,7 +1391,7 @@ begin
       if ProtoEnt <> nil then
         ServEnt := synsock.GetServByName(PAnsiChar(Port), ProtoEnt^.p_name);
       if ServEnt = nil then
-        Result := StrToIntDef(Port, 0)
+        Result := StrToIntDef(string(Port), 0)
       else
         Result := synsock.htons(ServEnt^.s_port);
     finally
