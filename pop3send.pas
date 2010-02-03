@@ -1,5 +1,5 @@
 {==============================================================================|
-| Project : Ararat Synapse                                       | 002.006.001 |
+| Project : Ararat Synapse                                       | 002.006.002 |
 |==============================================================================|
 | Content: POP3 client                                                         |
 |==============================================================================|
@@ -51,6 +51,12 @@ Used RFC: RFC-1734, RFC-1939, RFC-2195, RFC-2449, RFC-2595
   {$MODE DELPHI}
 {$ENDIF}
 {$H+}
+{$M+}
+
+{$IFDEF UNICODE}
+  {$WARN IMPLICIT_STRING_CAST OFF}
+  {$WARN IMPLICIT_STRING_CAST_LOSS OFF}
+{$ENDIF}
 
 unit pop3send;
 
@@ -225,7 +231,7 @@ end;
 
 function TPOP3Send.ReadResult(Full: Boolean): Integer;
 var
-  s: string;
+  s: AnsiString;
 begin
   Result := 0;
   FFullResult.Clear;

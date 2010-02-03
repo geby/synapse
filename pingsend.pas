@@ -73,6 +73,11 @@ Note: This unit is NOT portable to .NET!
   {$ENDIF}
 {$ENDIF}
 
+{$IFDEF UNICODE}
+  {$WARN IMPLICIT_STRING_CAST OFF}
+  {$WARN IMPLICIT_STRING_CAST_LOSS OFF}
+{$ENDIF}
+
 unit pingsend;
 
 interface
@@ -113,7 +118,7 @@ type
   TPINGSend = class(TSynaClient)
   private
     FSock: TICMPBlockSocket;
-    FBuffer: string;
+    FBuffer: Ansistring;
     FSeq: Integer;
     FId: Integer;
     FPacketSize: Integer;
@@ -128,8 +133,8 @@ type
     FReplyErrorDesc: string;
     FTTL: Byte;
     Fsin: TVarSin;
-    function Checksum(Value: string): Word;
-    function Checksum6(Value: string): Word;
+    function Checksum(Value: AnsiString): Word;
+    function Checksum6(Value: AnsiString): Word;
     function ReadPacket: Boolean;
     procedure TranslateError;
     procedure TranslateErrorIpHlp(value: integer);
@@ -220,7 +225,7 @@ type
     TOS: Byte;
     Flags: Byte;
     OptionsSize: Byte;
-    OptionsData: PChar;
+    OptionsData: PAnsiChar;
   end;
   PIP_OPTION_INFORMATION = ^TIP_OPTION_INFORMATION;
 
@@ -443,7 +448,7 @@ begin
     end;
 end;
 
-function TPINGSend.Checksum(Value: string): Word;
+function TPINGSend.Checksum(Value: AnsiString): Word;
 var
   CkSum: integer;
   Num, Remain: Integer;
@@ -465,7 +470,7 @@ begin
   Result := Word(not CkSum);
 end;
 
-function TPINGSend.Checksum6(Value: string): Word;
+function TPINGSend.Checksum6(Value: AnsiString): Word;
 const
   IOC_OUT = $40000000;
   IOC_IN = $80000000;
@@ -474,7 +479,7 @@ const
   SIO_ROUTING_INTERFACE_QUERY = 20 or IOC_WS2 or IOC_INOUT;
 var
   ICMP6Ptr: ^TICMP6Packet;
-  s: string;
+  s: AnsiString;
   b: integer;
   ip6: TSockAddrIn6;
   x: integer;
@@ -578,7 +583,7 @@ var
   PingHandle: integer;
   r: integer;
   ipo: TIP_OPTION_INFORMATION;
-  RBuff: string;
+  RBuff: Ansistring;
   ip4reply: PICMP_ECHO_REPLY;
   ip6reply: PICMPV6_ECHO_REPLY;
   ip6: TSockAddrIn6;
@@ -602,7 +607,7 @@ begin
       begin
         FillChar(ip6, sizeof(ip6), 0);
         r := Icmp6SendEcho2(PingHandle, nil, nil, nil, @ip6, @Fsin,
-          Pchar(FBuffer), length(FBuffer), @ipo, pchar(RBuff), length(RBuff), FTimeout);
+          PAnsichar(FBuffer), length(FBuffer), @ipo, pAnsichar(RBuff), length(RBuff), FTimeout);
         if r > 0 then
         begin
           RBuff := #0 + #0 + RBuff;
@@ -617,7 +622,7 @@ begin
       else
       begin
         r := IcmpSendEcho2(PingHandle, nil, nil, nil, Fsin.sin_addr,
-          Pchar(FBuffer), length(FBuffer), @ipo, pchar(RBuff), length(RBuff), FTimeout);
+          PAnsichar(FBuffer), length(FBuffer), @ipo, pAnsichar(RBuff), length(RBuff), FTimeout);
         if r > 0 then
         begin
           ip4reply := PICMP_ECHO_REPLY(pointer(RBuff));

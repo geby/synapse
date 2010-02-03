@@ -60,6 +60,12 @@
   {$ENDIF}
 {$ENDIF}
 
+{$IFDEF UNICODE}
+  {$WARN IMPLICIT_STRING_CAST OFF}
+  {$WARN IMPLICIT_STRING_CAST_LOSS OFF}
+  {$WARN SUSPICIOUS_TYPECAST OFF}
+{$ENDIF}
+
 unit synautil;
 
 interface
@@ -109,7 +115,7 @@ function AnsiCDateTime(t: TDateTime): string;
 {:Decode three-letter string with name of month to their month number. If string
  not match any month name, then is returned 0. For parsing are used predefined
  names for English, French and German and names from system locale too.}
-function GetMonthNumber(Value: AnsiString): integer;
+function GetMonthNumber(Value: String): integer;
 
 {:Return decoded time from given string. Time must be witch separator ':'. You
  can use "hh:mm" or "hh:mm:ss".}
@@ -258,7 +264,7 @@ function FetchEx(var Value: string; const Delimiter, Quotation: string): string;
 
 {:If string is binary string (contains non-printable characters), then is
  returned true.}
-function IsBinaryString(const Value: string): Boolean;
+function IsBinaryString(const Value: AnsiString): Boolean;
 
 {:return position of string terminator in string. If terminator found, then is
  returned in terminator parameter.
@@ -334,7 +340,7 @@ const
   MyDayNames: array[1..7] of AnsiString =
     ('Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat');
 var
-  MyMonthNames: array[0..6, 1..12] of AnsiString =
+  MyMonthNames: array[0..6, 1..12] of String =
     (
     ('Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',  //rewrited by system locales
      'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'),
@@ -533,10 +539,10 @@ end;
 
 {==============================================================================}
 
-function GetMonthNumber(Value: AnsiString): integer;
+function GetMonthNumber(Value: String): integer;
 var
   n: integer;
-  function TestMonth(Value: AnsiString; Index: Integer): Boolean;
+  function TestMonth(Value: String; Index: Integer): Boolean;
   var
     n: integer;
   begin
@@ -1412,7 +1418,7 @@ end;
 
 {==============================================================================}
 
-function IsBinaryString(const Value: string): Boolean;
+function IsBinaryString(const Value: AnsiString): Boolean;
 var
   n: integer;
 begin
@@ -1420,7 +1426,7 @@ begin
   for n := 1 to Length(Value) do
     if Value[n] in [#0..#8, #10..#31] then
       //ignore null-terminated strings
-      if not ((n = Length(value)) and (Value[n] = #0)) then
+      if not ((n = Length(value)) and (Value[n] = AnsiChar(#0))) then
       begin
         Result := True;
         Break;
@@ -1791,7 +1797,7 @@ begin
       for n := 1 to Length(t) do
         if t[n] = #9 then
           t[n] := ' ';
-      if not(t[1] in [' ', '"', ':', '=']) then
+      if not(AnsiChar(t[1]) in [' ', '"', ':', '=']) then
         Break
       else
       begin

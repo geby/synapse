@@ -52,6 +52,11 @@ Used RFC: RFC-854
 {$ENDIF}
 {$H+}
 
+{$IFDEF UNICODE}
+  {$WARN IMPLICIT_STRING_CAST OFF}
+  {$WARN IMPLICIT_STRING_CAST_LOSS OFF}
+{$ENDIF}
+
 unit tlntsend;
 
 interface

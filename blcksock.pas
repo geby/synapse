@@ -89,6 +89,11 @@ Core with implementation basic socket classes.
   {$ENDIF}
 {$ENDIF}
 
+{$IFDEF UNICODE}
+  {$WARN IMPLICIT_STRING_CAST OFF}
+  {$WARN IMPLICIT_STRING_CAST_LOSS OFF}
+{$ENDIF}
+
 unit blcksock;
 
 interface
@@ -2078,6 +2083,7 @@ var
 {$ENDIF}
 begin
   b := true;
+  l := 0;
   if WithSize then
   begin
     l := Stream.Size - Stream.Position;;
@@ -3209,7 +3215,7 @@ end;
 
 function TSocksBlockSocket.SocksOpen: boolean;
 var
-  Buf: string;
+  Buf: AnsiString;
   n: integer;
 begin
   Result := False;
@@ -3239,8 +3245,8 @@ begin
           ;
         2:
           begin
-            Buf := #1 + char(Length(FSocksUsername)) + FSocksUsername
-              + char(Length(FSocksPassword)) + FSocksPassword;
+            Buf := #1 + AnsiChar(Length(FSocksUsername)) + FSocksUsername
+              + AnsiChar(Length(FSocksPassword)) + FSocksPassword;
             SendString(Buf);
             Buf := RecvBufferStr(2, FSocksTimeout);
             if Length(Buf) < 2 then
@@ -3263,14 +3269,14 @@ end;
 function TSocksBlockSocket.SocksRequest(Cmd: Byte;
   const IP, Port: string): Boolean;
 var
-  Buf: string;
+  Buf: AnsiString;
 begin
   FBypassFlag := True;
   try
     if FSocksType <> ST_Socks5 then
-      Buf := #4 + char(Cmd) + SocksCode(IP, Port)
+      Buf := #4 + AnsiChar(Cmd) + SocksCode(IP, Port)
     else
-      Buf := #5 + char(Cmd) + #0 + SocksCode(IP, Port);
+      Buf := #5 + AnsiChar(Cmd) + #0 + SocksCode(IP, Port);
     SendString(Buf);
     Result := FLastError = 0;
   finally
@@ -3280,7 +3286,7 @@ end;
 
 function TSocksBlockSocket.SocksResponse: Boolean;
 var
-  Buf, s: string;
+  Buf, s: AnsiString;
   x: integer;
 begin
   Result := False;
@@ -3313,7 +3319,7 @@ begin
             x := RecvByte(FSocksTimeout);
             if FLastError <> 0 then
               Exit;
-            s := char(x) + RecvBufferStr(x, FSocksTimeout);
+            s := AnsiChar(x) + RecvBufferStr(x, FSocksTimeout);
           end;
         4:
           s := RecvBufferStr(16, FSocksTimeout);
@@ -3368,10 +3374,10 @@ begin
         ip6 := StrToIP6(IP);
         Result := #4;
         for n := 0 to 15 do
-          Result := Result + char(ip6[n]);
+          Result := Result + AnsiChar(ip6[n]);
       end
       else
-        Result := #3 + char(Length(IP)) + IP;
+        Result := #3 + AnsiChar(Length(IP)) + IP;
     Result := Result + CodeInt(ResolvePort(Port));
   end;
 end;

@@ -101,7 +101,7 @@ type
     FMaxSyncDiff: double;
     FSyncTime: Boolean;
     FSock: TUDPBlockSocket;
-    FBuffer: string;
+    FBuffer: AnsiString;
     FLi, FVn, Fmode : byte;
     function StrToNTP(const Value: AnsiString): TNtp;
     function NTPtoStr(const Value: Tntp): AnsiString;

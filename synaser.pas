@@ -1072,7 +1072,7 @@ begin
     if y > cSerialChunk then
       y := cSerialChunk;
     Setlength(s, y);
-    yr := Stream.read(Pchar(s)^, y);
+    yr := Stream.read(PAnsiChar(s)^, y);
     if yr > 0 then
     begin
       SetLength(s, yr);
@@ -1195,7 +1195,7 @@ begin
   if Length > 0 then
   begin
     Setlength(Result, Length);
-    x := RecvBufferEx(PChar(Result), Length , Timeout);
+    x := RecvBufferEx(PAnsiChar(Result), Length , Timeout);
     if FLastError = sOK then
       SetLength(Result, x)
     else
@@ -1395,7 +1395,7 @@ begin
     s := RecvBufferStr(cSerialChunk, Timeout);
     if FLastError <> 0 then
       Exit;
-    Stream.Write(Pchar(s)^, cSerialChunk);
+    Stream.Write(PAnsichar(s)^, cSerialChunk);
   end;
   n := Size mod cSerialChunk;
   if n > 0 then
@@ -1403,7 +1403,7 @@ begin
     s := RecvBufferStr(n, Timeout);
     if FLastError <> 0 then
       Exit;
-    Stream.Write(Pchar(s)^, n);
+    Stream.Write(PAnsichar(s)^, n);
   end;
 end;
 
