@@ -1,5 +1,5 @@
 {==============================================================================|
-| Project : Ararat Synapse                                       | 001.006.002 |
+| Project : Ararat Synapse                                       | 001.007.000 |
 |==============================================================================|
 | Content: LDAP client                                                         |
 |==============================================================================|
@@ -129,6 +129,8 @@ type
     procedure Del(Index: integer);
     {:Find and return attribute with requested name. Returns nil if not found.}
     function Find(AttributeName: AnsiString): TLDAPAttribute;
+    {:Find and return attribute value with requested name. Returns empty string if not found.}
+    function Get(AttributeName: AnsiString): string;
     {:List of TLDAPAttribute objects.}
     property Items[Index: Integer]: TLDAPAttribute read GetAttribute; default;
   end;
@@ -394,6 +396,17 @@ end;
 function TLDAPAttributeList.Count: integer;
 begin
   Result := FAttributeList.Count;
+end;
+
+function TLDAPAttributeList.Get(AttributeName: AnsiString): string;
+var
+  x: TLDAPAttribute;
+begin
+  Result := '';
+  x := self.Find(AttributeName);
+  if x <> nil then
+    if x.Count > 0 then
+      Result := x[0];
 end;
 
 function TLDAPAttributeList.GetAttribute(Index: integer): TLDAPAttribute;
