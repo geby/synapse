@@ -1,5 +1,5 @@
 {==============================================================================|
-| Project : Ararat Synapse                                       | 001.001.001 |
+| Project : Ararat Synapse                                       | 001.001.002 |
 |==============================================================================|
 | Content: Socket Independent Platform Layer - FreePascal definition include   |
 |==============================================================================|
@@ -716,7 +716,7 @@ var
               if IN6_IS_ADDR_UNSPECIFIED(@a6[1]) then
                 Resolvename6(ip, a6);
             end;
-            if IN6_IS_ADDR_UNSPECIFIED(@a6[1]) then
+            if not IN6_IS_ADDR_UNSPECIFIED(@a6[1]) then
             begin
               Sin.sin_family := AF_INET6;
               sin.sin6_addr := a6[1];
