@@ -68,12 +68,15 @@ interface
 {$ENDIF}
 
 uses
-  synautil, blcksock, SysUtils, Classes,
+  synautil, blcksock, SysUtils, Classes
 {$IFDEF LINUX}
-  Libc;
+  {$IFNDEF FPC}
+  , Libc
+  {$ENDIF}
 {$ELSE}
-  Windows;
+  , Windows
 {$ENDIF}
+;
 
 Type
   {:@abstract(This record contains information about proxy setting.)}
