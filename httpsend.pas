@@ -334,7 +334,7 @@ begin
     Result := FHeaders[0] + CRLF
   else
 {$IFNDEF MSWINDOWS}
-    Result := {$IFDEF UNICODE}AnsiString{$ENDIF}(AdjustLineBreaks(FHeaders.Text, tlbsCRLF)));
+    Result := {$IFDEF UNICODE}AnsiString{$ENDIF}(AdjustLineBreaks(FHeaders.Text, tlbsCRLF));
 {$ELSE}
     Result := FHeaders.Text;
 {$ENDIF}
