@@ -1,5 +1,5 @@
 {==============================================================================|
-| Project : Ararat Synapse                                       | 003.006.001 |
+| Project : Ararat Synapse                                       | 003.006.002 |
 |==============================================================================|
 | Content: SSL support by OpenSSL                                              |
 |==============================================================================|
@@ -85,7 +85,11 @@ uses
   Classes,
   synafpc,
 {$IFNDEF MSWINDOWS}
-  Libc, SysUtils;
+  {$IFDEF FPC}
+  BaseUnix, SysUtils;
+  {$ELSE}
+   Libc, SysUtils;
+  {$ENDIF}
 {$ELSE}
   Windows;
 {$ENDIF}
@@ -1727,7 +1731,7 @@ begin
 {$ELSE}
       SSLLibHandle := LoadLib(DLLSSLName);
       SSLUtilHandle := LoadLib(DLLUtilName);
-  {$IFNDEF LINUX}
+  {$IFDEF MSWINDOWS}
       if (SSLLibHandle = 0) then
         SSLLibHandle := LoadLib(DLLSSLName2);
   {$ENDIF}
