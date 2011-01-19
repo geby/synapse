@@ -1,5 +1,5 @@
 {==============================================================================|
-| Project : Ararat Synapse                                       | 003.012.004 |
+| Project : Ararat Synapse                                       | 003.012.005 |
 |==============================================================================|
 | Content: HTTP client                                                         |
 |==============================================================================|
@@ -670,7 +670,7 @@ end;
 
 function THTTPSend.ReadUnknown: Boolean;
 var
-  s: string;
+  s: ansistring;
 begin
   Result := false;
   repeat
@@ -700,7 +700,7 @@ end;
 
 function THTTPSend.ReadChunked: Boolean;
 var
-  s: string;
+  s: ansistring;
   Size: Integer;
 begin
   repeat
