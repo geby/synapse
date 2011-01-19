@@ -1,9 +1,9 @@
 {==============================================================================|
-| Project : Ararat Synapse                                       | 001.001.003 |
+| Project : Ararat Synapse                                       | 001.001.004 |
 |==============================================================================|
 | Content: Socket Independent Platform Layer - FreePascal definition include   |
 |==============================================================================|
-| Copyright (c)2006-2010, Lukas Gebauer                                        |
+| Copyright (c)2006-2011, Lukas Gebauer                                        |
 | All rights reserved.                                                         |
 |                                                                              |
 | Redistribution and use in source and binary forms, with or without           |
@@ -33,7 +33,7 @@
 | DAMAGE.                                                                      |
 |==============================================================================|
 | The Initial Developer of the Original Code is Lukas Gebauer (Czech Republic).|
-| Portions created by Lukas Gebauer are Copyright (c)2006-2010.                |
+| Portions created by Lukas Gebauer are Copyright (c)2006-2011.                |
 | All Rights Reserved.                                                         |
 |==============================================================================|
 | Contributor(s):                                                              |
@@ -673,6 +673,7 @@ var
   var
     a4: array [1..1] of in_addr;
     a6: array [1..1] of Tin6_addr;
+    he: THostEntry;
   begin
     Result := WSAEPROTONOSUPPORT;
     case f of
@@ -693,7 +694,10 @@ var
               Result := WSAHOST_NOT_FOUND;
               a4[1] := StrTonetAddr(IP);
               if a4[1].s_addr = INADDR_ANY then
-                Resolvename(ip, a4);
+                if GetHostByName(ip, he) then
+                  a4[1]:=HostToNet(he.Addr)
+                else
+                  Resolvename(ip, a4);
             end;
             if a4[1].s_addr <> INADDR_ANY then
             begin
@@ -788,6 +792,7 @@ var
   x, n: integer;
   a4: array [1..255] of in_addr;
   a6: array [1..255] of Tin6_addr;
+  he: THostEntry;
 begin
   IPList.Clear;
   if (family = AF_INET) or (family = AF_UNSPEC) then
@@ -798,7 +803,13 @@ begin
     begin
       a4[1] := StrTonetAddr(name);
       if a4[1].s_addr = INADDR_ANY then
-        x := Resolvename(name, a4)
+        if GetHostByName(name, he) then
+        begin
+          a4[1]:=HostToNet(he.Addr);
+          x := 1;
+        end
+        else
+          x := Resolvename(name, a4)
       else
         x := 1;
       for n := 1  to x do
