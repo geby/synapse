@@ -1,9 +1,9 @@
 {==============================================================================|
-| Project : Ararat Synapse                                       | 003.005.003 |
+| Project : Ararat Synapse                                       | 003.005.004 |
 |==============================================================================|
 | Content: FTP client                                                          |
 |==============================================================================|
-| Copyright (c)1999-2010, Lukas Gebauer                                        |
+| Copyright (c)1999-2011, Lukas Gebauer                                        |
 | All rights reserved.                                                         |
 |                                                                              |
 | Redistribution and use in source and binary forms, with or without           |
@@ -852,7 +852,7 @@ begin
       s := '2'
     else
       s := '1';
-    if not(FForceOldPort) and ((FTPCommand('EPSV ' + s) div 100) = 2) then
+    if FSock.IP6used and not(FForceOldPort) and ((FTPCommand('EPSV ' + s) div 100) = 2) then
     begin
       ParseRemoteEPSV(FResultString);
     end
@@ -887,7 +887,7 @@ begin
     FDataIP := FDSock.GetLocalSinIP;
     FDataIP := FDSock.ResolveName(FDataIP);
     FDataPort := IntToStr(FDSock.GetLocalSinPort);
-    if not FForceOldPort then
+    if FSock.IP6used and (not FForceOldPort) then
     begin
       if IsIp6(FDataIP) then
         s := '2'
