@@ -1,9 +1,9 @@
 {==============================================================================|
-| Project : Ararat Synapse                                       | 009.008.003 |
+| Project : Ararat Synapse                                       | 009.008.004 |
 |==============================================================================|
 | Content: Library base                                                        |
 |==============================================================================|
-| Copyright (c)1999-2010, Lukas Gebauer                                        |
+| Copyright (c)1999-2011, Lukas Gebauer                                        |
 | All rights reserved.                                                         |
 |                                                                              |
 | Redistribution and use in source and binary forms, with or without           |
@@ -33,7 +33,7 @@
 | DAMAGE.                                                                      |
 |==============================================================================|
 | The Initial Developer of the Original Code is Lukas Gebauer (Czech Republic).|
-| Portions created by Lukas Gebauer are Copyright (c)1999-2010.                |
+| Portions created by Lukas Gebauer are Copyright (c)1999-2011.                |
 | All Rights Reserved.                                                         |
 |==============================================================================|
 | Contributor(s):                                                              |
@@ -306,6 +306,9 @@ type
     FStopFlag: Boolean;
     FNonblockSendTimeout: Integer;
     FHeartbeatRate: integer;
+    {$IFNDEF ONCEWINSOCK}
+    FWsaDataOnce: TWSADATA;
+    {$ENDIF}
     function GetSizeRecvBuffer: Integer;
     procedure SetSizeRecvBuffer(Size: Integer);
     function GetSizeSendBuffer: Integer;
@@ -2996,7 +2999,11 @@ end;
 
 function TBlockSocket.GetWsaData: TWSAData;
 begin
+  {$IFDEF ONCEWINSOCK}
   Result := WsaDataOnce;
+  {$ELSE}
+  Result := FWsaDataOnce;
+  {$ENDIF}
 end;
 
 function TBlockSocket.GetSocketType: integer;
@@ -4236,9 +4243,9 @@ end;
 
 {======================================================================}
 
-{$IFDEF ONCEWINSOCK}
 initialization
 begin
+{$IFDEF ONCEWINSOCK}
   if not InitSocketInterface(DLLStackName) then
   begin
     e := ESynapseError.Create('Error loading Socket interface (' + DLLStackName + ')!');
@@ -4247,8 +4254,8 @@ begin
     raise e;
   end;
   synsock.WSAStartup(WinsockLevel, WsaDataOnce);
-end;
 {$ENDIF}
+end;
 
 finalization
 begin
