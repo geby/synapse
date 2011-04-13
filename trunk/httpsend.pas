@@ -352,7 +352,10 @@ begin
     Exit;
   if needssl then
   begin
+    if (FSock.SSL.SNIHost='') then
+      FSock.SSL.SNIHost:=FTargetHost;
     FSock.SSLDoConnect;
+    FSock.SSL.SNIHost:=''; //don't need it anymore and don't wan't to reuse it in next connection
     if FSock.LastError <> 0 then
       Exit;
   end;

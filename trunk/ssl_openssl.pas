@@ -501,6 +501,8 @@ begin
       SSLCheck;
       Exit;
     end;
+    if SNIHost<>'' then
+      SSLCtrl(Fssl, SSL_CTRL_SET_TLSEXT_HOSTNAME, TLSEXT_NAMETYPE_host_name, pchar(SNIHost));
     x := sslconnect(FSsl);
     if x < 1 then
     begin
@@ -508,7 +510,7 @@ begin
       Exit;
     end;
   if FverifyCert then
-    if GetVerifyCert <> 0 then
+    if (GetVerifyCert <> 0) or (not DoVerifyCert) then
       Exit;
     FSSLEnabled := True;
     Result := True;
