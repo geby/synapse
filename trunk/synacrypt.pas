@@ -1,9 +1,9 @@
 {==============================================================================|
-| Project : Ararat Synapse                                       | 001.000.001 |
+| Project : Ararat Synapse                                       | 001.001.000 |
 |==============================================================================|
 | Content: Encryption support                                                  |
 |==============================================================================|
-| Copyright (c)2007-2010, Lukas Gebauer                                        |
+| Copyright (c)2007-2011, Lukas Gebauer                                        |
 | All rights reserved.                                                         |
 |                                                                              |
 | Redistribution and use in source and binary forms, with or without           |
@@ -33,7 +33,7 @@
 | DAMAGE.                                                                      |
 |==============================================================================|
 | The Initial Developer of the Original Code is Lukas Gebauer (Czech Republic).|
-| Portions created by Lukas Gebauer are Copyright (c)2007-2010.                |
+| Portions created by Lukas Gebauer are Copyright (c)2007-2011.                |
 | All Rights Reserved.                                                         |
 | Based on work of David Barton and Eric Young                                 |
 |==============================================================================|
@@ -69,7 +69,7 @@ uses
   SysUtils, Classes, synautil;
 
 type
-  {:@abstract(Implementation of common routines for 64-bit block ciphers)
+  {:@abstract(Implementation of common routines block ciphers (dafault size is 64-bits))
 
    Do not use this class directly, use descendants only!}
   TSynaBlockCipher= class(TObject)
@@ -79,6 +79,8 @@ type
     IV, CV: AnsiString;
     procedure IncCounter;
   public
+    {:Returns cipher block size in bytes.}
+    function GetSize: byte; virtual;
     {:Sets the IV to Value and performs a reset}
     procedure SetIV(const Value: AnsiString); virtual;
     {:Returns the current chaining information, not the actual IV}
@@ -484,12 +486,17 @@ begin
 end;
 
 {==============================================================================}
+function TSynaBlockCipher.GetSize: byte;
+begin
+  Result := 8;
+end;
+
 procedure TSynaBlockCipher.IncCounter;
 var
   i: integer;
 begin
-  Inc(CV[8]);
-  i:= 7;
+  Inc(CV[GetSize]);
+  i:= GetSize -1;
   while (i> 0) and (CV[i + 1] = #0) do
   begin
     Inc(CV[i]);
@@ -508,7 +515,7 @@ end;
 
 procedure TSynaBlockCipher.SetIV(const Value: AnsiString);
 begin
-  IV := PadString(Value, 8, #0);
+  IV := PadString(Value, GetSize, #0);
   Reset;
 end;
 
@@ -532,21 +539,23 @@ var
   i: integer;
   s: ansistring;
   l: integer;
+  bs: byte;
 begin
   Result := '';
   l := Length(InData);
-  for i:= 1 to (l div 8) do
+  bs := GetSize;
+  for i:= 1 to (l div bs) do
   begin
-    s := copy(Indata, (i - 1) * 8 + 1, 8);
+    s := copy(Indata, (i - 1) * bs + 1, bs);
     s := XorString(s, CV);
     s := EncryptECB(s);
     CV := s;
     Result := Result + s;
   end;
-  if (l mod 8)<> 0 then
+  if (l mod bs)<> 0 then
   begin
     CV := EncryptECB(CV);
-    s := copy(Indata, (l div 8) * 8 + 1, l mod 8);
+    s := copy(Indata, (l div bs) * bs + 1, l mod bs);
     s := XorString(s, CV);
     Result := Result + s;
   end;
@@ -557,22 +566,24 @@ var
   i: integer;
   s, temp: ansistring;
   l: integer;
+  bs: byte;
 begin
   Result := '';
   l := Length(InData);
-  for i:= 1 to (l div 8) do
+  bs := GetSize;
+  for i:= 1 to (l div bs) do
   begin
-    s := copy(Indata, (i - 1) * 8 + 1, 8);
+    s := copy(Indata, (i - 1) * bs + 1, bs);
     temp := s;
     s := DecryptECB(s);
     s := XorString(s, CV);
     Result := Result + s;
     CV := Temp;
   end;
-  if (l mod 8)<> 0 then
+  if (l mod bs)<> 0 then
   begin
     CV := EncryptECB(CV);
-    s := copy(Indata, (l div 8) * 8 + 1, l mod 8);
+    s := copy(Indata, (l div bs) * bs + 1, l mod bs);
     s := XorString(s, CV);
     Result := Result + s;
   end;
@@ -617,21 +628,23 @@ var
   i: integer;
   s: AnsiString;
   l: integer;
+  bs: byte;
 begin
   Result := '';
   l := Length(InData);
-  for i:= 1 to (l div 8) do
+  bs := GetSize;
+  for i:= 1 to (l div bs) do
   begin
     CV := EncryptECB(CV);
-    s := copy(Indata, (i - 1) * 8 + 1, 8);
+    s := copy(Indata, (i - 1) * bs + 1, bs);
     s := XorString(s, CV);
     Result := Result + s;
     CV := s;
   end;
-  if (l mod 8)<> 0 then
+  if (l mod bs)<> 0 then
   begin
     CV := EncryptECB(CV);
-    s := copy(Indata, (l div 8) * 8 + 1, l mod 8);
+    s := copy(Indata, (l div bs) * bs + 1, l mod bs);
     s := XorString(s, CV);
     Result := Result + s;
   end;
@@ -642,22 +655,24 @@ var
   i: integer;
   S, Temp: AnsiString;
   l: integer;
+  bs: byte;
 begin
   Result := '';
   l := Length(InData);
-  for i:= 1 to (l div 8) do
+  bs := GetSize;
+  for i:= 1 to (l div bs) do
   begin
-    s := copy(Indata, (i - 1) * 8 + 1, 8);
+    s := copy(Indata, (i - 1) * bs + 1, bs);
     Temp := s;
     CV := EncryptECB(CV);
     s := XorString(s, CV);
     Result := result + s;
     CV := temp;
   end;
-  if (l mod 8)<> 0 then
+  if (l mod bs)<> 0 then
   begin
     CV := EncryptECB(CV);
-    s := copy(Indata, (l div 8) * 8 + 1, l mod 8);
+    s := copy(Indata, (l div bs) * bs + 1, l mod bs);
     s := XorString(s, CV);
     Result := Result + s;
   end;
@@ -668,20 +683,22 @@ var
   i: integer;
   s: AnsiString;
   l: integer;
+  bs: byte;
 begin
   Result := '';
   l := Length(InData);
-  for i:= 1 to (l div 8) do
+  bs := GetSize;
+  for i:= 1 to (l div bs) do
   begin
     CV := EncryptECB(CV);
-    s := copy(Indata, (i - 1) * 8 + 1, 8);
+    s := copy(Indata, (i - 1) * bs + 1, bs);
     s := XorString(s, CV);
     Result := Result + s;
   end;
-  if (l mod 8)<> 0 then
+  if (l mod bs)<> 0 then
   begin
     CV := EncryptECB(CV);
-    s := copy(Indata, (l div 8) * 8 + 1, l mod 8);
+    s := copy(Indata, (l div bs) * bs + 1, l mod bs);
     s := XorString(s, CV);
     Result := Result + s;
   end;
@@ -692,20 +709,22 @@ var
   i: integer;
   s: AnsiString;
   l: integer;
+  bs: byte;
 begin
   Result := '';
   l := Length(InData);
-  for i:= 1 to (l div 8) do
+  bs := GetSize;
+  for i:= 1 to (l div bs) do
   begin
     Cv := EncryptECB(CV);
-    s := copy(Indata, (i - 1) * 8 + 1, 8);
+    s := copy(Indata, (i - 1) * bs + 1, bs);
     s := XorString(s, CV);
     Result := Result + s;
   end;
-  if (l mod 8)<> 0 then
+  if (l mod bs)<> 0 then
   begin
     CV := EncryptECB(CV);
-    s := copy(Indata, (l div 8) * 8 + 1, l mod 8);
+    s := copy(Indata, (l div bs) * bs + 1, l mod bs);
     s := XorString(s, CV);
     Result := Result + s;
   end;
@@ -717,22 +736,24 @@ var
   i: integer;
   s: AnsiString;
   l: integer;
+  bs: byte;
 begin
   Result := '';
   l := Length(InData);
-  for i:= 1 to (l div 8) do
+  bs := GetSize;
+  for i:= 1 to (l div bs) do
   begin
     temp := EncryptECB(CV);
     IncCounter;
-    s := copy(Indata, (i - 1) * 8 + 1, 8);
+    s := copy(Indata, (i - 1) * bs + 1, bs);
     s := XorString(s, temp);
     Result := Result + s;
   end;
-  if (l mod 8)<> 0 then
+  if (l mod bs)<> 0 then
   begin
     temp := EncryptECB(CV);
     IncCounter;
-    s := copy(Indata, (l div 8) * 8 + 1, l mod 8);
+    s := copy(Indata, (l div bs) * bs + 1, l mod bs);
     s := XorString(s, temp);
     Result := Result + s;
   end;
@@ -744,22 +765,24 @@ var
   s: AnsiString;
   i: integer;
   l: integer;
+  bs: byte;
 begin
   Result := '';
   l := Length(InData);
-  for i:= 1 to (l div 8) do
+  bs := GetSize;
+  for i:= 1 to (l div bs) do
   begin
     temp := EncryptECB(CV);
     IncCounter;
-    s := copy(Indata, (i - 1) * 8 + 1, 8);
+    s := copy(Indata, (i - 1) * bs + 1, bs);
     s := XorString(s, temp);
     Result := Result + s;
   end;
-  if (l mod 8)<> 0 then
+  if (l mod bs)<> 0 then
   begin
     temp := EncryptECB(CV);
     IncCounter;
-    s := copy(Indata, (l div 8) * 8 + 1, l mod 8);
+    s := copy(Indata, (l div bs) * bs + 1, l mod bs);
     s := XorString(s, temp);
     Result := Result + s;
   end;
@@ -769,7 +792,7 @@ constructor TSynaBlockCipher.Create(Key: AnsiString);
 begin
   inherited Create;
   InitKey(Key);
-  IV := StringOfChar(#0, 8);
+  IV := StringOfChar(#0, GetSize);
   IV := EncryptECB(IV);
   Reset;
 end;
