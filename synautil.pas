@@ -1,5 +1,5 @@
 {==============================================================================|
-| Project : Ararat Synapse                                       | 004.014.000 |
+| Project : Ararat Synapse                                       | 004.014.001 |
 |==============================================================================|
 | Content: support procedures and functions                                    |
 |==============================================================================|
@@ -323,6 +323,9 @@ function GetTempFile(const Dir, prefix: AnsiString): AnsiString;
 {:Return padded string. If length is greater, string is truncated. If length is
  smaller, string is padded by Pad character.}
 function PadString(const Value: AnsiString; len: integer; Pad: AnsiChar): AnsiString;
+
+{:XOR each byte in the strings}
+function XorString(Indata1, Indata2: AnsiString): AnsiString;
 
 {:Read header from "Value" stringlist beginning at "Index" position. If header
  is Splitted into multiple lines, then this procedure de-split it into one line.}
@@ -1777,6 +1780,18 @@ begin
     Result := Copy(value, 1, len)
   else
     Result := Value + StringOfChar(Pad, len - length(value));
+end;
+
+{==============================================================================}
+
+function XorString(Indata1, Indata2: AnsiString): AnsiString;
+var
+  i: integer;
+begin
+  Indata2 := PadString(Indata2, length(Indata1), #0);
+  Result := '';
+  for i := 1 to length(Indata1) do
+    Result := Result + AnsiChar(ord(Indata1[i]) xor ord(Indata2[i]));
 end;
 
 {==============================================================================}
