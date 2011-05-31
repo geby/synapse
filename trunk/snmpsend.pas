@@ -803,7 +803,10 @@ begin
     head := head + ASNObject(s, ASN1_SEQ);
 
     //compute engine time difference
-    x := TickDelta(FAuthEngineTimeStamp, GetTick) div 1000;
+    if FAuthEngineTimeStamp = 0 then //out of sync
+      x := 0
+    else
+      x := TickDelta(FAuthEngineTimeStamp, GetTick) div 1000;
 
     authbeg := ASNObject(FAuthEngineID, ASN1_OCTSTR)
       + ASNObject(ASNEncInt(FAuthEngineBoots), ASN1_INT)
