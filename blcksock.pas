@@ -1,9 +1,9 @@
 {==============================================================================|
-| Project : Ararat Synapse                                       | 009.008.004 |
+| Project : Ararat Synapse                                       | 009.008.005 |
 |==============================================================================|
 | Content: Library base                                                        |
 |==============================================================================|
-| Copyright (c)1999-2011, Lukas Gebauer                                        |
+| Copyright (c)1999-2012, Lukas Gebauer                                        |
 | All rights reserved.                                                         |
 |                                                                              |
 | Redistribution and use in source and binary forms, with or without           |
@@ -33,7 +33,7 @@
 | DAMAGE.                                                                      |
 |==============================================================================|
 | The Initial Developer of the Original Code is Lukas Gebauer (Czech Republic).|
-| Portions created by Lukas Gebauer are Copyright (c)1999-2011.                |
+| Portions created by Lukas Gebauer are Copyright (c)1999-2012.                |
 | All Rights Reserved.                                                         |
 |==============================================================================|
 | Contributor(s):                                                              |
@@ -81,6 +81,8 @@ Core with implementation basic socket classes.
 {$Q-}
 {$H+}
 {$M+}
+{$TYPEDADDRESS OFF}
+
 
 //old Delphi does not have MSWINDOWS define.
 {$IFDEF WIN32}
@@ -1297,12 +1299,19 @@ type
     {:Return subject of remote SSL peer.}
     function GetPeerSubject: string; virtual;
 
+    {:Return Serial number if remote X509 certificate.}
+    function GetPeerSerialNo: integer; virtual;
+
     {:Return issuer certificate of remote SSL peer.}
     function GetPeerIssuer: string; virtual;
 
     {:Return peer name from remote side certificate. This is good for verify,
      if certificate is generated for remote side IP name.}
     function GetPeerName: string; virtual;
+
+    {:Returns has of peer name from remote side certificate. This is good
+     for fast remote side authentication.}
+    function GetPeerNameHash: cardinal; virtual;
 
     {:Return fingerprint of remote SSL peer.}
     function GetPeerFingerprint: string; virtual;
@@ -2682,7 +2691,7 @@ end;
 
 function TBlockSocket.ResolveIPToName(IP: string): string;
 begin
-  if not IsIP(IP) or not IsIp6(IP) then
+  if not IsIP(IP) and not IsIp6(IP) then
     IP := ResolveName(IP);
   Result := synsock.ResolveIPToName(IP, FamilyToAF(FFamily), GetSocketProtocol, GetSocketType);
 end;
@@ -4224,9 +4233,19 @@ begin
   Result := '';
 end;
 
+function TCustomSSL.GetPeerSerialNo: integer;
+begin
+  Result := -1;
+end;
+
 function TCustomSSL.GetPeerName: string;
 begin
   Result := '';
+end;
+
+function TCustomSSL.GetPeerNameHash: cardinal;
+begin
+  Result := 0;
 end;
 
 function TCustomSSL.GetPeerIssuer: string;
