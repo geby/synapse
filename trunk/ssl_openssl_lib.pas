@@ -1,9 +1,9 @@
 {==============================================================================|
-| Project : Ararat Synapse                                       | 003.006.003 |
+| Project : Ararat Synapse                                       | 003.007.000 |
 |==============================================================================|
 | Content: SSL support by OpenSSL                                              |
 |==============================================================================|
-| Copyright (c)1999-2011, Lukas Gebauer                                        |
+| Copyright (c)1999-2012, Lukas Gebauer                                        |
 | All rights reserved.                                                         |
 |                                                                              |
 | Redistribution and use in source and binary forms, with or without           |
@@ -33,7 +33,8 @@
 | DAMAGE.                                                                      |
 |==============================================================================|
 | The Initial Developer of the Original Code is Lukas Gebauer (Czech Republic).|
-| Portions created by Lukas Gebauer are Copyright (c)2002-2011.                |
+| Portions created by Lukas Gebauer are Copyright (c)2002-2012.                |
+| Portions created by Petr Fejfar are Copyright (c)2011-2012.                  |
 | All Rights Reserved.                                                         |
 |==============================================================================|
 | Contributor(s):                                                              |
@@ -143,6 +144,9 @@ type
   PASN1_INTEGER = SslPtr;
   PPasswdCb = SslPtr;
   PFunction = procedure;
+  PSTACK = SslPtr; {pf}
+  TSkPopFreeFunc = procedure(p:SslPtr); cdecl; {pf}
+  TX509Free = procedure(x: PX509); cdecl; {pf}
 
   DES_cblock = array[0..7] of Byte;
   PDES_cblock = ^DES_cblock;
@@ -770,7 +774,13 @@ var
   function Asn1UtctimeNew: PASN1_UTCTIME;
   procedure Asn1UtctimeFree(a: PASN1_UTCTIME);
   function Asn1IntegerSet(a: PASN1_INTEGER; v: integer): integer;
+  function Asn1IntegerGet(a: PASN1_INTEGER): integer; {pf}
   function i2dX509bio(b: PBIO; x: PX509): integer;
+  function d2iX509bio(b:PBIO; x:PX509):  PX509;    {pf}
+  function PEMReadBioX509(b:PBIO; {var x:PX509;}x:PSslPtr; callback:PFunction; cb_arg: SslPtr):  PX509;    {pf}
+  procedure SkX509PopFree(st: PSTACK; func: TSkPopFreeFunc); {pf}
+
+
   function i2dPrivateKeyBio(b: PBIO; pkey: EVP_PKEY): integer;
 
   // 3DES functions
@@ -783,6 +793,9 @@ var
 function IsSSLloaded: Boolean;
 function InitSSLInterface: Boolean;
 function DestroySSLInterface: Boolean;
+
+var
+  _X509Free: TX509Free = nil; {pf}
 
 implementation
 
@@ -836,7 +849,6 @@ type
 
 // libeay.dll
   TX509New = function: PX509; cdecl;
-  TX509Free = procedure(x: PX509); cdecl;
   TX509NameOneline = function(a: PX509_NAME; buf: PAnsiChar; size: Integer):PAnsiChar; cdecl;
   TX509GetSubjectName = function(a: PX509):PX509_NAME; cdecl;
   TX509GetIssuerName = function(a: PX509):PX509_NAME; cdecl;
@@ -880,7 +892,11 @@ type
   TAsn1UtctimeNew = function: PASN1_UTCTIME; cdecl;
   TAsn1UtctimeFree = procedure(a: PASN1_UTCTIME); cdecl;
   TAsn1IntegerSet = function(a: PASN1_INTEGER; v: integer): integer; cdecl;
+  TAsn1IntegerGet = function(a: PASN1_INTEGER): integer; cdecl; {pf}
   Ti2dX509bio = function(b: PBIO; x: PX509): integer; cdecl;
+  Td2iX509bio = function(b:PBIO;  x:PX509):   PX509;   cdecl; {pf}
+  TPEMReadBioX509 = function(b:PBIO;  {var x:PX509;}x:PSslPtr; callback:PFunction; cb_arg:SslPtr): PX509;   cdecl; {pf}
+  TSkX509PopFree = procedure(st: PSTACK; func: TSkPopFreeFunc); cdecl; {pf}
   Ti2dPrivateKeyBio= function(b: PBIO; pkey: EVP_PKEY): integer; cdecl;
 
   // 3DES functions
@@ -936,7 +952,6 @@ var
 
 // libeay.dll
   _X509New: TX509New = nil;
-  _X509Free: TX509Free = nil;
   _X509NameOneline: TX509NameOneline = nil;
   _X509GetSubjectName: TX509GetSubjectName = nil;
   _X509GetIssuerName: TX509GetIssuerName = nil;
@@ -979,7 +994,11 @@ var
   _Asn1UtctimeNew: TAsn1UtctimeNew = nil;
   _Asn1UtctimeFree: TAsn1UtctimeFree = nil;
   _Asn1IntegerSet: TAsn1IntegerSet = nil;
+  _Asn1IntegerGet: TAsn1IntegerGet = nil; {pf}
   _i2dX509bio: Ti2dX509bio = nil;
+  _d2iX509bio: Td2iX509bio = nil; {pf}
+  _PEMReadBioX509: TPEMReadBioX509 = nil; {pf}
+  _SkX509PopFree: TSkX509PopFree = nil; {pf}
   _i2dPrivateKeyBio: Ti2dPrivateKeyBio = nil;
 
   // 3DES functions
@@ -1640,6 +1659,28 @@ begin
     Result := 0;
 end;
 
+function d2iX509bio(b: PBIO; x: PX509): PX509; {pf}
+begin
+  if InitSSLInterface and Assigned(_d2iX509bio) then
+    Result := _d2iX509bio(x,b)
+  else
+    Result := nil;
+end;
+
+function PEMReadBioX509(b:PBIO; {var x:PX509;}x:PSslPtr; callback:PFunction; cb_arg: SslPtr):  PX509;    {pf}
+begin
+  if InitSSLInterface and Assigned(_PEMReadBioX509) then
+    Result := _PEMReadBioX509(b,x,callback,cb_arg)
+  else
+    Result := nil;
+end;
+
+procedure SkX509PopFree(st: PSTACK; func:TSkPopFreeFunc); {pf}
+begin
+  if InitSSLInterface and Assigned(_SkX509PopFree) then
+    _SkX509PopFree(st,func);
+end;
+
 function i2dPrivateKeyBio(b: PBIO; pkey: EVP_PKEY): integer;
 begin
   if InitSSLInterface and Assigned(_i2dPrivateKeyBio) then
@@ -1660,6 +1701,14 @@ function Asn1IntegerSet(a: PASN1_INTEGER; v: integer): integer;
 begin
   if InitSSLInterface and Assigned(_Asn1IntegerSet) then
     Result := _Asn1IntegerSet(a, v)
+  else
+    Result := 0;
+end;
+
+function Asn1IntegerGet(a: PASN1_INTEGER): integer; {pf}
+begin
+  if InitSSLInterface and Assigned(_Asn1IntegerGet) then
+    Result := _Asn1IntegerGet(a)
   else
     Result := 0;
 end;
@@ -1748,6 +1797,13 @@ var
   s: string;
   x: integer;
 begin
+  {pf}
+  if SSLLoaded then
+    begin
+      Result := TRUE;
+      exit;
+    end;
+  {/pf}  
   SSLCS.Enter;
   try
     if not IsSSLloaded then
@@ -1853,7 +1909,11 @@ begin
         _Asn1UtctimeNew := GetProcAddr(SSLUtilHandle, 'ASN1_UTCTIME_new');
         _Asn1UtctimeFree := GetProcAddr(SSLUtilHandle, 'ASN1_UTCTIME_free');
         _Asn1IntegerSet := GetProcAddr(SSLUtilHandle, 'ASN1_INTEGER_set');
+        _Asn1IntegerGet := GetProcAddr(SSLUtilHandle, 'ASN1_INTEGER_get'); {pf}
         _i2dX509bio := GetProcAddr(SSLUtilHandle, 'i2d_X509_bio');
+        _d2iX509bio := GetProcAddr(SSLUtilHandle, 'd2i_X509_bio'); {pf}
+        _PEMReadBioX509 := GetProcAddr(SSLUtilHandle, 'PEM_read_bio_X509'); {pf}
+        _SkX509PopFree := GetProcAddr(SSLUtilHandle, 'SK_X509_POP_FREE'); {pf}
         _i2dPrivateKeyBio := GetProcAddr(SSLUtilHandle, 'i2d_PrivateKey_bio');
 
         // 3DES functions
@@ -2038,6 +2098,8 @@ begin
     _Asn1UtctimeNew := nil;
     _Asn1UtctimeFree := nil;
     _Asn1IntegerSet := nil;
+    _Asn1IntegerGet := nil; {pf}
+    _SkX509PopFree := nil; {pf}
     _i2dX509bio := nil;
     _i2dPrivateKeyBio := nil;
 
