@@ -1,5 +1,5 @@
 {==============================================================================|
-| Project : Ararat Synapse                                       | 004.015.000 |
+| Project : Ararat Synapse                                       | 004.015.001 |
 |==============================================================================|
 | Content: support procedures and functions                                    |
 |==============================================================================|
@@ -121,6 +121,10 @@ function GetMonthNumber(Value: String): integer;
 {:Return decoded time from given string. Time must be witch separator ':'. You
  can use "hh:mm" or "hh:mm:ss".}
 function GetTimeFromStr(Value: string): TDateTime;
+
+{:Decode string representation of TimeZone (CEST, GMT, +0200, -0800, etc.)
+ to timezone offset.} 
+function DecodeTimeZone(Value: string; var Zone: integer): Boolean;
 
 {:Decode string in format "m-d-y" to TDateTime type.}
 function GetDateMDYFromStr(Value: string): TDateTime;
