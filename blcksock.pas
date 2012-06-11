@@ -113,7 +113,7 @@ uses
 
 const
 
-  SynapseRelease = '38';
+  SynapseRelease = '40';
 
   cLocalhost = '127.0.0.1';
   cAnyHost = '0.0.0.0';
