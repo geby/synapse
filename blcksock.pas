@@ -1,5 +1,5 @@
 {==============================================================================|
-| Project : Ararat Synapse                                       | 009.008.005 |
+| Project : Ararat Synapse                                       | 009.009.000 |
 |==============================================================================|
 | Content: Library base                                                        |
 |==============================================================================|
@@ -314,6 +314,7 @@ type
     FStopFlag: Boolean;
     FNonblockSendTimeout: Integer;
     FHeartbeatRate: integer;
+    FConnectionTimeout: integer;
     {$IFNDEF ONCEWINSOCK}
     FWsaDataOnce: TWSADATA;
     {$ENDIF}
@@ -830,6 +831,10 @@ type
 
     {:Timeout for data sending by non-blocking socket mode.}
     property NonblockSendTimeout: Integer read FNonblockSendTimeout Write FNonblockSendTimeout;
+
+    {:Timeout for @link(Connect) call. Default value 0 means default system timeout.
+     Non-zero value means timeout in millisecond.}
+    property ConnectionTimeout: Integer read FConnectionTimeout write FConnectionTimeout;
 
     {:This event is called by various reasons. It is good for monitoring socket,
      create gauges for data transfers, etc.}
@@ -1547,6 +1552,7 @@ begin
   FStopFlag := False;
   FNonblockSendTimeout := 15000;
   FHeartbeatRate := 0;
+  FConnectionTimeout := 0;
   FOwner := nil;
 {$IFNDEF ONCEWINSOCK}
   if Stub = '' then
@@ -1914,13 +1920,26 @@ end;
 procedure TBlockSocket.Connect(IP, Port: string);
 var
   Sin: TVarSin;
+  b: boolean;
 begin
   SetSin(Sin, IP, Port);
   if FLastError = 0 then
   begin
     if FSocket = INVALID_SOCKET then
       InternalCreateSocket(Sin);
-    SockCheck(synsock.Connect(FSocket, Sin));
+    if FConnectionTimeout > 0 then
+    begin
+      // connect in non-blocking mode
+      b := NonBlockMode;
+      NonBlockMode := true;
+      SockCheck(synsock.Connect(FSocket, Sin));
+      if (FLastError = WSAEINPROGRESS) OR (FLastError = WSAEWOULDBLOCK) then
+        if not CanWrite(FConnectionTimeout) then
+          FLastError := WSAETIMEDOUT;
+      NonBlockMode := b;
+    end
+    else
+      SockCheck(synsock.Connect(FSocket, Sin));
     if FLastError = 0 then
       GetSins;
     FBuffer := '';
