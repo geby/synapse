@@ -106,7 +106,7 @@ type
     FRangeStart: integer;
     FRangeEnd: integer;
     FAddPortNumberToHost: Boolean;
-    function ReadUnknown: Boolean;
+    function ReadUnknown: Boolean; virtual;
     function ReadIdentity(Size: Integer): Boolean;
     function ReadChunked: Boolean;
     procedure ParseCookies;
