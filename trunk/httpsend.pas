@@ -1,9 +1,9 @@
 {==============================================================================|
-| Project : Ararat Synapse                                       | 003.012.006 |
+| Project : Ararat Synapse                                       | 003.012.007 |
 |==============================================================================|
 | Content: HTTP client                                                         |
 |==============================================================================|
-| Copyright (c)1999-2011, Lukas Gebauer                                        |
+| Copyright (c)1999-2012, Lukas Gebauer                                        |
 | All rights reserved.                                                         |
 |                                                                              |
 | Redistribution and use in source and binary forms, with or without           |
@@ -33,7 +33,7 @@
 | DAMAGE.                                                                      |
 |==============================================================================|
 | The Initial Developer of the Original Code is Lukas Gebauer (Czech Republic).|
-| Portions created by Lukas Gebauer are Copyright (c) 1999-2011.               |
+| Portions created by Lukas Gebauer are Copyright (c) 1999-2012.               |
 | All Rights Reserved.                                                         |
 |==============================================================================|
 | Contributor(s):                                                              |
@@ -616,15 +616,15 @@ begin
         su := UpperCase(s);
         if Pos('CONTENT-LENGTH:', su) = 1 then
         begin
-          Size := StrToIntDef(Trim(SeparateRight(s, ' ')), -1);
+          Size := StrToIntDef(Trim(SeparateRight(s, ':')), -1);
           if (Size <> -1) and (FTransferEncoding = TE_UNKNOWN) then
             FTransferEncoding := TE_IDENTITY;
         end;
         if Pos('CONTENT-TYPE:', su) = 1 then
-          FMimeType := Trim(SeparateRight(s, ' '));
+          FMimeType := Trim(SeparateRight(s, ':'));
         if Pos('TRANSFER-ENCODING:', su) = 1 then
         begin
-          s := Trim(SeparateRight(su, ' '));
+          s := Trim(SeparateRight(su, ':'));
           if Pos('CHUNKED', s) > 0 then
             FTransferEncoding := TE_CHUNKED;
         end;
