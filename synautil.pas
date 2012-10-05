@@ -1,5 +1,5 @@
 {==============================================================================|
-| Project : Ararat Synapse                                       | 004.015.001 |
+| Project : Ararat Synapse                                       | 004.015.002 |
 |==============================================================================|
 | Content: support procedures and functions                                    |
 |==============================================================================|
@@ -47,19 +47,11 @@
 
 {:@abstract(Support procedures and functions)}
 
-{$IFDEF FPC}
-  {$MODE DELPHI}
-{$ENDIF}
+{$I jedi.inc} // load common compiler defines
+
 {$Q-}
 {$R-}
 {$H+}
-
-//old Delphi does not have MSWINDOWS define.
-{$IFDEF WIN32}
-  {$IFNDEF MSWINDOWS}
-    {$DEFINE MSWINDOWS}
-  {$ENDIF}
-{$ENDIF}
 
 {$IFDEF UNICODE}
   {$WARN IMPLICIT_STRING_CAST OFF}
@@ -610,7 +602,7 @@ begin
   x := rpos(':', Value);
   if (x > 0) and ((Length(Value) - x) > 2) then
     Value := Copy(Value, 1, x + 2);
-  Value := ReplaceString(Value, ':', TimeSeparator);
+  Value := ReplaceString(Value, ':', {$IFDEF DELPHIXE_UP}FormatSettings.{$ENDIF}TimeSeparator);
   Result := -1;
   try
     Result := StrToTime(Value);
@@ -2063,7 +2055,7 @@ var
 begin
   for n :=  1 to 12 do
   begin
-    CustomMonthNames[n] := ShortMonthNames[n];
-    MyMonthNames[0, n] := ShortMonthNames[n];
+    CustomMonthNames[n] := {$IFDEF DELPHIXE_UP}FormatSettings.{$ENDIF}ShortMonthNames[n];
+    MyMonthNames[0, n] := {$IFDEF DELPHIXE_UP}FormatSettings.{$ENDIF}ShortMonthNames[n];
   end;
 end.
