@@ -1,5 +1,5 @@
 {==============================================================================|
-| Project : Ararat Synapse                                       | 002.003.000 |
+| Project : Ararat Synapse                                       | 002.003.001 |
 |==============================================================================|
 | Content: Socket Independent Platform Layer - Win32/64 definition include     |
 |==============================================================================|
@@ -241,6 +241,14 @@ For IPv6 support you must have new API!
     {$ALIGN OFF}
   {$ELSE}
     {$PACKRECORDS C}
+  {$ENDIF}
+{$ELSE}
+  {$IFDEF WIN64}
+    {$ALIGN ON}
+    {$MINENUMSIZE 4}
+  {$ELSE}
+    {$MINENUMSIZE 4}
+    {$ALIGN OFF}
   {$ENDIF}
 {$ENDIF}
 
