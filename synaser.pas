@@ -1,5 +1,5 @@
 {==============================================================================|
-| Project : Ararat Synapse                                       | 007.005.003 |
+| Project : Ararat Synapse                                       | 007.005.004 |
 |==============================================================================|
 | Content: Serial port support                                                 |
 |==============================================================================|
@@ -314,8 +314,10 @@ type
     FPortAddr: Word;
     function CanEvent(Event: dword; Timeout: integer): boolean;
     procedure DecodeCommError(Error: DWord); virtual;
+ {$IFDEF WIN32}
     function GetPortAddr: Word;  virtual;
     function ReadTxEmpty(PortAddr: Word): Boolean; virtual;
+ {$ENDIF}
 {$ENDIF}
     procedure SetSizeRecvBuffer(size: integer); virtual;
     function GetDSR: Boolean; virtual;
@@ -780,7 +782,7 @@ end;
 
 class function TBlockSerial.GetVersion: string;
 begin
-	Result := 'SynaSer 7.5.0';
+	Result := 'SynaSer 7.5.4';
 end;
 
 procedure TBlockSerial.CloseSocket;
@@ -806,7 +808,7 @@ begin
   DoStatus(HR_SerialClose, FDevice);
 end;
 
-{$IFDEF MSWINDOWS}
+{$IFDEF WIN32}
 function TBlockSerial.GetPortAddr: Word;
 begin
   Result := 0;
@@ -977,7 +979,9 @@ begin
   CommTimeOuts.WriteTotalTimeoutMultiplier := 0;
   CommTimeOuts.WriteTotalTimeoutConstant := 0;
   SetCommTimeOuts(FHandle, CommTimeOuts);
+  {$IFDEF WIN32}
   FPortAddr := GetPortAddr;
+  {$ENDIF}
 {$ENDIF}
   SetSynaError(sOK);
   if not TestCtrlLine then  {HGJ}
@@ -1868,6 +1872,7 @@ begin
   Result := SendingData = 0;
   if not Result then
 	  Result := CanEvent(EV_TXEMPTY, Timeout);
+  {$IFDEF WIN32}
   if Result and (Win32Platform <> VER_PLATFORM_WIN32_NT) then
   begin
     t := GetTick;
@@ -1878,6 +1883,7 @@ begin
       Sleep(0);
     end;
   end;
+  {$ENDIF}
   if Result then
     DoStatus(HR_CanWrite, '');
 end;
