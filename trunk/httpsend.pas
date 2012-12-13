@@ -1,5 +1,5 @@
 {==============================================================================|
-| Project : Ararat Synapse                                       | 003.012.007 |
+| Project : Ararat Synapse                                       | 003.012.008 |
 |==============================================================================|
 | Content: HTTP client                                                         |
 |==============================================================================|
@@ -478,10 +478,12 @@ begin
     s := '[' + Host + ']'
   else
     s := Host;
-  if FAddPortNumberToHost and (Port <> '80') then
-     FHeaders.Insert(0, 'Host: ' + s + ':' + Port)
+  if FAddPortNumberToHost
+    and (((Port <> '80') and (UpperCase(Prot) = 'HTTP'))
+    or ((Port <> '443') and (UpperCase(Prot) = 'HTTPS'))) then
+    FHeaders.Insert(0, 'Host: ' + s + ':' + Port)
   else
-     FHeaders.Insert(0, 'Host: ' + s);
+    FHeaders.Insert(0, 'Host: ' + s);
   if UsingProxy then
     URI := Prot + '://' + s + ':' + Port + URI;
   if URI = '/*' then
