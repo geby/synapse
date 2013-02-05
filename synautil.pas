@@ -1,5 +1,5 @@
 {==============================================================================|
-| Project : Ararat Synapse                                       | 004.015.003 |
+| Project : Ararat Synapse                                       | 004.015.004 |
 |==============================================================================|
 | Content: support procedures and functions                                    |
 |==============================================================================|
@@ -607,7 +607,7 @@ begin
   x := rpos(':', Value);
   if (x > 0) and ((Length(Value) - x) > 2) then
     Value := Copy(Value, 1, x + 2);
-  Value := ReplaceString(Value, ':', {$IFDEF DELPHIXE_UP}FormatSettings.{$ENDIF}TimeSeparator);
+  Value := ReplaceString(Value, ':', {$IFDEF COMPILER15_UP}FormatSettings.{$ENDIF}TimeSeparator);
   Result := -1;
   try
     Result := StrToTime(Value);
@@ -2081,7 +2081,7 @@ var
 begin
   for n :=  1 to 12 do
   begin
-    CustomMonthNames[n] := {$IFDEF DELPHIXE_UP}FormatSettings.{$ENDIF}ShortMonthNames[n];
-    MyMonthNames[0, n] := {$IFDEF DELPHIXE_UP}FormatSettings.{$ENDIF}ShortMonthNames[n];
+    CustomMonthNames[n] := {$IFDEF COMPILER15_UP}FormatSettings.{$ENDIF}ShortMonthNames[n];
+    MyMonthNames[0, n] := {$IFDEF COMPILER15_UP}FormatSettings.{$ENDIF}ShortMonthNames[n];
   end;
 end.
