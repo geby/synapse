@@ -1,9 +1,9 @@
 {==============================================================================|
-| Project : Ararat Synapse                                       | 004.015.002 |
+| Project : Ararat Synapse                                       | 004.015.003 |
 |==============================================================================|
 | Content: support procedures and functions                                    |
 |==============================================================================|
-| Copyright (c)1999-2012, Lukas Gebauer                                        |
+| Copyright (c)1999-2013, Lukas Gebauer                                        |
 | All rights reserved.                                                         |
 |                                                                              |
 | Redistribution and use in source and binary forms, with or without           |
@@ -33,13 +33,14 @@
 | DAMAGE.                                                                      |
 |==============================================================================|
 | The Initial Developer of the Original Code is Lukas Gebauer (Czech Republic).|
-| Portions created by Lukas Gebauer are Copyright (c) 1999-2012.               |
+| Portions created by Lukas Gebauer are Copyright (c) 1999-2013.               |
 | Portions created by Hernan Sanchez are Copyright (c) 2000.                   |
 | Portions created by Petr Fejfar are Copyright (c)2011-2012.                  |
 | All Rights Reserved.                                                         |
 |==============================================================================|
 | Contributor(s):                                                              |
 |   Hernan Sanchez (hernan.sanchez@iname.com)                                  |
+|   Tomas Hajny (OS2 support)                                                  |
 |==============================================================================|
 | History: see HISTORY.HTM from distribution package                           |
 |          (Found at URL: http://www.ararat.cz/synapse/)                       |
@@ -66,10 +67,14 @@ interface
 uses
 {$IFDEF MSWINDOWS}
   Windows,
-{$ELSE}
+{$ELSE MSWINDOWS}
   {$IFDEF FPC}
+    {$IFDEF OS2}
+    Dos, TZUtil,
+    {$ELSE OS2}
     UnixUtil, Unix, BaseUnix,
-  {$ELSE}
+    {$ENDIF OS2}
+  {$ELSE FPC}
     Libc,
   {$ENDIF}
 {$ENDIF}
@@ -763,21 +768,31 @@ begin
   st.Millisecond := stw.wMilliseconds;
   result := SystemTimeToDateTime(st);
 {$ENDIF}
-{$ELSE}
+{$ELSE MSWINDOWS}
 {$IFNDEF FPC}
 var
   TV: TTimeVal;
 begin
   gettimeofday(TV, nil);
   Result := UnixDateDelta + (TV.tv_sec + TV.tv_usec / 1000000) / 86400;
-{$ELSE}
+{$ELSE FPC}
+ {$IFDEF UNIX}
 var
   TV: TimeVal;
 begin
   fpgettimeofday(@TV, nil);
   Result := UnixDateDelta + (TV.tv_sec + TV.tv_usec / 1000000) / 86400;
-{$ENDIF}
-{$ENDIF}
+ {$ELSE UNIX}
+  {$IFDEF OS2}
+var
+  ST: TSystemTime;
+begin
+  GetLocalTime (ST);
+  Result := SystemTimeToDateTime (ST);
+  {$ENDIF OS2}
+ {$ENDIF UNIX}
+{$ENDIF FPC}
+{$ENDIF MSWINDOWS}
 end;
 
 {==============================================================================}
@@ -805,7 +820,7 @@ begin
   stw.wMilliseconds := st.Millisecond;
   Result := SetSystemTime(stw);
 {$ENDIF}
-{$ELSE}
+{$ELSE MSWINDOWS}
 {$IFNDEF FPC}
 var
   TV: TTimeVal;
@@ -821,7 +836,8 @@ begin
   TV.tv_sec := trunc(d);
   TV.tv_usec := trunc(frac(d) * 1000000);
   Result := settimeofday(TV, TZ) <> -1;
-{$ELSE}
+{$ELSE FPC}
+ {$IFDEF UNIX}
 var
   TV: TimeVal;
   d: double;
@@ -830,8 +846,18 @@ begin
   TV.tv_sec := trunc(d);
   TV.tv_usec := trunc(frac(d) * 1000000);
   Result := fpsettimeofday(@TV, nil) <> -1;
-{$ENDIF}
-{$ENDIF}
+ {$ELSE UNIX}
+  {$IFDEF OS2}
+var
+  ST: TSystemTime;
+begin
+  DateTimeToSystemTime (NewDT, ST);
+  SetTime (ST.Hour, ST.Minute, ST.Second, ST.Millisecond div 10);
+  Result := true;
+  {$ENDIF OS2}
+ {$ENDIF UNIX}
+{$ENDIF FPC}
+{$ENDIF MSWINDOWS}
 end;
 
 {==============================================================================}
