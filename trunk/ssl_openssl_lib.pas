@@ -1,9 +1,9 @@
 {==============================================================================|
-| Project : Ararat Synapse                                       | 003.007.001 |
+| Project : Ararat Synapse                                       | 003.007.002 |
 |==============================================================================|
 | Content: SSL support by OpenSSL                                              |
 |==============================================================================|
-| Copyright (c)1999-2012, Lukas Gebauer                                        |
+| Copyright (c)1999-2013, Lukas Gebauer                                        |
 | All rights reserved.                                                         |
 |                                                                              |
 | Redistribution and use in source and binary forms, with or without           |
@@ -33,11 +33,12 @@
 | DAMAGE.                                                                      |
 |==============================================================================|
 | The Initial Developer of the Original Code is Lukas Gebauer (Czech Republic).|
-| Portions created by Lukas Gebauer are Copyright (c)2002-2012.                |
+| Portions created by Lukas Gebauer are Copyright (c)2002-2013.                |
 | Portions created by Petr Fejfar are Copyright (c)2011-2012.                  |
 | All Rights Reserved.                                                         |
 |==============================================================================|
 | Contributor(s):                                                              |
+|   Tomas Hajny (OS2 support)                                                  |
 |==============================================================================|
 | History: see HISTORY.HTM from distribution package                           |
 |          (Found at URL: http://www.ararat.cz/synapse/)                       |
@@ -87,10 +88,13 @@ uses
   synafpc,
 {$IFNDEF MSWINDOWS}
   {$IFDEF FPC}
-  BaseUnix, SysUtils;
+   {$IFDEF UNIX}
+  BaseUnix,
+   {$ENDIF UNIX}
   {$ELSE}
-   Libc, SysUtils;
+   Libc,
   {$ENDIF}
+  SysUtils;
 {$ELSE}
   Windows;
 {$ENDIF}
@@ -112,8 +116,18 @@ var
     DLLSSLName: string = 'libssl.dylib';
     DLLUtilName: string = 'libcrypto.dylib';
     {$ELSE}
+     {$IFDEF OS2}
+      {$IFDEF OS2GCC}
+    DLLSSLName: string = 'kssl.dll';
+    DLLUtilName: string = 'kcrypto.dll';
+      {$ELSE OS2GCC}
+    DLLSSLName: string = 'ssl.dll';
+    DLLUtilName: string = 'crypto.dll';
+      {$ENDIF OS2GCC}
+     {$ELSE OS2}
     DLLSSLName: string = 'libssl.so';
     DLLUtilName: string = 'libcrypto.so';
+     {$ENDIF OS2}
     {$ENDIF}
   {$ELSE}
   DLLSSLName: string = 'ssleay32.dll';
@@ -799,7 +813,11 @@ var
 
 implementation
 
-uses SyncObjs;
+uses
+{$IFDEF OS2}
+  Sockets,
+{$ENDIF OS2}
+  SyncObjs;
 
 {$IFNDEF CIL}
 type
@@ -1950,8 +1968,12 @@ begin
         if assigned(_CRYPTOnumlocks) and assigned(_CRYPTOsetlockingcallback) then
           InitLocks;
 {$ENDIF}
-        Result := True;
         SSLloaded := True;
+{$IFDEF OS2}
+        Result := InitEMXHandles;
+{$ELSE OS2}
+        Result := True;
+{$ENDIF OS2}
       end
       else
       begin
