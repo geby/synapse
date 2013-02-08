@@ -90,11 +90,11 @@ const
   ASN1_OPAQUE = $44;
 
 {:Encodes OID item to binary form.}
-function ASNEncOIDItem(Value: Integer): AnsiString;
+function ASNEncOIDItem(Value: Int64): AnsiString;
 
 {:Decodes an OID item of the next element in the "Buffer" from the "Start"
  position.}
-function ASNDecOIDItem(var Start: Integer; const Buffer: AnsiString): Integer;
+function ASNDecOIDItem(var Start: Integer; const Buffer: AnsiString): Int64;
 
 {:Encodes the length of ASN.1 element to binary.}
 function ASNEncLen(Len: Integer): AnsiString;
@@ -132,9 +132,10 @@ function ASNdump(const Value: AnsiString): AnsiString;
 implementation
 
 {==============================================================================}
-function ASNEncOIDItem(Value: Integer): AnsiString;
+function ASNEncOIDItem(Value: Int64): AnsiString;
 var
-  x, xm: Integer;
+  x: Int64;
+  xm: Byte;
   b: Boolean;
 begin
   x := Value;
@@ -152,7 +153,7 @@ begin
 end;
 
 {==============================================================================}
-function ASNDecOIDItem(var Start: Integer; const Buffer: AnsiString): Integer;
+function ASNDecOIDItem(var Start: Integer; const Buffer: AnsiString): Int64;
 var
   x: Integer;
   b: Boolean;
