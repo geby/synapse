@@ -1,5 +1,5 @@
 {==============================================================================|
-| Project : Ararat Synapse                                       | 005.002.002 |
+| Project : Ararat Synapse                                       | 005.002.003 |
 |==============================================================================|
 | Content: Socket Independent Platform Layer                                   |
 |==============================================================================|
@@ -76,6 +76,10 @@ unit synsock;
       {$ENDIF}
     {$ENDIF}
   {$ENDIF}
+{$ENDIF}
+{$IFDEF POSIX}
+//Posix.SysSocket
+   {$I ssposix.inc} //experimental!
 {$ENDIF}
 
 end.

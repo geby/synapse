@@ -1,5 +1,5 @@
 {==============================================================================|
-| Project : Ararat Synapse                                       | 004.015.004 |
+| Project : Ararat Synapse                                       | 004.015.005 |
 |==============================================================================|
 | Content: support procedures and functions                                    |
 |==============================================================================|
@@ -41,6 +41,7 @@
 | Contributor(s):                                                              |
 |   Hernan Sanchez (hernan.sanchez@iname.com)                                  |
 |   Tomas Hajny (OS2 support)                                                  |
+|   Radek Cervinka (POSIX support)                                             |
 |==============================================================================|
 | History: see HISTORY.HTM from distribution package                           |
 |          (Found at URL: http://www.ararat.cz/synapse/)                       |
@@ -75,7 +76,11 @@ uses
     UnixUtil, Unix, BaseUnix,
     {$ENDIF OS2}
   {$ELSE FPC}
-    Libc,
+    {$IFDEF POSIX}
+      Posix.Base, Posix.Time, Posix.SysTypes, Posix.SysTime, Posix.Stdio,
+    {$ELSE}
+      Libc,
+    {$ENDIF}
   {$ENDIF}
 {$ENDIF}
 {$IFDEF CIL}
@@ -87,6 +92,17 @@ uses
 type
   int64 = integer;
 {$ENDIF}
+{$IFDEF POSIX}
+type
+  TTimeVal = Posix.SysTime.timeval;
+  Ttimezone = record
+               tz_minuteswest: Integer ;     // minutes west of Greenwich
+               tz_dsttime: integer ;         // type of DST correction
+           end;
+
+  PTimeZone = ^Ttimezone;
+{$ENDIF}
+
 
 {:Return your timezone bias from UTC time in minutes.}
 function TimeZoneBias: integer;
@@ -398,12 +414,23 @@ function TimeZoneBias: integer;
 {$IFNDEF MSWINDOWS}
 {$IFNDEF FPC}
 var
+{$IFDEF POSIX}
+  t: Posix.SysTypes.time_t;
+  UT: Posix.time.tm;
+{$ELSE}
   t: TTime_T;
   UT: TUnixTime;
+{$ENDIF}
 begin
-  __time(@T);
-  localtime_r(@T, UT);
-  Result := ut.__tm_gmtoff div 60;
+  {$IFDEF POSIX}
+    __time(T);
+    localtime_r(T, UT);
+    Result := UT.tm_gmtoff div 60;
+  {$ELSE}
+    __time(@T);
+    localtime_r(@T, UT);
+    Result := ut.__tm_gmtoff div 60;
+  {$ENDIF}
 {$ELSE}
 begin
   Result := TZSeconds div 60;
@@ -835,7 +862,11 @@ begin
   d := (newdt - UnixDateDelta) * 86400;
   TV.tv_sec := trunc(d);
   TV.tv_usec := trunc(frac(d) * 1000000);
+  {$IFNDEF POSIX}
   Result := settimeofday(TV, TZ) <> -1;
+  {$ELSE}
+  Result := False; // in POSIX settimeofday is not defined? http://www.kernel.org/doc/man-pages/online/pages/man2/gettimeofday.2.html
+  {$ENDIF}
 {$ELSE FPC}
  {$IFDEF UNIX}
 var
@@ -1785,6 +1816,12 @@ begin
 end;
 
 {==============================================================================}
+
+{$IFDEF POSIX}
+function tempnam(const Path: PAnsiChar; const Prefix: PAnsiChar): PAnsiChar; cdecl;
+  external libc name _PU + 'tempnam';
+{$ENDIF}
+
 function GetTempFile(const Dir, prefix: AnsiString): AnsiString;
 {$IFNDEF FPC}
 {$IFDEF MSWINDOWS}
