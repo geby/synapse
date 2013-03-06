@@ -1,5 +1,5 @@
 {==============================================================================|
-| Project : Ararat Synapse                                       | 001.002.000 |
+| Project : Ararat Synapse                                       | 001.002.001 |
 |==============================================================================|
 | Content: SSL support by OpenSSL                                              |
 |==============================================================================|
@@ -499,6 +499,8 @@ end;
 function TSSLOpenSSL.Connect: boolean;
 var
   x: integer;
+  b: boolean;
+  err: integer;
 begin
   Result := False;
   if FSocket.Socket = INVALID_SOCKET then
@@ -516,11 +518,35 @@ begin
     end;
     if SNIHost<>'' then
       SSLCtrl(Fssl, SSL_CTRL_SET_TLSEXT_HOSTNAME, TLSEXT_NAMETYPE_host_name, PAnsiChar(AnsiString(SNIHost)));
-    x := sslconnect(FSsl);
-    if x < 1 then
+    if FSocket.ConnectionTimeout <= 0 then //do blocking call of SSL_Connect
     begin
-      SSLcheck;
-      Exit;
+      x := sslconnect(FSsl);
+      if x < 1 then
+      begin
+        SSLcheck;
+        Exit;
+      end;
+    end
+    else //do non-blocking call of SSL_Connect
+    begin
+      b := Fsocket.NonBlockMode;
+      Fsocket.NonBlockMode := true;
+      repeat
+        x := sslconnect(FSsl);
+        err := SslGetError(FSsl, x);
+        if err = SSL_ERROR_WANT_READ then
+          if not FSocket.CanRead(FSocket.ConnectionTimeout) then
+            break;
+        if err = SSL_ERROR_WANT_WRITE then
+          if not FSocket.CanWrite(FSocket.ConnectionTimeout) then
+            break;
+      until (err <> SSL_ERROR_WANT_READ) and (err <> SSL_ERROR_WANT_WRITE);
+      Fsocket.NonBlockMode := b;
+      if err <> SSL_ERROR_NONE then
+      begin
+        SSLcheck;
+        Exit;
+      end;
     end;
   if FverifyCert then
     if (GetVerifyCert <> 0) or (not DoVerifyCert) then
