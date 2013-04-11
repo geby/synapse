@@ -1,9 +1,9 @@
 {==============================================================================|
-| Project : Ararat Synapse                                       | 007.005.004 |
+| Project : Ararat Synapse                                       | 007.005.005 |
 |==============================================================================|
 | Content: Serial port support                                                 |
 |==============================================================================|
-| Copyright (c)2001-2012, Lukas Gebauer                                        |
+| Copyright (c)2001-2013, Lukas Gebauer                                        |
 | All rights reserved.                                                         |
 |                                                                              |
 | Redistribution and use in source and binary forms, with or without           |
@@ -33,7 +33,7 @@
 | DAMAGE.                                                                      |
 |==============================================================================|
 | The Initial Developer of the Original Code is Lukas Gebauer (Czech Republic).|
-| Portions created by Lukas Gebauer are Copyright (c)2001-2012.                |
+| Portions created by Lukas Gebauer are Copyright (c)2001-2013.                |
 | All Rights Reserved.                                                         |
 |==============================================================================|
 | Contributor(s):                                                              |
@@ -245,7 +245,7 @@ const
     );
 {$ENDIF}
 
-{$IFDEF DARWIN}
+{$IFDEF BSD}
 const // From fcntl.h
   O_SYNC = $0080;  { synchronous writes }
 {$ENDIF}
@@ -1944,7 +1944,7 @@ begin
     {$IFDEF DARWIN}
     SerialCheck(fpioctl(FHandle, TCIOflush, TCIOFLUSH));
     {$ELSE}
-    SerialCheck(fpioctl(FHandle, TCFLSH, Pointer(PtrInt(TCIOFLUSH))));
+    SerialCheck(fpioctl(FHandle, {$IFDEF FreeBSD}TCIOFLUSH{$ELSE}TCFLSH{$ENDIF}, Pointer(PtrInt(TCIOFLUSH))));
     {$ENDIF}
   {$ENDIF}
   FBuffer := '';
@@ -2333,4 +2333,4 @@ begin
 end;
 {$ENDIF}
 
-end.
+end.
