@@ -223,6 +223,9 @@ function StringToWide(const Value: AnsiString): WideString;
 {:Convert WideString to binary string with unicode content.}
 function WideToString(const Value: WideString): AnsiString;
 
+function GetIconvIDFromCP(Value: TMimeChar): AnsiString;
+function GetCPFromIconvID(Value: AnsiString): TMimeChar;
+
 {==============================================================================}
 implementation
 
