@@ -1,9 +1,9 @@
 {==============================================================================|
-| Project : Ararat Synapse                                       | 002.000.000 |
+| Project : Ararat Synapse                                       | 002.001.000 |
 |==============================================================================|
 | Content: support for ASN.1 BER coding and decoding                           |
 |==============================================================================|
-| Copyright (c)1999-2013, Lukas Gebauer                                        |
+| Copyright (c)1999-2014, Lukas Gebauer                                        |
 | All rights reserved.                                                         |
 |                                                                              |
 | Redistribution and use in source and binary forms, with or without           |
@@ -33,7 +33,7 @@
 | DAMAGE.                                                                      |
 |==============================================================================|
 | The Initial Developer of the Original Code is Lukas Gebauer (Czech Republic).|
-| Portions created by Lukas Gebauer are Copyright (c) 1999-2013                |
+| Portions created by Lukas Gebauer are Copyright (c) 1999-2014                |
 | Portions created by Hernan Sanchez are Copyright (c) 2000.                   |
 | All Rights Reserved.                                                         |
 |==============================================================================|
@@ -88,6 +88,7 @@ const
   ASN1_GAUGE = $42;
   ASN1_TIMETICKS = $43;
   ASN1_OPAQUE = $44;
+  ASN1_COUNTER64 = $46;
 
 {:Encodes OID item to binary form.}
 function ASNEncOIDItem(Value: Int64): AnsiString;
@@ -313,7 +314,7 @@ begin
             y := -(y + 1);
           Result := IntToStr(y);
         end;
-      ASN1_COUNTER, ASN1_GAUGE, ASN1_TIMETICKS:
+      ASN1_COUNTER, ASN1_GAUGE, ASN1_TIMETICKS, ASN1_COUNTER64:
         begin
           y := 0;
           for n := 1 to ASNSize do
@@ -498,6 +499,8 @@ begin
             Result := Result + ' IPADDR: ';
           ASN1_NULL:
             Result := Result + ' NULL: ';
+          ASN1_COUNTER64:
+            Result := Result + ' COUNTER64: ';
         else // other
           Result := Result + ' unknown: ';
         end;
