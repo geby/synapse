@@ -1,9 +1,9 @@
 {==============================================================================|
-| Project : Ararat Synapse                                       | 001.007.000 |
+| Project : Ararat Synapse                                       | 001.007.001 |
 |==============================================================================|
 | Content: LDAP client                                                         |
 |==============================================================================|
-| Copyright (c)1999-2010, Lukas Gebauer                                        |
+| Copyright (c)1999-2014, Lukas Gebauer                                        |
 | All rights reserved.                                                         |
 |                                                                              |
 | Redistribution and use in source and binary forms, with or without           |
@@ -33,7 +33,7 @@
 | DAMAGE.                                                                      |
 |==============================================================================|
 | The Initial Developer of the Original Code is Lukas Gebauer (Czech Republic).|
-| Portions created by Lukas Gebauer are Copyright (c)2003-2010.                |
+| Portions created by Lukas Gebauer are Copyright (c)2003-2014.                |
 | All Rights Reserved.                                                         |
 |==============================================================================|
 | Contributor(s):                                                              |
@@ -104,6 +104,8 @@ type
     function Get(Index: integer): string; override;
     procedure Put(Index: integer; const Value: string); override;
     procedure SetAttributeName(Value: AnsiString);
+  public
+    function Add(const S: string): Integer; override;
   published
     {:Name of LDAP attribute.}
     property AttributeName: AnsiString read FAttributeName Write SetAttributeName;
@@ -351,6 +353,11 @@ function LDAPResultDump(const Value: TLDAPResultList): AnsiString;
 implementation
 
 {==============================================================================}
+function TLDAPAttribute.Add(const S: string): Integer;
+begin
+  Put(inherited Add(''), S);
+end;
+
 function TLDAPAttribute.Get(Index: integer): string;
 begin
   Result := inherited Get(Index);
