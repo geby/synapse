@@ -355,7 +355,8 @@ implementation
 {==============================================================================}
 function TLDAPAttribute.Add(const S: string): Integer;
 begin
-  Put(inherited Add(''), S);
+  Result := inherited Add('');
+  Put(Result,S);
 end;
 
 function TLDAPAttribute.Get(Index: integer): string;
