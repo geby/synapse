@@ -1,9 +1,9 @@
 {==============================================================================|
-| Project : Ararat Synapse                                       | 007.005.006 |
+| Project : Ararat Synapse                                       | 007.006.000 |
 |==============================================================================|
 | Content: Serial port support                                                 |
 |==============================================================================|
-| Copyright (c)2001-2014, Lukas Gebauer                                        |
+| Copyright (c)2001-2015, Lukas Gebauer                                        |
 | All rights reserved.                                                         |
 |                                                                              |
 | Redistribution and use in source and binary forms, with or without           |
@@ -33,7 +33,7 @@
 | DAMAGE.                                                                      |
 |==============================================================================|
 | The Initial Developer of the Original Code is Lukas Gebauer (Czech Republic).|
-| Portions created by Lukas Gebauer are Copyright (c)2001-2014.                |
+| Portions created by Lukas Gebauer are Copyright (c)2001-2015.                |
 | All Rights Reserved.                                                         |
 |==============================================================================|
 | Contributor(s):                                                              |
@@ -2319,13 +2319,29 @@ var
 begin
   Result := '';
   if FindFirst('/dev/ttyS*', $FFFFFFFF, sr) = 0 then
-  begin
     repeat
       if (sr.Attr and $FFFFFFFF) = Sr.Attr then
       begin
         if Result <> '' then
           Result := Result + ',';
-        Result := Result + sr.Name;
+        Result := Result + '/dev/' + sr.Name;
+      end;
+    until FindNext(sr) <> 0;
+  FindClose(sr);
+  if FindFirst('/dev/ttyUSB*', $FFFFFFFF, sr) = 0 then begin
+    repeat
+      if (sr.Attr and $FFFFFFFF) = Sr.Attr then begin
+        if Result <> '' then Result := Result + ',';
+        Result := Result + '/dev/' + sr.Name;
+      end;
+    until FindNext(sr) <> 0;
+  end;
+  FindClose(sr);
+  if FindFirst('/dev/ttyAM*', $FFFFFFFF, sr) = 0 then begin
+    repeat
+      if (sr.Attr and $FFFFFFFF) = Sr.Attr then begin
+        if Result <> '' then Result := Result + ',';
+        Result := Result + '/dev/' + sr.Name;
       end;
     until FindNext(sr) <> 0;
   end;
