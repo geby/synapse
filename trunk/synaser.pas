@@ -197,7 +197,7 @@ type
 
 const
 {$IFDEF UNIX}
-  {$IFDEF DARWIN}
+  {$IFDEF BSD}
   MaxRates = 18;  //MAC
   {$ELSE}
    MaxRates = 30; //UNIX
@@ -226,7 +226,7 @@ const
     (57600, B57600),
     (115200, B115200),
     (230400, B230400)
-{$IFNDEF DARWIN}
+{$IFNDEF BSD}
     ,(460800, B460800)
   {$IFDEF UNIX}
     ,(500000, B500000),
@@ -245,7 +245,7 @@ const
     );
 {$ENDIF}
 
-{$IFDEF DARWIN}
+{$IFDEF BSD}
 const // From fcntl.h
   O_SYNC = $0080;  { synchronous writes }
 {$ENDIF}
