@@ -107,8 +107,8 @@ type
     FRangeEnd: integer;
     FAddPortNumberToHost: Boolean;
     function ReadUnknown: Boolean; virtual;
-    function ReadIdentity(Size: Integer): Boolean;
-    function ReadChunked: Boolean;
+    function ReadIdentity(Size: Integer): Boolean; virtual;
+    function ReadChunked: Boolean; virtual;
     procedure ParseCookies;
     function PrepareHeaders: AnsiString;
     function InternalDoConnect(needssl: Boolean): Boolean;
