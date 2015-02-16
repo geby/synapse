@@ -197,7 +197,7 @@ type
 
 const
 {$IFDEF UNIX}
-  {$IFDEF BSD}
+  {$IFDEF DARWIN}
   MaxRates = 18;  //MAC
   {$ELSE}
    MaxRates = 30; //UNIX
@@ -226,7 +226,7 @@ const
     (57600, B57600),
     (115200, B115200),
     (230400, B230400)
-{$IFNDEF BSD}
+{$IFNDEF DARWIN}
     ,(460800, B460800)
   {$IFDEF UNIX}
     ,(500000, B500000),
@@ -245,7 +245,7 @@ const
     );
 {$ENDIF}
 
-{$IFDEF BSD}
+{$IFDEF DARWIN}
 const // From fcntl.h
   O_SYNC = $0080;  { synchronous writes }
 {$ENDIF}
@@ -782,7 +782,7 @@ end;
 
 class function TBlockSerial.GetVersion: string;
 begin
-	Result := 'SynaSer 7.5.4';
+	Result := 'SynaSer 7.6.0';
 end;
 
 procedure TBlockSerial.CloseSocket;
@@ -1043,6 +1043,7 @@ begin
   end
   else
     SetSynaError(y);
+  err := 0;
   ClearCommError(FHandle, err, nil);
   if err <> 0 then
     DecodeCommError(err);
@@ -1158,6 +1159,7 @@ begin
   end
   else
     SetSynaError(y);
+  err := 0;
   ClearCommError(FHandle, err, nil);
   if err <> 0 then
     DecodeCommError(err);
@@ -1464,6 +1466,7 @@ var
   stat: TComStat;
   err: DWORD;
 begin
+  err := 0;
   if ClearCommError(FHandle, err, @stat) then
   begin
     SetSynaError(sOK);
@@ -1499,6 +1502,7 @@ var
   err: DWORD;
 begin
   SetSynaError(sOK);
+  err := 0;
   if not ClearCommError(FHandle, err, @stat) then
     serialcheck(sErr);
   ExceptCheck;
@@ -1774,6 +1778,7 @@ begin
     else
     begin
       y := 0;
+      ex := 0;
       if not WaitCommEvent(FHandle, ex, @Overlapped) then
         y := GetLastError;
       if y = ERROR_IO_PENDING then
@@ -1942,7 +1947,7 @@ begin
   SerialCheck(ioctl(FHandle, TCFLSH, TCIOFLUSH));
   {$ELSE}
     {$IFDEF DARWIN}
-    SerialCheck(fpioctl(FHandle, TCIOflush, Pointer(TCIOFLUSH)));
+    SerialCheck(fpioctl(FHandle, TCIOflush, Pointer(PtrInt(TCIOFLUSH))));
     {$ELSE}
     SerialCheck(fpioctl(FHandle, {$IFDEF FreeBSD}TCIOFLUSH{$ELSE}TCFLSH{$ENDIF}, Pointer(PtrInt(TCIOFLUSH))));
     {$ENDIF}
