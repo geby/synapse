@@ -1,9 +1,9 @@
 {==============================================================================|
-| Project : Ararat Synapse                                       | 009.010.000 |
+| Project : Ararat Synapse                                       | 009.010.001 |
 |==============================================================================|
 | Content: Library base                                                        |
 |==============================================================================|
-| Copyright (c)1999-2017, Lukas Gebauer                                        |
+| Copyright (c)1999-2021, Lukas Gebauer                                        |
 | All rights reserved.                                                         |
 |                                                                              |
 | Redistribution and use in source and binary forms, with or without           |
@@ -33,7 +33,7 @@
 | DAMAGE.                                                                      |
 |==============================================================================|
 | The Initial Developer of the Original Code is Lukas Gebauer (Czech Republic).|
-| Portions created by Lukas Gebauer are Copyright (c)1999-2017.                |
+| Portions created by Lukas Gebauer are Copyright (c)1999-2021.                |
 | All Rights Reserved.                                                         |
 |==============================================================================|
 | Contributor(s):                                                              |
@@ -245,6 +245,7 @@ type
     LT_TLSv1,
     LT_TLSv1_1,
     LT_TLSv1_2,
+    LT_TLSv1_3,
     LT_SSHv2
     );
 
