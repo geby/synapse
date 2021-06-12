@@ -1,9 +1,9 @@
 {==============================================================================|
-| Project : Ararat Synapse                                       | 007.006.001 |
+| Project : Ararat Synapse                                       | 007.006.002 |
 |==============================================================================|
 | Content: Serial port support                                                 |
 |==============================================================================|
-| Copyright (c)2001-2017, Lukas Gebauer                                        |
+| Copyright (c)2001-2021, Lukas Gebauer                                        |
 | All rights reserved.                                                         |
 |                                                                              |
 | Redistribution and use in source and binary forms, with or without           |
@@ -33,7 +33,7 @@
 | DAMAGE.                                                                      |
 |==============================================================================|
 | The Initial Developer of the Original Code is Lukas Gebauer (Czech Republic).|
-| Portions created by Lukas Gebauer are Copyright (c)2001-2017.                |
+| Portions created by Lukas Gebauer are Copyright (c)2001-2021.                |
 | All Rights Reserved.                                                         |
 |==============================================================================|
 | Contributor(s):                                                              |
@@ -86,7 +86,12 @@ case with my USB modem):
 {$IFDEF FPC}
   {$MODE DELPHI}
   {$IFDEF MSWINDOWS}
-    {$ASMMODE intel}
+    {$IFDEF CPUI386}
+      {$ASMMODE INTEL}
+    {$ENDIF}
+    {$IFDEF CPUX86_64}
+      {$ASMMODE INTEL}
+    {$ENDIF}
   {$ENDIF}
   {define working mode w/o LIBC for fpc}
   {$DEFINE NO_LIBC}
@@ -200,7 +205,11 @@ const
   {$IFDEF BSD}
   MaxRates = 18;  //MAC
   {$ELSE}
-   MaxRates = 30; //UNIX
+    {$IFDEF CPUARM}
+    MaxRates = 19; //CPUARM
+    {$ELSE}
+    MaxRates = 30; //UNIX
+    {$ENDIF}
   {$ENDIF}
 {$ELSE}
   MaxRates = 19;  //WIN
@@ -229,6 +238,7 @@ const
 {$IFNDEF BSD}
     ,(460800, B460800)
   {$IFDEF UNIX}
+    {$IFNDEF CPUARM}
     ,(500000, B500000),
     (576000, B576000),
     (921600, B921600),
@@ -240,6 +250,7 @@ const
     (3000000, B3000000),
     (3500000, B3500000),
     (4000000, B4000000)
+    {$ENDIF}
   {$ENDIF}
 {$ENDIF}
     );
@@ -2354,4 +2365,4 @@ begin
 end;
 {$ENDIF}
 
-end.
+end.
