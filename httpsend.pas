@@ -1,9 +1,9 @@
 {==============================================================================|
-| Project : Ararat Synapse                                       | 003.012.009 |
+| Project : Ararat Synapse                                       | 003.012.010 |
 |==============================================================================|
 | Content: HTTP client                                                         |
 |==============================================================================|
-| Copyright (c)1999-2015, Lukas Gebauer                                        |
+| Copyright (c)1999-2021, Lukas Gebauer                                        |
 | All rights reserved.                                                         |
 |                                                                              |
 | Redistribution and use in source and binary forms, with or without           |
@@ -33,7 +33,7 @@
 | DAMAGE.                                                                      |
 |==============================================================================|
 | The Initial Developer of the Original Code is Lukas Gebauer (Czech Republic).|
-| Portions created by Lukas Gebauer are Copyright (c) 1999-2015.               |
+| Portions created by Lukas Gebauer are Copyright (c) 1999-2021.               |
 | All Rights Reserved.                                                         |
 |==============================================================================|
 | Contributor(s):                                                              |
@@ -671,7 +671,7 @@ begin
         Result := ReadChunked;
     end;
 
-  FDocument.Seek(0, soFromBeginning);
+  FDocument.Position := 0;
   if ToClose then
   begin
     FSock.CloseSocket;
@@ -780,7 +780,7 @@ begin
     Result := HTTP.HTTPMethod('GET', URL);
     if Result then
     begin
-      Response.Seek(0, soFromBeginning);
+      Response.Position := 0;
       Response.CopyFrom(HTTP.Document, 0);
     end;
   finally
@@ -800,7 +800,7 @@ begin
     Data.Size := 0;
     if Result then
     begin
-      Data.Seek(0, soFromBeginning);
+      Data.Position := 0;
       Data.CopyFrom(HTTP.Document, 0);
     end;
   finally
