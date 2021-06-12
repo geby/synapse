@@ -850,7 +850,7 @@ begin
   end;
 
   if IPList.Count = 0 then
-    IPList.Add(cLocalHost);
+    IPList.Add(cAnyHost);
 end;
 
 function ResolvePort(Port: string; Family, SockProtocol, SockType: integer): Word;
