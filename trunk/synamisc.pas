@@ -80,7 +80,9 @@ uses
   synautil, blcksock, SysUtils, Classes
 {$IFDEF UNIX}
   {$IFNDEF FPC}
+    {$IFNDEF POSIX}
   , Libc
+    {$ENDIF}
   {$ENDIF}
 {$ELSE}
   , Windows
