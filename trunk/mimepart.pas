@@ -1,9 +1,9 @@
 {==============================================================================|
-| Project : Ararat Synapse                                       | 002.009.000 |
+| Project : Ararat Synapse                                       | 002.009.001 |
 |==============================================================================|
 | Content: MIME support procedures and functions                               |
 |==============================================================================|
-| Copyright (c)1999-200812                                                         |
+| Copyright (c)1999-2021                                                       |
 |                                                                              |
 | Redistribution and use in source and binary forms, with or without           |
 | modification, are permitted provided that the following conditions are met:  |
@@ -32,7 +32,7 @@
 | DAMAGE.                                                                      |
 |==============================================================================|
 | The Initial Developer of the Original Code is Lukas Gebauer (Czech Republic).|
-| Portions created by Lukas Gebauer are Copyright (c)2000-2012.                |
+| Portions created by Lukas Gebauer are Copyright (c)2000-2021.                |
 | Portions created by Petr Fejfar are Copyright (c)2011-2012.                  |
 | All Rights Reserved.                                                         |
 |==============================================================================|
@@ -891,7 +891,7 @@ begin
     else
       s := CharsetConversion(s, FCharsetCode, FTargetCharset);
   WriteStrToStream(FDecodedLines, s);
-  FDecodedLines.Seek(0, soFromBeginning);
+  FDecodedLines.Position := 0;
 end;
 
 {==============================================================================}
@@ -972,7 +972,7 @@ begin
     Encoding := 'base64';
   l := TStringList.Create;
   FPartBody.Clear;
-  FDecodedLines.Seek(0, soFromBeginning);
+  FDecodedLines.Position := 0;
   try
     case FPrimaryCode of
       MP_MULTIPART, MP_MESSAGE:
