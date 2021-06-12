@@ -1,5 +1,5 @@
 {==============================================================================|
-| Project : Ararat Synapse                                       | 001.001.004 |
+| Project : Ararat Synapse                                       | 001.001.005 |
 |==============================================================================|
 | Content: Socket Independent Platform Layer - Delphi Posix definition include |
 |==============================================================================|
@@ -64,7 +64,6 @@ partially compatible with NextGen Delphi compiler - iOS
 
 }
 
-
 interface
 
 uses
@@ -89,9 +88,7 @@ const
 type
   TSocket = longint;
   TAddrFamily = integer;
-
   TMemory = pointer;
-
 
 type
   TFDSet = fd_set;
@@ -100,11 +97,17 @@ type
   Ttimeval = Posix.SysTime.timeval;
 
 const
-  //
+{$IFDEF MACOS}
   FIONREAD = $4004667F; // oSX FIONREAD        = Posix.StrOpts.FIONREAD;
-
   FIONBIO	 = $8004667E; //OSX FIONBIO         = Posix.StrOpts.FIONBIO;
   FIOASYNC = $8004667D; //OSX  FIOASYNC        = Posix.StrOpts.FIOASYNC;  // not defined in XE2
+{$ELSE}
+  // LINUX
+  FIONREAD        = $541B;
+  FIONBIO         = $5421;
+  FIOASYNC        = $5452;
+{$ENDIF}
+
 
   {  FIONREAD        = $541B; // LINUX?
   FIONBIO         = $5421;
@@ -352,7 +355,9 @@ var
   SockEnhancedApi: Boolean;
   SockWship6Api: Boolean;
 
-  {$DEFINE SOCK_HAS_SINLEN} // OSX
+{$IFDEF MACOS}
+   {$DEFINE SOCK_HAS_SINLEN} // OSX
+{$ENDIF}
 
 type
   TVarSin = packed record
@@ -466,7 +471,7 @@ end;
 procedure SET_LOOPBACK_ADDR6 (const a: PInAddr6);
 begin
   FillChar(a^, sizeof(TInAddr6), 0);
-  a^.__s6_addr8[15] := 1;
+  a^.s6_addr[15] := 1;
 end;
 
 {$IFDEF NEXTGEN}
@@ -733,7 +738,10 @@ var
   function GetAddr(const IP, port: string; Hints: AddrInfo; var Sin: TVarSin): integer;
   var
     Addr: PAddrInfo;
+    aIP,aPort : AnsiString;
   begin
+    aIP:=Utf8Encode(IP);
+    aPort:=Utf8Encode(Port);
     Addr := nil;
     try
       FillChar(Sin, Sizeof(Sin), 0);
@@ -741,23 +749,23 @@ var
       begin
         Hints.ai_socktype := 0;
         Hints.ai_protocol := 0;
-        Result := GetAddrInfo(PAnsiChar(AnsiString(IP)), nil, Hints, Addr);
+        Result := GetAddrInfo(PAnsiChar(aIP), nil, Hints, Addr);
       end
       else
       begin
         if (IP = cAnyHost) or (IP = c6AnyHost) then
         begin
           Hints.ai_flags := AI_PASSIVE;
-          Result := GetAddrInfo(nil, PAnsiChar(AnsiString(Port)), Hints, Addr);
+          Result := GetAddrInfo(nil, PAnsiChar(aPort)), Hints, Addr);
         end
         else
           if (IP = cLocalhost) or (IP = c6Localhost) then
           begin
-            Result := GetAddrInfo(nil, PAnsiChar(AnsiString(Port)), Hints, Addr);
+            Result := GetAddrInfo(nil, PAnsiChar(aPort)), Hints, Addr);
           end
           else
           begin
-            Result := GetAddrInfo(PAnsiChar(AnsiString(IP)), PAnsiChar(AnsiString(Port)), Hints, Addr);
+            Result := GetAddrInfo(PAnsiChar(aIP), PAnsiChar(aPort), Hints, Addr);
           end;
       end;
       if Result = 0 then
@@ -939,7 +947,7 @@ begin
           while PAdrPtr^[i] <> nil do
           begin
             InAddr := PAdrPtr^[i]^;
-            aby := TArray<byte>(InAddr);
+            aby := TArray<byte>(@InAddr);
             s := Format('%d.%d.%d.%d', [aby[0], aby[1],
               aby[2], aby[3]]);
             IPList.Add(s);
@@ -1076,7 +1084,7 @@ begin
       try
         RemoteHost := GetHostByAddr(IPn, SizeOf(IPn), AF_INET);
         if RemoteHost <> nil then
-          Result := string(RemoteHost^.hname);
+          Result := string(RemoteHost^.h_name);
       finally
         SynSockCS.Leave;
       end;

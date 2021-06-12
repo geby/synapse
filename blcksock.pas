@@ -1,5 +1,5 @@
 {==============================================================================|
-| Project : Ararat Synapse                                       | 009.010.001 |
+| Project : Ararat Synapse                                       | 009.010.002 |
 |==============================================================================|
 | Content: Library base                                                        |
 |==============================================================================|
@@ -102,7 +102,9 @@ interface
 
 uses
   SysUtils, Classes,
+{$IFDEF FPC}
   synafpc,
+{$ENDIF}
   synsock, synautil, synacode, synaip
 {$IFDEF CIL}
   ,System.Net
@@ -3677,7 +3679,7 @@ begin
   begin
     ip6 := StrToIp6(MCastIP);
     for n := 0 to 15 do
-      Multicast6.ipv6mr_multiaddr.u6_addr8[n] := Ip6[n];
+      Multicast6.ipv6mr_multiaddr.s6_addr[n] := Ip6[n];
     Multicast6.ipv6mr_interface := 0;
     SockCheck(synsock.SetSockOpt(FSocket, IPPROTO_IPV6, IPV6_JOIN_GROUP,
       PAnsiChar(@Multicast6), SizeOf(Multicast6)));
@@ -3704,7 +3706,7 @@ begin
   begin
     ip6 := StrToIp6(MCastIP);
     for n := 0 to 15 do
-      Multicast6.ipv6mr_multiaddr.u6_addr8[n] := Ip6[n];
+      Multicast6.ipv6mr_multiaddr.s6_addr[n] := Ip6[n];
     Multicast6.ipv6mr_interface := 0;
     SockCheck(synsock.SetSockOpt(FSocket, IPPROTO_IPV6, IPV6_LEAVE_GROUP,
       PAnsiChar(@Multicast6), SizeOf(Multicast6)));

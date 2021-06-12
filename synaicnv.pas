@@ -72,7 +72,9 @@ uses
   synafpc,
 {$IFNDEF MSWINDOWS}
   {$IFNDEF FPC}
-  Libc,
+    {$IFNDEF POSIX}
+      Libc,
+    {$ENDIF}
   {$ENDIF}
   SysUtils;
 {$ELSE}
