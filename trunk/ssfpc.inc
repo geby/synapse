@@ -1,5 +1,5 @@
 {==============================================================================|
-| Project : Ararat Synapse                                       | 001.001.005 |
+| Project : Ararat Synapse                                       | 001.001.006 |
 |==============================================================================|
 | Content: Socket Independent Platform Layer - FreePascal definition include   |
 |==============================================================================|
@@ -858,7 +858,7 @@ var
   ProtoEnt: TProtocolEntry;
   ServEnt: TServiceEntry;
 begin
-  Result := synsock.htons(StrToIntDef(Port, 0));
+  Result := StrToIntDef(Port, 0);
   if Result = 0 then
   begin
     ProtoEnt.Name := '';
