@@ -1,5 +1,5 @@
 {==============================================================================|
-| Project : Ararat Synapse                                       | 002.009.001 |
+| Project : Ararat Synapse                                       | 002.009.002 |
 |==============================================================================|
 | Content: MIME support procedures and functions                               |
 |==============================================================================|
@@ -370,6 +370,8 @@ const
 
 {:Generates a unique boundary string.}
 function GenerateBoundary: string;
+{:Generates a stringlist that does not write a BOM character.}
+Function CreateStringList : TStringList;
 
 implementation
 
@@ -379,11 +381,11 @@ constructor TMIMEPart.Create;
 begin
   inherited Create;
   FOnWalkPart := nil;
-  FLines := TStringList.Create;
-  FPartBody := TStringList.Create;
-  FHeaders := TStringList.Create;
-  FPrePart := TStringList.Create;
-  FPostPart := TStringList.Create;
+  FLines := CreateStringList;
+  FPartBody := CreateStringList;
+  FHeaders := CreateStringList;
+  FPrePart := CreateStringList;
+  FPostPart := CreateStringList;
   FDecodedLines := TMemoryStream.Create;
   FSubParts := TList.Create;
   FTargetCharset := GetCurCP;
@@ -970,7 +972,7 @@ var
 begin
   if (FEncodingCode = ME_UU) or (FEncodingCode = ME_XX) then
     Encoding := 'base64';
-  l := TStringList.Create;
+  l := CreateStringList;
   FPartBody.Clear;
   FDecodedLines.Position := 0;
   try
@@ -1222,6 +1224,14 @@ begin
   Randomize;
   y := Random(MaxInt);
   Result := IntToHex(x, 8) + '_' + IntToHex(y, 8) + '_Synapse_boundary';
+end;
+
+function CreateStringList: TStringList;
+begin
+  Result := TStringList.Create;
+{$IFDEF UNICODE}
+  Result.WriteBOM := False;
+{$ENDIF}
 end;
 
 end.
