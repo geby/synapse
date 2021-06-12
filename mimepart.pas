@@ -966,7 +966,11 @@ end;
 procedure TMIMEPart.EncodePart;
 var
   l: TStringList;
-  s, t: string;
+{$IFDEF UNICODE}
+  s, t: RawByteString;
+{$ELSE}
+   s, t: string;
+{$ENDIF}
   n, x: Integer;
   d1, d2: integer;
 begin
@@ -1076,7 +1080,7 @@ begin
     FHeaders.Insert(0, 'Content-Disposition: ' + LowerCase(FDisposition) + s);
   end;
   if FContentID <> '' then
-    FHeaders.Insert(0, 'Content-ID: ' + FContentID);
+    FHeaders.Insert(0, 'Content-ID: <' + FContentID + '>');
 
   case FEncodingCode of
     ME_7BIT:

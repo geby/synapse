@@ -1,5 +1,5 @@
 {==============================================================================|
-| Project : Ararat Synapse                                       | 005.002.004 |
+| Project : Ararat Synapse                                       | 005.002.005 |
 |==============================================================================|
 | Content: Charset conversion support                                          |
 |==============================================================================|
@@ -1744,15 +1744,40 @@ begin
   Result := '';
   case Value of
     UCS_2:
-      Result := #$fe + #$ff;
+    begin
+      SetLength(Result, 2);
+      Result[1] := #$fe;
+      Result[2] := #$ff;
+    end;
     UCS_4:
-      Result := #$00 + #$00 + #$fe + #$ff;
+    begin
+      SetLength(Result, 4);
+      Result[1] := #$00;
+      Result[2] := #$00;
+      Result[3] := #$fe;
+      Result[4] := #$ff;
+    end;
     UCS_2LE:
-      Result := #$ff + #$fe;
+    begin
+      SetLength(Result, 2);
+      Result[1] := #$ff;
+      Result[2] := #$fe;
+    end;
     UCS_4LE:
-      Result := #$ff + #$fe + #$00 + #$00;
+    begin
+      SetLength(Result, 4);
+      Result[1] := #$ff;
+      Result[2] := #$fe;
+      Result[3] := #$00;
+      Result[4] := #$00;
+    end;
     UTF_8:
-      Result := #$ef + #$bb + #$bf;
+    begin
+      SetLength(Result, 3);
+      Result[1] := #$ef;
+      Result[2] := #$bb;
+      Result[3] := #$bf;
+    end;
   end;
 end;
 
