@@ -1,5 +1,5 @@
 {==============================================================================|
-| Project : Ararat Synapse                                       | 001.001.006 |
+| Project : Ararat Synapse                                       | 001.001.007 |
 |==============================================================================|
 | Content: Socket Independent Platform Layer - FreePascal definition include   |
 |==============================================================================|
@@ -755,7 +755,7 @@ var
 begin
   Result := 0;
   FillChar(Sin, Sizeof(Sin), 0);
-  Sin.sin_port := Resolveport(port, family, SockProtocol, SockType);
+  Sin.sin_port := synsock.htons(Resolveport(port, family, SockProtocol, SockType));
   TwoPass := False;
   if Family = AF_UNSPEC then
   begin
@@ -865,7 +865,7 @@ begin
     GetProtocolByNumber(SockProtocol, ProtoEnt);
     ServEnt.port := 0;
     GetServiceByName(Port, ProtoEnt.Name, ServEnt);
-    Result := ServEnt.port;  
+    Result := synsock.ntohs(ServEnt.port);  
   end;
 end;
 
