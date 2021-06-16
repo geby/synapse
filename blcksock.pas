@@ -312,8 +312,8 @@ type
     {$IFNDEF CIL}
     FFDSet: TFDSet;
     {$ENDIF}
-    FRecvCounter: Integer;
-    FSendCounter: Integer;
+    FRecvCounter: int64;
+    FSendCounter: int64;
     FSendMaxChunk: Integer;
     FStopFlag: Boolean;
     FNonblockSendTimeout: Integer;
@@ -546,7 +546,7 @@ type
      occured.)}
     procedure RecvStreamRaw(const Stream: TStream; Timeout: Integer); virtual;
     {:Read requested count of bytes from socket to stream.}
-    procedure RecvStreamSize(const Stream: TStream; Timeout: Integer; Size: Integer);
+    procedure RecvStreamSize(const Stream: TStream; Timeout: Integer; Size: int64);
 
     {:Receive data to stream. It using @link(RecvBlock) method.}
     procedure RecvStream(const Stream: TStream; Timeout: Integer); virtual;
@@ -765,11 +765,11 @@ type
 
     {:Return count of received bytes on this socket from begin of current
      connection.}
-    property RecvCounter: Integer read FRecvCounter;
+    property RecvCounter: int64 read FRecvCounter;
 
     {:Return count of sended bytes on this socket from begin of current
      connection.}
-    property SendCounter: Integer read FSendCounter;
+    property SendCounter: int64 read FSendCounter;
   published
     {:Return descriptive string for given error code. This is class function.
      You may call it without created object!}
@@ -2508,15 +2508,16 @@ begin
   until FLastError <> 0;
 end;
 
-procedure TBlockSocket.RecvStreamSize(const Stream: TStream; Timeout: Integer; Size: Integer);
+procedure TBlockSocket.RecvStreamSize(const Stream: TStream; Timeout: Integer; Size: int64);
 var
   s: AnsiString;
-  n: integer;
+  n: int64;
 {$IFDEF CIL}
   buf: TMemory;
 {$ENDIF}
 begin
-  for n := 1 to (Size div FSendMaxChunk) do
+  n := Size div int64(FSendMaxChunk);
+  while n > 0 do
   begin
     {$IFDEF CIL}
     SetLength(buf, FSendMaxChunk);
@@ -2530,8 +2531,9 @@ begin
       Exit;
     WriteStrToStream(Stream, s);
     {$ENDIF}
+    dec(n);
   end;
-  n := Size mod FSendMaxChunk;
+  n := Size mod int64(FSendMaxChunk);
   if n > 0 then
   begin
     {$IFDEF CIL}
