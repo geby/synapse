@@ -1,5 +1,5 @@
 {==============================================================================|
-| Project : Ararat Synapse                                       | 003.012.010 |
+| Project : Ararat Synapse                                       | 003.013.000 |
 |==============================================================================|
 | Content: HTTP client                                                         |
 |==============================================================================|
@@ -34,6 +34,7 @@
 |==============================================================================|
 | The Initial Developer of the Original Code is Lukas Gebauer (Czech Republic).|
 | Portions created by Lukas Gebauer are Copyright (c) 1999-2021.               |
+| Portions created by Pepak are Copyright (c) 2020-2021.                       |
 | All Rights Reserved.                                                         |
 |==============================================================================|
 | Contributor(s):                                                              |
@@ -101,18 +102,21 @@ type
     FResultString: string;
     FUserAgent: string;
     FCookies: TStringList;
-    FDownloadSize: integer;
-    FUploadSize: integer;
-    FRangeStart: integer;
-    FRangeEnd: integer;
+    FDownloadSize: int64;
+    FUploadSize: int64;
+    FRangeStart: int64;
+    FRangeEnd: int64;
     FAddPortNumberToHost: Boolean;
+    FInputStream, FOutputStream: TStream;
     function ReadUnknown: Boolean; virtual;
-    function ReadIdentity(Size: Integer): Boolean; virtual;
+    function ReadIdentity(Size: int64): Boolean; virtual;
     function ReadChunked: Boolean; virtual;
     procedure ParseCookies;
     function PrepareHeaders: AnsiString;
     function InternalDoConnect(needssl: Boolean): Boolean;
     function InternalConnect(needssl: Boolean): Boolean;
+    function InputDocument: TStream;
+    function OutputDocument: TStream;
   public
     constructor Create;
     destructor Destroy; override;
@@ -158,13 +162,13 @@ type
 
     {:If you need to download only part of a requested document, specify here
      the position of subpart begin. If 0, the full document is requested.}
-    property RangeStart: integer read FRangeStart Write FRangeStart;
+    property RangeStart: int64 read FRangeStart Write FRangeStart;
 
     {:If you need to download only part of a requested document, specify here
      the position of subpart end. If 0, the document from rangeStart to end of
      document is requested.
      (Useful for resuming broken downloads, for example.)}
-    property RangeEnd: integer read FRangeEnd Write FRangeEnd;
+    property RangeEnd: int64 read FRangeEnd Write FRangeEnd;
 
     {:Mime type of sending data. Default is: 'text/html'.}
     property MimeType: string read FMimeType Write FMimeType;
@@ -209,12 +213,12 @@ type
     {:if this value is not 0, then data download is pending. In this case you
      have here the total size of downloaded data. Useful for drawing download
      progressbar from OnStatus event.}
-    property DownloadSize: integer read FDownloadSize;
+    property DownloadSize: int64 read FDownloadSize;
 
     {:if this value is not 0, then data upload is pending. In this case you have
      here the total size of uploaded data. Useful for drawing upload progressbar
      from OnStatus event.}
-    property UploadSize: integer read FUploadSize;
+    property UploadSize: int64 read FUploadSize;
 
     {:Socket object used for TCP/IP operation.
      Good for setting OnStatus hook, etc.}
@@ -223,6 +227,12 @@ type
     {:Allows to switch off port number in 'Host:' HTTP header. By default @TRUE.
      Some buggy servers do not like port informations in this header.}
     property AddPortNumberToHost: Boolean read FAddPortNumberToHost write FAddPortNumberToHost;
+  public
+    {:for direct sending from any TStream. Defalut nil = use Document property instead.}
+    property InputStream: TStream read FInputStream write FInputStream;
+
+    {:for direct dovnloading into any TStream. Defalut nil = use Document property instead.}
+    property OutputStream: TStream read FOutputStream write FOutputStream;
   end;
 
 {:A very useful function, and example of use can be found in the THTTPSend
@@ -296,6 +306,8 @@ begin
   FUploadSize := 0;
   FAddPortNumberToHost := true;
   FKeepAliveTimeout := 300;
+  FInputStream := nil;
+  FOutputStream := nil;
   Clear;
 end;
 
@@ -308,11 +320,29 @@ begin
   inherited Destroy;
 end;
 
+function THTTPSend.InputDocument: TStream;
+begin
+  if InputStream <> nil then
+    Result := InputStream
+  else
+    Result := Document;
+end;
+
+function THTTPSend.OutputDocument: TStream;
+begin
+  if OutputStream <> nil then
+    Result := OutputStream
+  else
+    Result := Document;
+end;
+
 procedure THTTPSend.Clear;
 begin
   FRangeStart := 0;
   FRangeEnd := 0;
   FDocument.Clear;
+  InputDocument.Size := 0;
+  OutputDocument.Size := 0;
   FHeaders.Clear;
   FMimeType := 'text/html';
 end;
@@ -383,7 +413,7 @@ var
   status100: Boolean;
   status100error: string;
   ToClose: Boolean;
-  Size: Integer;
+  Size: int64;
   Prot, User, Pass, Host, Port, Path, Para, URI: string;
   s, su: AnsiString;
   HttpTunnel: Boolean;
@@ -400,7 +430,7 @@ begin
   FDownloadSize := 0;
   FUploadSize := 0;
 
-  URI := ParseURL(URL, Prot, User, Pass, Host, Port, Path, Para);
+  URI := ParseURL(trim(URL), Prot, User, Pass, Host, Port, Path, Para);
   User := DecodeURL(user);
   Pass := DecodeURL(pass);
   if User = '' then
@@ -425,14 +455,14 @@ begin
     FSock.HTTPTunnelPass := '';
   end;
   UsingProxy := (FProxyHost <> '') and not(HttpTunnel);
-  Sending := FDocument.Size > 0;
+  Sending := InputDocument.Size > 0;
   {Headers for Sending data}
   status100 := FStatus100 and Sending and (FProtocol = '1.1');
   if status100 then
     FHeaders.Insert(0, 'Expect: 100-continue');
   if Sending then
   begin
-    FHeaders.Insert(0, 'Content-Length: ' + IntToStr(FDocument.Size));
+    FHeaders.Insert(0, 'Content-Length: ' + IntToStr(InputDocument.Size));
     if FMimeType <> '' then
       FHeaders.Insert(0, 'Content-Type: ' + FMimeType);
   end;
@@ -514,7 +544,7 @@ begin
   end;
 
   { reading Status }
-  FDocument.Position := 0;
+  InputDocument.Position := 0;
   Status100Error := '';
   if status100 then
   begin
@@ -538,23 +568,23 @@ begin
     begin
       { we can upload content }
       Status100Error := '';
-      FUploadSize := FDocument.Size;
-      FSock.SendBuffer(FDocument.Memory, FDocument.Size);
+      FUploadSize := InputDocument.Size;
+      FSock.SendStreamRaw(InputDocument);
     end;
   end
   else
     { upload content }
     if sending then
     begin
-      if FDocument.Size >= c64k then
+      if InputDocument.Size >= c64k then
       begin
         FSock.SendString(PrepareHeaders);
-        FUploadSize := FDocument.Size;
-        FSock.SendBuffer(FDocument.Memory, FDocument.Size);
+        FUploadSize := InputDocument.Size;
+        FSock.SendStreamRaw(InputDocument);
       end
       else
       begin
-        s := PrepareHeaders + ReadStrFromStream(FDocument, FDocument.Size);
+        s := PrepareHeaders + ReadStrFromStream(InputDocument, InputDocument.Size);
         FUploadSize := Length(s);
         FSock.SendString(s);
       end;
@@ -590,7 +620,7 @@ begin
       begin
         { old HTTP 0.9 and some buggy servers not send result }
         s := s + CRLF;
-        WriteStrToStream(FDocument, s);
+        WriteStrToStream(OutputDocument, s);
         FResultCode := 0;
       end;
     until (FSock.LastError <> 0) or (FResultCode <> 100);
@@ -618,7 +648,7 @@ begin
         su := UpperCase(s);
         if Pos('CONTENT-LENGTH:', su) = 1 then
         begin
-          Size := StrToIntDef(Trim(SeparateRight(s, ':')), -1);
+          Size := StrToInt64Def(Trim(SeparateRight(s, ':')), -1);
           if (Size <> -1) and (FTransferEncoding = TE_UNKNOWN) then
             FTransferEncoding := TE_IDENTITY;
         end;
@@ -671,7 +701,7 @@ begin
         Result := ReadChunked;
     end;
 
-  FDocument.Position := 0;
+  OutputDocument.Position := 0;
   if ToClose then
   begin
     FSock.CloseSocket;
@@ -689,7 +719,7 @@ begin
   repeat
     s := FSock.RecvPacket(FTimeout);
     if FSock.LastError = 0 then
-      WriteStrToStream(FDocument, s);
+      WriteStrToStream(OutputDocument, s);
   until FSock.LastError <> 0;
   if FSock.LastError = WSAECONNRESET then
   begin
@@ -698,13 +728,13 @@ begin
   end;
 end;
 
-function THTTPSend.ReadIdentity(Size: Integer): Boolean;
+function THTTPSend.ReadIdentity(Size: int64): Boolean;
 begin
   if Size > 0 then
   begin
     FDownloadSize := Size;
-    FSock.RecvStreamSize(FDocument, FTimeout, Size);
-    FDocument.Position := FDocument.Size;
+    FSock.RecvStreamSize(OutputDocument, FTimeout, Size);
+    OutputDocument.Position := OutputDocument.Size;
     Result := FSock.LastError = 0;
   end
   else
@@ -714,7 +744,7 @@ end;
 function THTTPSend.ReadChunked: Boolean;
 var
   s: ansistring;
-  Size: Integer;
+  Size: int64;
 begin
   repeat
     repeat
@@ -724,7 +754,7 @@ begin
       Break;
     s := Trim(SeparateLeft(s, ' '));
     s := Trim(SeparateLeft(s, ';'));
-    Size := StrToIntDef('$' + s, 0);
+    Size := StrToInt64Def('$' + s, 0);
     if Size = 0 then
       Break;
     if not ReadIdentity(Size) then
