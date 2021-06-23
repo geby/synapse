@@ -102,9 +102,7 @@ interface
 
 uses
   SysUtils, Classes,
-{$IFDEF FPC}
   synafpc,
-{$ENDIF}
   synsock, synautil, synacode, synaip
 {$IFDEF CIL}
   ,System.Net
