@@ -73,6 +73,8 @@ Ad-Hoc key and certificate for each incomming connection by self. It slowdown
 accepting of new connections!
 }
 
+{$INCLUDE 'jedi.inc'}
+
 {$IFDEF FPC}
   {$MODE DELPHI}
 {$ENDIF}
@@ -89,6 +91,7 @@ interface
 
 uses
   SysUtils, Classes,
+  {$IFDEF DELPHI23_UP} AnsiStrings, {$ENDIF}
   blcksock, synsock, synautil,
   ssl_openssl11_lib;
 
@@ -169,7 +172,7 @@ begin
   if Length(Password) > (Size - 1) then
     SetLength(Password, Size - 1);
   Result := Length(Password);
-  StrLCopy(buf, PAnsiChar(Password + #0), Result + 1);
+  {$IFDEF DELPHI23_UP}AnsiStrings.{$ENDIF}StrLCopy(buf, PAnsiChar(Password + #0), Result + 1);
 end;
 
 {==============================================================================}
