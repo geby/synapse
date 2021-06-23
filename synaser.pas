@@ -2098,7 +2098,7 @@ begin
         break;
       if s = 'NO DIALTONE' then
         break;
-      if Pos('CONNECT', s) = 1 then
+      if Pos('CONNECT', {$IFDEF UNICODE} string {$ENDIF} (s)) = 1 then
       begin
         FAtResult := True;
         break;
