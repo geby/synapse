@@ -79,9 +79,6 @@ accepting of new connections!
 
 {$INCLUDE 'jedi.inc'}
 
-{$IFDEF FPC}
-  {$MODE DELPHI}
-{$ENDIF}
 {$H+}
 
 {$IFDEF UNICODE}
