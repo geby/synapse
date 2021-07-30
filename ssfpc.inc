@@ -1,9 +1,9 @@
 {==============================================================================|
-| Project : Ararat Synapse                                       | 001.001.007 |
+| Project : Ararat Synapse                                       | 001.001.008 |
 |==============================================================================|
 | Content: Socket Independent Platform Layer - FreePascal definition include   |
 |==============================================================================|
-| Copyright (c)2006-2013, Lukas Gebauer                                        |
+| Copyright (c)2006-2021, Lukas Gebauer                                        |
 | All rights reserved.                                                         |
 |                                                                              |
 | Redistribution and use in source and binary forms, with or without           |
@@ -33,7 +33,7 @@
 | DAMAGE.                                                                      |
 |==============================================================================|
 | The Initial Developer of the Original Code is Lukas Gebauer (Czech Republic).|
-| Portions created by Lukas Gebauer are Copyright (c)2006-2013.                |
+| Portions created by Lukas Gebauer are Copyright (c)2006-2021.                |
 | All Rights Reserved.                                                         |
 |==============================================================================|
 | Contributor(s):                                                              |
@@ -255,9 +255,8 @@ const
   MSG_OOB       = sockets.MSG_OOB;      // Process out-of-band data.
   MSG_PEEK      = sockets.MSG_PEEK;     // Peek at incoming messages.
   {$ifdef DARWIN}
-  MSG_NOSIGNAL  = $20000;  // Do not generate SIGPIPE.
-                           // Works under MAC OS X, but is undocumented,
-                           // So FPC doesn't include it
+  MSG_NOSIGNAL  = 0;  // Signal is disabled by SO_NOSIGPIPE socket option instead
+    //was $20000 as undocumented option for Mac OS X
   {$else}
    MSG_NOSIGNAL  = sockets.MSG_NOSIGNAL; // Do not generate SIGPIPE.
   {$endif}
