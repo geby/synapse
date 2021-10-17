@@ -666,7 +666,7 @@
 { Set FreePascal to Delphi mode }
 {$IFDEF FPC}
   {$MODE DELPHI}
-  {$ASMMODE Intel}
+//  {$ASMMODE Intel} //this break FPC on non-intel platforms. Why it is here?
   {$UNDEF BORLAND}
   {$DEFINE CPUASM}
    // FPC defines CPU32, CPU64 and Unix automatically
