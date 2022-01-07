@@ -102,7 +102,7 @@ const
   FIONBIO	 = $8004667E; //OSX FIONBIO         = Posix.StrOpts.FIONBIO;
   FIOASYNC = $8004667D; //OSX  FIOASYNC        = Posix.StrOpts.FIOASYNC;  // not defined in XE2
 {$ELSE}
-  // LINUX
+  // LINUX & ANDROID
   FIONREAD        = $541B;
   FIONBIO         = $5421;
   FIOASYNC        = $5452;
@@ -238,7 +238,11 @@ const
   AF_UNSPEC       = Posix.SysSocket.AF_UNSPEC;// 0;               { unspecified }
   AF_INET         = Posix.SysSocket.AF_INET;  // 2;               { internetwork: UDP, TCP, etc. }
   AF_INET6        = Posix.SysSocket.AF_INET6; // !! 30            { Internetwork Version 6 }
+{$IFDEF ANDROID}
+  AF_MAX          = 24;
+{$ELSE}
   AF_MAX          = Posix.SysSocket.AF_MAX;   // !! - variable by OS
+{$ENDIF}
 
 { Protocol families, same as address families for now. }
   PF_UNSPEC       = AF_UNSPEC;
@@ -756,15 +760,17 @@ var
         if (IP = cAnyHost) or (IP = c6AnyHost) then
         begin
           Hints.ai_flags := AI_PASSIVE;
-          Result := GetAddrInfo(nil, PAnsiChar(aPort)), Hints, Addr);
+          Result := GetAddrInfo(nil, PAnsiChar(aPort), Hints, Addr);
         end
         else
           if (IP = cLocalhost) or (IP = c6Localhost) then
           begin
-            Result := GetAddrInfo(nil, PAnsiChar(aPort)), Hints, Addr);
+            Result := GetAddrInfo(nil, PAnsiChar(aPort), Hints, Addr);
           end
           else
           begin
+            //for Android see code in System.Net.Socket TIPAddress.LookupName
+           // Result :=  getaddrinfo(M.AsUTF8(TURI.UnicodeToIDNA(aIP)).ToPointer, nil, Hints, Addr);
             Result := GetAddrInfo(PAnsiChar(aIP), PAnsiChar(aPort), Hints, Addr);
           end;
       end;
