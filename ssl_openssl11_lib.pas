@@ -88,7 +88,11 @@ uses
   BaseUnix,
    {$ENDIF UNIX}
   {$ELSE}
-   Libc,
+    {$IFDEF POSIX}
+    {$ELSE}
+      Libc,
+    {$ENDIF}
+
   {$ENDIF}
   SysUtils;
 {$ELSE}

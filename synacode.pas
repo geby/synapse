@@ -388,8 +388,8 @@ type
     Hash: array[0..4] of Integer;
     HashByte: array[0..19] of byte;
   end;
-
-  TMDTransform = procedure(var Buf: array of LongInt; const Data: array of LongInt);
+  // longint on 64bit POSIX is 8 byte
+  TMDTransform = procedure(var Buf: array of Integer; const Data: array of Integer);
 
 {==============================================================================}
 
@@ -1013,7 +1013,7 @@ begin
       Move(Data[1], BufAnsiChar[Index], partLen);
       {$ENDIF}
       ArrByteToLong(BufAnsiChar, BufLong);
-      Transform(State, Buflong);
+      Transform(State, Buflong);      //Transform params are LongInt
       I := partLen;
   		while I + 63 < InputLen do
       begin
