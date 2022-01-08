@@ -364,7 +364,7 @@ type
         case sin_family: sa_family_t of
           AF_INET: (sin_port: word;
                     sin_addr: TInAddr;
-                    sin_zero: array[0..7] of Char);
+                    sin_zero: array[0..7] of byte);
           AF_INET6: (sin6_port:     word;
                 		sin6_flowinfo: longword;
       	    	      sin6_addr:     TInAddr6;
@@ -513,9 +513,9 @@ function SizeOfVarSin(sin: TVarSin): integer;
 begin
   case sin.sin_family of
     AF_INET:
-            Result := SizeOf(TSockAddrIn);
+      Result := SizeOf(TSockAddrIn);
     AF_INET6:
-            Result := SizeOf(TSockAddrIn6);
+      Result := SizeOf(TSockAddrIn6);
   else
     Result := 0;
   end;
@@ -861,10 +861,12 @@ begin
   if Result = 0 then
   begin
     ProtoEnt.Name := '';
-    GetProtocolByNumber(SockProtocol, ProtoEnt);
-    ServEnt.port := 0;
-    GetServiceByName(Port, ProtoEnt.Name, ServEnt);
-    Result := synsock.ntohs(ServEnt.port);  
+    if GetProtocolByNumber(SockProtocol, ProtoEnt) then
+    begin
+      ServEnt.port := 0;
+      if GetServiceByName(Port, ProtoEnt.Name, ServEnt) then
+        Result := synsock.ntohs(ServEnt.port);
+    end;
   end;
 end;
 
