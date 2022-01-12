@@ -69,7 +69,7 @@ uses
   {$IFDEF FPC}
    dynlibs,
   {$ELSE}
-   {$IFDEF DELPHI25_UP}
+   {$IFDEF DELPHIXE4_UP}
     {$IFNDEF NEXTGEN}
     System.AnsiStrings,
     {$ENDIF}
