@@ -48,9 +48,6 @@
 
 {$INCLUDE 'jedi.inc'}
 
-{$IFDEF FPC}
-  {$MODE DELPHI}
-{$ENDIF}
 {$H+}
 //old Delphi does not have MSWINDOWS define.
 {$IFDEF WIN32}
