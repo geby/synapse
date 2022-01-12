@@ -102,7 +102,7 @@ type
    {$ENDIF}
   {$ENDIF}
 
-  {$IFDEF VER100}
+  {$IFDEF DELPHI3}
    LongWord = DWord;
   {$ENDIF}
 
@@ -154,7 +154,7 @@ begin
   {$IfDef FPC}
    Result := SysUtils.StrLCopy(Dest, Source, MaxLen);
   {$Else}
-   {$IFDEF DELPHI25_UP}
+   {$IFDEF DELPHIXE4_UP}
     {$IfDef NEXTGEN}
      Result := PAnsiChar( System.SysUtils.StrLCopy(PWideChar(Dest^), PWideChar(Source^), MaxLen)^ );
     {$Else}
@@ -171,7 +171,7 @@ begin
   {$IfDef FPC}
    Result := SysUtils.strlcomp(Str1, Str2, MaxLen);
   {$Else}
-   {$IFDEF DELPHI25_UP}
+   {$IFDEF DELPHIXE4_UP}
     {$IfDef NEXTGEN}
      Result := System.SysUtils.StrLComp(PWideChar(Str1^), PWideChar(Str2^), MaxLen);
     {$Else}
