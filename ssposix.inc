@@ -45,6 +45,9 @@
 
 {:@exclude}
 
+{$WARN UNIT_PLATFORM OFF}
+{$WARN SYMBOL_PLATFORM OFF}
+
 {$IFDEF POSIX}
 {for delphi XE2+}
 
@@ -67,7 +70,7 @@ partially compatible with NextGen Delphi compiler - iOS
 interface
 
 uses
-  SyncObjs, SysUtils, Classes,
+  SyncObjs, SysUtils, Classes, synafpc,
   Posix.SysSocket, Posix.SysSelect, Posix.SysTime, Posix.NetinetIn,
   Posix.StrOpts, Posix.Errno;
 
@@ -97,21 +100,24 @@ type
   Ttimeval = Posix.SysTime.timeval;
 
 const
-{$IFDEF MACOS}
-  FIONREAD = $4004667F; // oSX FIONREAD        = Posix.StrOpts.FIONREAD;
-  FIONBIO	 = $8004667E; //OSX FIONBIO         = Posix.StrOpts.FIONBIO;
-  FIOASYNC = $8004667D; //OSX  FIOASYNC        = Posix.StrOpts.FIOASYNC;  // not defined in XE2
-{$ELSE}
-  // LINUX & ANDROID
-  FIONREAD        = $541B;
-  FIONBIO         = $5421;
-  FIOASYNC        = $5452;
-{$ENDIF}
+  //not declared in all Delphi versions...
+  {$IF DECLARED(Posix.StrOpts.FIONREAD)}
+  FIONREAD = Posix.StrOpts.FIONREAD;
+  {$Else}
+  FIONREAD = {$IFDEF ANDROID}$541B{$ELSE}$4004667F{$ENDIF};
+  {$IfEnd}
 
-
-  {  FIONREAD        = $541B; // LINUX?
-  FIONBIO         = $5421;
-  FIOASYNC        = $5452;   }
+  {$IF DECLARED(Posix.StrOpts.FIONBIO)}
+  FIONBIO = Posix.StrOpts.FIONBIO;
+  {$Else}
+  FIONBIO  = {$IFDEF ANDROID}$5421{$ELSE}$8004667E{$ENDIF};
+  {$IfEnd}
+  
+  {$IF DECLARED(Posix.StrOpts.FIOASYNC)}
+  FIOASYNC = Posix.StrOpts.FIOASYNC;
+  {$Else}
+  FIOASYNC = {$IFDEF ANDROID}$5452{$ELSE}$8004667D{$ENDIF};
+  {$IfEnd}
 
 const
   IPPROTO_IP     =   Posix.NetinetIn.IPPROTO_IP;		{ Dummy					}
@@ -238,11 +244,11 @@ const
   AF_UNSPEC       = Posix.SysSocket.AF_UNSPEC;// 0;               { unspecified }
   AF_INET         = Posix.SysSocket.AF_INET;  // 2;               { internetwork: UDP, TCP, etc. }
   AF_INET6        = Posix.SysSocket.AF_INET6; // !! 30            { Internetwork Version 6 }
-{$IFDEF ANDROID}
-  AF_MAX          = 24;
-{$ELSE}
+  {$IF DECLARED(Posix.SysSocket.AF_MAX)}
   AF_MAX          = Posix.SysSocket.AF_MAX;   // !! - variable by OS
-{$ENDIF}
+  {$Else}
+  AF_MAX = 43; //not declared for Android
+  {$IfEnd}
 
 { Protocol families, same as address families for now. }
   PF_UNSPEC       = AF_UNSPEC;
@@ -375,7 +381,7 @@ type
         case sin_family: sa_family_t of
           AF_INET: (sin_port: word;
                     sin_addr: TInAddr;
-                    sin_zero: array[0..7] of Char);
+                    sin_zero: array[0..7] of byte);
           AF_INET6: (sin6_port:     word;
                 		sin6_flowinfo: longword;
       	    	      sin6_addr:     TInAddr6;
@@ -480,12 +486,11 @@ end;
 
 {$IFDEF NEXTGEN}
 function GetHostByName(const name: string):Phostent;
-var
-  h: Phostent;
 begin
-  h := Posix.NetDB.gethostbyname(MarshaledAString(TMarshal.AsAnsi(name)));
+  Result := Posix.NetDB.gethostbyname(MarshaledAString(TMarshal.AsAnsi(name)));
 end;
 {$ENDIF}
+
 {=============================================================================}
 
 function WSAStartup(wVersionRequired: Word; var WSData: TWSAData): Integer;
@@ -589,18 +594,21 @@ var
 const
   cMaxHostLength = 255;
 begin
+  Result := '';
   SetLength(name, cMaxHostLength);
   if Posix.Unistd.GetHostName(MarshaledAString(name), cMaxHostLength) = 0 then
-    Result := TEncoding.UTF8.GetString(name).ToUpper;
+    Result := TEncoding.UTF8.GetString(name).ToUpper
 {$ELSE}
 var
   s: AnsiString;
 begin
   Result := '';
-  setlength(s, 255);
+  setlength(s, cMaxHostLength);
   Posix.Unistd.GetHostName(PAnsiChar(s), Length(s) - 1);
   Result := PChar(string(s));
 {$ENDIF}
+  if Result = '' then
+    Result := cLocalHostStr;
 end;
 
 function Send(s: TSocket; Buf: TMemory; len, flags: Integer): Integer;
@@ -715,19 +723,6 @@ begin
   if not Result then
     Result := (Family = AF_INET6) and SockWship6Api;
 end;
-
-{$IFDEF NEXTGEN}
-function GetAddrInfo(hostname, servname: string;
-  const hints: addrinfo; out res: Paddrinfo): Integer;
-begin
-
-end;
-{$ENDIF}
-
-function gethostbyname(const name: PAnsiChar): PHostEnt; cdecl;
-  external libc name _PU + 'gethostbyname';
-function gethostbyaddr(var addr; len: socklen_t; atype: integer): PHostEnt; cdecl;
-  external libc name _PU + 'gethostbyaddr';
 
 function SetVarSin(var Sin: TVarSin; IP, Port: string; Family, SockProtocol, SockType: integer; PreferIP4: Boolean): integer;
 var
