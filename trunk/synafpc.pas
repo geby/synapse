@@ -61,6 +61,13 @@
   {$ZEROBASEDSTRINGS OFF}
 {$ENDIF}
 
+{$IfDef DELPHI2009_UP}
+  {$DEFINE HAS_CHARINSET}
+{$EndIf}
+{$IfDef FPC}
+  {$DEFINE HAS_CHARINSET}
+{$EndIf}
+
 unit synafpc;
 
 interface
@@ -118,6 +125,10 @@ function StrLCopy(Dest: PAnsiChar; const Source: PAnsiChar; MaxLen: Cardinal): P
 function StrLComp(const Str1, Str2: PANSIChar; MaxLen: Cardinal): Integer;
 procedure Sleep(milliseconds: Cardinal);
 
+{$IfNDef HAS_CHARINSET}
+function CharInSet(C: AnsiChar; const CharSet: TSysCharSet): Boolean;
+{$EndIf}
+
 
 implementation
 
@@ -162,7 +173,7 @@ begin
     {$EndIf}
    {$Else}
     Result := SysUtils.StrLCopy(Dest, Source, MaxLen);
-   {$IfEnd}
+   {$ENDIF}
   {$EndIf}
 end;
 
@@ -179,7 +190,7 @@ begin
     {$EndIf}
    {$Else}
     Result := SysUtils.StrLComp(Str1, Str2, MaxLen);
-   {$IfEnd}
+   {$ENDIF}
   {$EndIf}
 end;
 
@@ -194,7 +205,13 @@ begin
 {$ELSE}
   sysutils.sleep(milliseconds);
 {$ENDIF}
-
 end;
+
+{$IfNDef HAS_CHARINSET}
+function CharInSet(C: AnsiChar; const CharSet: TSysCharSet): Boolean;
+begin
+  result := C in CharSet;     
+end;
+{$EndIf}
 
 end.
