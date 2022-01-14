@@ -72,6 +72,11 @@ Internal routines knows all major charsets for Europe or America. For East-Asian
   {$WARN IMPLICIT_STRING_CAST_LOSS OFF}
 {$ENDIF}
 
+{$IFDEF NEXTGEN}
+  {$LEGACYIFEND ON}
+  {$ZEROBASEDSTRINGS OFF}
+{$ENDIF}
+
 unit synachar;
 
 interface
@@ -89,7 +94,7 @@ uses
   Windows,
 {$ENDIF}
   SysUtils,
-  synautil, synacode, synaicnv;
+  synautil, synacode, synaicnv, synafpc;
 
 type
   {:Type with all supported charsets.}
@@ -1380,6 +1385,9 @@ var
   NotNeedTransform: Boolean;
   FromID, ToID: string;
 begin
+  if not synaicnv.InitIconvInterface then
+    DisableIconv := True;
+
   NotNeedTransform := (High(TransformTable) = 0);
   if (CharFrom = CharTo) and NotNeedTransform then
   begin
@@ -1508,7 +1516,11 @@ begin
     {$IFNDEF POSIX}
   Result := GetCPFromID(nl_langinfo(_NL_CTYPE_CODESET_NAME));
     {$ELSE}
+      {$IFNDEF ANDROID}
   Result := GetCPFromID(nl_langinfo(CODESET));
+      {$ELSE}
+  Result := UTF_8;
+      {$ENDIF}
     {$ENDIF}
   {$ELSE}
   //How to get system codepage without LIBC?
