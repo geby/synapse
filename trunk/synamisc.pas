@@ -1,9 +1,9 @@
 {==============================================================================|
-| Project : Ararat Synapse                                       | 001.003.001 |
+| Project : Ararat Synapse                                       | 001.004.000 |
 |==============================================================================|
 | Content: misc. procedures and functions                                      |
 |==============================================================================|
-| Copyright (c)1999-2014, Lukas Gebauer                                        |
+| Copyright (c)1999-2022, Lukas Gebauer                                        |
 | All rights reserved.                                                         |
 |                                                                              |
 | Redistribution and use in source and binary forms, with or without           |
@@ -33,7 +33,7 @@
 | DAMAGE.                                                                      |
 |==============================================================================|
 | The Initial Developer of the Original Code is Lukas Gebauer (Czech Republic).|
-| Portions created by Lukas Gebauer are Copyright (c) 2002-2010.               |
+| Portions created by Lukas Gebauer are Copyright (c) 2002-2022.               |
 | All Rights Reserved.                                                         |
 |==============================================================================|
 | Contributor(s):                                                              |
@@ -80,9 +80,7 @@ uses
   synautil, blcksock, SysUtils, Classes
 {$IFDEF UNIX}
   {$IFNDEF FPC}
-    {$IFNDEF POSIX}
   , Libc
-    {$ENDIF}
   {$ENDIF}
 {$ELSE}
   , Windows
@@ -98,10 +96,10 @@ Type
   end;
 
 {:With this function you can turn on a computer on the network, if this computer
- supports Wake-on-LAN feature. You need the MAC address 
- (network card identifier) of the computer. You can also assign a target IP 
- addres. If you do not specify it, then broadcast is used to deliver magic 
- wake-on-LAN packet. 
+ supports Wake-on-LAN feature. You need the MAC address
+ (network card identifier) of the computer. You can also assign a target IP
+ addres. If you do not specify it, then broadcast is used to deliver magic
+ wake-on-LAN packet.
  However broadcasts work only on your local network. When you need to wake-up a
  computer on another network, you must specify any existing IP addres on same
  network segment as targeting computer.}
@@ -111,11 +109,11 @@ procedure WakeOnLan(MAC, IP: string);
  is defined, then the result is comma-delimited.}
 function GetDNS: string;
 
-{:Autodetect InternetExplorer proxy setting for given protocol. This function
+{:Read InternetExplorer 5.0+ proxy setting for given protocol. This function
 works only on windows!}
 function GetIEProxy(protocol: string): TProxySetting;
 
-{:Return all known IP addresses on the local system. Addresses are divided by 
+{:Return all known IP addresses on the local system. Addresses are divided by
 comma/comma-delimited.}
 function GetLocalIPs: string;
 
@@ -140,7 +138,7 @@ begin
     for n := 0 to 5 do
     begin
       b := StrToIntDef('$' + MAC[n * 2 + 1] + MAC[n * 2 + 2], 0);
-      HexMac := HexMac + AnsiChar(b);
+      HexMac := HexMac + char(b);
     end;
     if IP = '' then
       IP := cBroadcast;
@@ -298,7 +296,6 @@ end;
 {$ENDIF}
 
 {==============================================================================}
-
 function GetIEProxy(protocol: string): TProxySetting;
 {$IFDEF UNIX}
 begin
@@ -308,19 +305,48 @@ begin
 end;
 {$ELSE}
 type
-  PInternetProxyInfo = ^TInternetProxyInfo;
-  TInternetProxyInfo = packed record
-    dwAccessType: DWORD;
-    lpszProxy: LPCSTR;
-    lpszProxyBypass: LPCSTR;
+  PInternetPerConnOption = ^INTERNET_PER_CONN_OPTION;
+  INTERNET_PER_CONN_OPTION = record
+    dwOption: DWORD;
+    case Integer of
+      0: (dwValue: DWORD);
+//      1: (pszValue:LPTSTR);
+      1: (pszValue:PAnsiChar);
+      2: (ftValue: FILETIME);
+    end;
+
+  PInternetPerConnOptionList = ^INTERNET_PER_CONN_OPTION_LIST;
+  INTERNET_PER_CONN_OPTION_LIST = record
+    dwSize        :DWORD;
+//    pszConnection :LPTSTR;
+    pszConnection :PAnsiChar;
+    dwOptionCount :DWORD;
+    dwOptionError :DWORD;
+    pOptions      :PInternetPerConnOption;
   end;
 const
-  INTERNET_OPTION_PROXY = 38;
-  INTERNET_OPEN_TYPE_PROXY = 3;
+  INTERNET_PER_CONN_FLAGS               = 1;
+  INTERNET_PER_CONN_PROXY_SERVER        = 2;
+  INTERNET_PER_CONN_PROXY_BYPASS        = 3;
+  INTERNET_PER_CONN_AUTOCONFIG_URL      = 4;
+  INTERNET_PER_CONN_AUTODISCOVERY_FLAGS = 5;
+  PROXY_TYPE_DIRECT         = $00000001;   // direct to net
+  PROXY_TYPE_PROXY          = $00000002;   // via named proxy
+  PROXY_TYPE_AUTO_PROXY_URL = $00000004;   // autoproxy URL
+  PROXY_TYPE_AUTO_DETECT    = $00000008;   // use autoproxy detection
+  AUTO_PROXY_FLAG_USER_SET                  =      $00000001;   // user changed this setting
+  AUTO_PROXY_FLAG_ALWAYS_DETECT             =      $00000002;   // force detection even when its not needed
+  AUTO_PROXY_FLAG_DETECTION_RUN             =      $00000004;   // detection has been run
+  AUTO_PROXY_FLAG_MIGRATED                  =      $00000008;   // migration has just been done
+  AUTO_PROXY_FLAG_DONT_CACHE_PROXY_RESULT   =      $00000010;   // don't cache result of host=proxy name
+  AUTO_PROXY_FLAG_CACHE_INIT_RUN            =      $00000020;   // don't initalize and run unless URL expired
+  AUTO_PROXY_FLAG_DETECTION_SUSPECT         =      $00000040;   // if we're on a LAN & Modem, with only one IP, bad?!?
+  INTERNET_OPTION_PER_CONNECTION_OPTION   = 75;
   WininetDLL = 'WININET.DLL';
 var
   WininetModule: THandle;
-  ProxyInfo: PInternetProxyInfo;
+  Option : array[0..4] of INTERNET_PER_CONN_OPTION;
+  List   : INTERNET_PER_CONN_OPTION_LIST;
   Err: Boolean;
   Len: DWORD;
   Proxy: string;
@@ -343,15 +369,25 @@ begin
 
     if protocol = '' then
       protocol := 'http';
-    Len := 4096;
-    GetMem(ProxyInfo, Len);
     ProxyList := TStringList.Create;
     try
-      Err := InternetQueryOption(nil, INTERNET_OPTION_PROXY, ProxyInfo, Len);
+      Option[0].dwOption := INTERNET_PER_CONN_AUTOCONFIG_URL;
+      Option[1].dwOption := INTERNET_PER_CONN_AUTODISCOVERY_FLAGS;
+      Option[2].dwOption := INTERNET_PER_CONN_FLAGS;
+      Option[3].dwOption := INTERNET_PER_CONN_PROXY_BYPASS;
+      Option[4].dwOption := INTERNET_PER_CONN_PROXY_SERVER;
+
+      List.dwSize        := SizeOf(INTERNET_PER_CONN_OPTION_LIST);
+      List.pszConnection := nil;      // LAN
+      List.dwOptionCount := 5;
+      List.dwOptionError := 0;
+      List.pOptions      := @Option;
+
+
+      Err := InternetQueryOption(nil, INTERNET_OPTION_PER_CONNECTION_OPTION, @List, List.dwSize);
       if Err then
-        if ProxyInfo^.dwAccessType = INTERNET_OPEN_TYPE_PROXY then
         begin
-          ProxyList.CommaText := ReplaceString(ProxyInfo^.lpszProxy, ' ', ',');
+          ProxyList.CommaText := ReplaceString(Option[4].pszValue, ' ', ',');
           Proxy := '';
           DefProxy := '';
           for n := 0 to ProxyList.Count -1 do
@@ -371,11 +407,10 @@ begin
             Result.Host := Trim(SeparateLeft(Proxy, ':'));
             Result.Port := Trim(SeparateRight(Proxy, ':'));
           end;
-          Result.Bypass := ReplaceString(ProxyInfo^.lpszProxyBypass, ' ', ',');
+          Result.Bypass := ReplaceString(Option[3].pszValue, ' ', ',');
         end;
     finally
       ProxyList.Free;
-      FreeMem(ProxyInfo);
     end;
   finally
     FreeLibrary(WininetModule);
