@@ -64,6 +64,10 @@
   {$WARN IMPLICIT_STRING_CAST_LOSS OFF}
 {$ENDIF}
 
+{$IFDEF NEXTGEN}
+  {$ZEROBASEDSTRINGS OFF}
+{$ENDIF}
+
 unit synamisc;
 
 interface
@@ -115,6 +119,10 @@ function GetDNS: string;
 works only on windows!}
 function GetIEProxy(protocol: string): TProxySetting;
 
+{:Return all known IP addresses of required type on the local system. Addresses are divided by
+comma/comma-delimited.}
+function GetLocalIPsFamily(value: TSocketFamily): string;
+
 {:Return all known IP addresses on the local system. Addresses are divided by
 comma/comma-delimited.}
 function GetLocalIPs: string;
@@ -146,7 +154,7 @@ begin
     for n := 0 to 5 do
     begin
       b := StrToIntDef('$' + MAC[n * 2 + 1] + MAC[n * 2 + 2], 0);
-      HexMac := HexMac + char(b);
+      HexMac := HexMac + AnsiChar(b);
     end;
     if IP = '' then
       IP := cBroadcast;
@@ -432,7 +440,7 @@ end;
 
 {==============================================================================}
 
-function GetLocalIPs: string;
+function GetLocalIPsFamily(value: TSocketFamily): string;
 var
   TcpSock: TTCPBlockSocket;
   ipList: TStringList;
@@ -442,6 +450,8 @@ begin
   try
     TcpSock := TTCPBlockSocket.create;
     try
+      if value <> SF_Any then
+        TcpSock.family := value;
       TcpSock.ResolveNameToIP(TcpSock.LocalName, ipList);
       Result := ipList.CommaText;
     finally
@@ -450,6 +460,11 @@ begin
   finally
     ipList.Free;
   end;
+end;
+
+function GetLocalIPs: string;
+begin
+  Result := GetLocalIPsFamily(SF_Any);
 end;
 
 {==============================================================================}
