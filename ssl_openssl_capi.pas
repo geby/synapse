@@ -121,12 +121,8 @@ it will stay enabled and there is no method for disabling it.
 
 }
 
-{$IFDEF FPC}
-  {$MODE DELPHI}
-{$ENDIF}
-{$H+}
-
 {$INCLUDE 'jedi.inc'}
+{$H+}
 
 {$DEFINE USE_ENGINE_POOL}
 
