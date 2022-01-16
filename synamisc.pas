@@ -82,12 +82,16 @@ interface
 
 uses
   synautil, blcksock, SysUtils, Classes
-{$IFDEF UNIX}
-  {$IFNDEF FPC}
-  , Libc
-  {$ENDIF}
+{$IFDEF POSIX}
+  ,Types,Posix.Stdlib
 {$ELSE}
-  , Windows
+  {$IFDEF UNIX}
+    {$IFNDEF FPC}
+    , Libc
+    {$ENDIF}
+  {$ELSE}
+    , Windows
+  {$ENDIF}
 {$ENDIF}
 ;
 
