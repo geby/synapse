@@ -155,7 +155,7 @@ type
     {:See @inherited}
     function GetPeerNameHash: cardinal; override; {pf}
     {:See @inherited}
-    function GetPeerFingerprint: string; override;
+    function GetPeerFingerprint: ansistring; override;
     {:See @inherited}
     function GetCertInfo: string; override;
     {:See @inherited}
@@ -819,7 +819,7 @@ begin
   X509Free(cert);
 end;
 
-function TSSLOpenSSL.GetPeerFingerprint: string;
+function TSSLOpenSSL.GetPeerFingerprint: ansistring;
 var
   cert: PX509;
   x: integer;
