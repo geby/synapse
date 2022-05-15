@@ -1338,8 +1338,8 @@ type
      for fast remote side authentication.}
     function GetPeerNameHash: cardinal; virtual;
 
-    {:Return fingerprint of remote SSL peer.}
-    function GetPeerFingerprint: string; virtual;
+    {:Return fingerprint of remote SSL peer. (As binary nonprintable string!)}
+    function GetPeerFingerprint: AnsiString; virtual;
 
     {:Return all detailed information about certificate from remote side of
      SSL/TLS connection. Result string can be multilined! Each plugin can return
@@ -4328,7 +4328,7 @@ begin
   Result := '';
 end;
 
-function TCustomSSL.GetPeerFingerprint: string;
+function TCustomSSL.GetPeerFingerprint: AnsiString;
 begin
   Result := '';
 end;
