@@ -1783,7 +1783,7 @@ end;
 function d2iX509bio(b: PBIO; x: PX509): PX509; {pf}
 begin
   if InitSSLInterface and Assigned(_d2iX509bio) then
-    Result := _d2iX509bio(x,b)
+    Result := _d2iX509bio(b, x)
   else
     Result := nil;
 end;
