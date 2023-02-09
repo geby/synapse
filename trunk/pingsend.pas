@@ -1,9 +1,9 @@
 {==============================================================================|
-| Project : Ararat Synapse                                       | 004.000.002 |
+| Project : Ararat Synapse                                       | 004.000.003 |
 |==============================================================================|
 | Content: PING sender                                                         |
 |==============================================================================|
-| Copyright (c)1999-2010, Lukas Gebauer                                        |
+| Copyright (c)1999-2023, Lukas Gebauer                                        |
 | All rights reserved.                                                         |
 |                                                                              |
 | Redistribution and use in source and binary forms, with or without           |
@@ -33,7 +33,7 @@
 | DAMAGE.                                                                      |
 |==============================================================================|
 | The Initial Developer of the Original Code is Lukas Gebauer (Czech Republic).|
-| Portions created by Lukas Gebauer are Copyright (c)2000-2010.                |
+| Portions created by Lukas Gebauer are Copyright (c)2000-2023.                |
 | All Rights Reserved.                                                         |
 |==============================================================================|
 | Contributor(s):                                                              |
@@ -247,14 +247,14 @@ type
   end;
   PICMPV6_ECHO_REPLY = ^TICMPV6_ECHO_REPLY;
 
-  TIcmpCreateFile = function: integer; stdcall;
-  TIcmpCloseHandle = function(handle: integer): boolean; stdcall;
-  TIcmpSendEcho2 = function(handle: integer; Event: pointer; ApcRoutine: pointer;
+  TIcmpCreateFile = function: THandle; stdcall;
+  TIcmpCloseHandle = function(handle: THandle): boolean; stdcall;
+  TIcmpSendEcho2 = function(handle: THandle; Event: pointer; ApcRoutine: pointer;
     ApcContext: pointer; DestinationAddress: TInAddr; RequestData: pointer;
     RequestSize: integer; RequestOptions: PIP_OPTION_INFORMATION;
     ReplyBuffer: pointer; ReplySize: integer; Timeout: Integer): integer; stdcall;
-  TIcmp6CreateFile = function: integer; stdcall;
-  TIcmp6SendEcho2 = function(handle: integer; Event: pointer; ApcRoutine: pointer;
+  TIcmp6CreateFile = function: THandle; stdcall;
+  TIcmp6SendEcho2 = function(handle: THandle; Event: pointer; ApcRoutine: pointer;
     ApcContext: pointer; SourceAddress: PSockAddrIn6; DestinationAddress: PSockAddrIn6;
     RequestData: pointer; RequestSize: integer; RequestOptions: PIP_OPTION_INFORMATION;
     ReplyBuffer: pointer; ReplySize: integer; Timeout: Integer): integer; stdcall;
@@ -581,7 +581,7 @@ function TPINGSend.InternalPingIpHlp(const Host: string): Boolean;
 {$IFDEF MSWINDOWS}
 var
   PingIp6: boolean;
-  PingHandle: integer;
+  PingHandle: THandle;
   r: integer;
   ipo: TIP_OPTION_INFORMATION;
   RBuff: Ansistring;
