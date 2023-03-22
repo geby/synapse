@@ -1,9 +1,9 @@
 {==============================================================================|
-| Project : Ararat Synapse                                       | 007.007.000 |
+| Project : Ararat Synapse                                       | 007.007.001 |
 |==============================================================================|
 | Content: Serial port support                                                 |
 |==============================================================================|
-| Copyright (c)2001-2022, Lukas Gebauer                                        |
+| Copyright (c)2001-2023, Lukas Gebauer                                        |
 | All rights reserved.                                                         |
 |                                                                              |
 | Redistribution and use in source and binary forms, with or without           |
@@ -33,7 +33,7 @@
 | DAMAGE.                                                                      |
 |==============================================================================|
 | The Initial Developer of the Original Code is Lukas Gebauer (Czech Republic).|
-| Portions created by Lukas Gebauer are Copyright (c)2001-2021.                |
+| Portions created by Lukas Gebauer are Copyright (c)2001-2023.                |
 | All Rights Reserved.                                                         |
 |==============================================================================|
 | Contributor(s):                                                              |
@@ -2004,10 +2004,17 @@ begin
 end;
 
 procedure TBlockSerial.Flush;
+var
+  Data : Integer;
 begin
 {$IFNDEF MSWINDOWS}
   {$IFDEF ANDROID}
+    Data := 1;
+    {$IFNDEF FPC}
     ioctl(FHandle, TCSBRK, 1);
+    {$ELSE}
+    FpIOCtl(FHandle, TCSBRK, @Data);
+    {$ENDIF}    
   {$ELSE}
     SerialCheck(tcdrain(FHandle));
   {$ENDIF}
