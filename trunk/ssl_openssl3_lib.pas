@@ -103,8 +103,8 @@ uses
 var
   {$IFNDEF MSWINDOWS}
     {$IFDEF DARWIN}
-    DLLSSLName: string = 'libssl.dylib';
-    DLLUtilName: string = 'libcrypto.dylib';
+    DLLSSLName: string = 'libssl.3.dylib';
+    DLLUtilName: string = 'libcrypto.3.dylib';
     {$ELSE}
      {$IFDEF OS2}
       {$IFDEF OS2GCC}
