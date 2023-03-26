@@ -1,5 +1,5 @@
 {==============================================================================|
-| Project : Ararat Synapse                                       | 004.000.003 |
+| Project : Ararat Synapse                                       | 004.000.004 |
 |==============================================================================|
 | Content: PING sender                                                         |
 |==============================================================================|
@@ -611,7 +611,6 @@ begin
           PAnsichar(FBuffer), length(FBuffer), @ipo, pAnsichar(RBuff), length(RBuff), FTimeout);
         if r > 0 then
         begin
-          RBuff := #0 + #0 + RBuff;
           ip6reply := PICMPV6_ECHO_REPLY(pointer(RBuff));
           FPingTime := ip6reply^.RoundTripTime;
           ip6reply^.Address.sin6_family := AF_INET6;
