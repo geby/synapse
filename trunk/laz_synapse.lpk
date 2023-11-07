@@ -10,7 +10,7 @@
       </SearchPaths>
     </CompilerOptions>
     <Description Value="Ararat Synapse: network communications suite."/>
-    <Version Major="40" Minor="1"/>
+    <Version Major="41" Minor="0"/>
     <Files Count="35">
       <Item1>
         <Filename Value="asn1util.pas"/>
@@ -147,12 +147,12 @@
         <UnitName Value="tlntsend"/>
       </Item33>
       <Item34>
-        <Filename Value="ssl_openssl.pas"/>
-        <UnitName Value="ssl_openssl"/>
+        <Filename Value="ssl_openssl3.pas"/>
+        <UnitName Value="ssl_openssl3"/>
       </Item34>
       <Item35>
-        <Filename Value="ssl_openssl_lib.pas"/>
-        <UnitName Value="ssl_openssl_lib"/>
+        <Filename Value="ssl_openssl3_lib.pas"/>
+        <UnitName Value="ssl_openssl3_lib"/>
       </Item35>
     </Files>
     <RequiredPkgs Count="1">
