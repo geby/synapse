@@ -1,5 +1,5 @@
 {==============================================================================|
-| Project : Ararat Synapse                                       | 007.007.002 |
+| Project : Ararat Synapse                                       | 007.007.003 |
 |==============================================================================|
 | Content: Serial port support                                                 |
 |==============================================================================|
@@ -2452,6 +2452,15 @@ begin
   end;
   FindClose(sr);
   if FindFirst('/dev/ttyAM*', ATTR, sr) = 0 then begin
+    repeat
+      if (sr.Attr and ATTR) = Sr.Attr then begin
+        if Result <> '' then Result := Result + ',';
+        Result := Result + '/dev/' + sr.Name;
+      end;
+    until FindNext(sr) <> 0;
+  end;
+  FindClose(sr);
+  if FindFirst('/dev/ttyACM*', ATTR, sr) = 0 then begin
     repeat
       if (sr.Attr and ATTR) = Sr.Attr then begin
         if Result <> '' then Result := Result + ',';
