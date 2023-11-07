@@ -1,9 +1,9 @@
 {==============================================================================|
-| Project : Ararat Synapse                                       | 001.002.003 |
+| Project : Ararat Synapse                                       | 001.002.004 |
 |==============================================================================|
 | Content: SysLog client                                                       |
 |==============================================================================|
-| Copyright (c)1999-2010, Lukas Gebauer                                        |
+| Copyright (c)1999-2023, Lukas Gebauer                                        |
 | All rights reserved.                                                         |
 |                                                                              |
 | Redistribution and use in source and binary forms, with or without           |
@@ -33,7 +33,7 @@
 | DAMAGE.                                                                      |
 |==============================================================================|
 | The Initial Developer of the Original Code is Lukas Gebauer (Czech Republic).|
-| Portions created by Lukas Gebauer are Copyright (c)2001-2010.                |
+| Portions created by Lukas Gebauer are Copyright (c)2001-2023.                |
 | All Rights Reserved.                                                         |
 |==============================================================================|
 | Contributor(s):                                                              |
@@ -277,20 +277,9 @@ begin
 end;
 
 function TSyslogSend.DoIt: Boolean;
-var
-  L: TStringList;
 begin
   Result := False;
-  L := TStringList.Create;
-  try
-    FSock.ResolveNameToIP(FSock.Localname, L);
-    if L.Count < 1 then
-      FSysLogMessage.LocalIP := '0.0.0.0'
-    else
-      FSysLogMessage.LocalIP := L[0];
-  finally
-    L.Free;
-  end;
+  FSysLogMessage.LocalIP := Fsock.ResolveIPToName(FSock.Localname);
   FSysLogMessage.DateTime := Now;
   if Length(FSysLogMessage.PacketBuf) <= 1024 then
   begin
