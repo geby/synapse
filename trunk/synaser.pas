@@ -1,5 +1,5 @@
 {==============================================================================|
-| Project : Ararat Synapse                                       | 007.007.001 |
+| Project : Ararat Synapse                                       | 007.007.002 |
 |==============================================================================|
 | Content: Serial port support                                                 |
 |==============================================================================|
@@ -2427,7 +2427,7 @@ end;
 {$IFNDEF MSWINDOWS}
 function GetSerialPortNames: string;
 const
-  ATTR = {$IFDEF POSIX}$7FFFFFFF{$ELSE}$FFFFFFFF{$ENDIF};
+  ATTR = {$IFDEF POSIX}$7FFFFFFF{$ELSE}longint($FFFFFFFF){$ENDIF};
 var
   sr : TSearchRec;
 begin
