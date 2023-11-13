@@ -501,6 +501,7 @@ var
   _SSLCipherGetBits: TSSLCipherGetBits = nil;
   _SSLGetVerifyResult: TSSLGetVerifyResult = nil;
   _SSLCtrl: TSSLCtrl = nil;
+  _SslSet1Host: TSslSet1Host = nil;
   _SslCtxSetMinProtoVersion: TSslCtxSetMinProtoVersion = nil;
   _SslCtxSetMaxProtoVersion: TSslCtxSetMaxProtoVersion = nil;
 
