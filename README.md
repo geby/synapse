@@ -30,7 +30,10 @@ You can found here addition to Synapse project called **SynaSer**, too. This is 
 * Serial port communication, include high-speed USB chips
 
 ### Support
-Feel free to use Wiki, Forums and Issues here at GitHub. For special request you can contact me directly.
+Feel free to use:
+* Read the [wiki](https://github.com/geby/synapse/wiki)
+* Ask in [discussions](https://github.com/geby/synapse/discussions)
+* Report [issues](https://github.com/geby/synapse/issues)
 
 ### BSD style license
 **Copyright (c)1999-2024, Lukas Gebauer**
