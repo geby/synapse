@@ -1,5 +1,5 @@
 {==============================================================================|
-| Project : Ararat Synapse                                       | 001.000.001 |
+| Project : Ararat Synapse                                       | 001.000.002 |
 |==============================================================================|
 | Content: SSL support by OpenSSL 3.0                                          |
 |==============================================================================|
@@ -1397,7 +1397,7 @@ begin
         if SSLUtilHandle <> 0 then
         begin
           FreeLibrary(SSLUtilHandle);
-          SSLLibHandle := 0;
+          SSLUtilHandle := 0;
         end;
         Result := False;
       end;
@@ -1415,16 +1415,6 @@ begin
   SSLCS.Enter;
   try
     SSLloaded := false;
-    if SSLLibHandle <> 0 then
-    begin
-      FreeLibrary(SSLLibHandle);
-      SSLLibHandle := 0;
-    end;
-    if SSLUtilHandle <> 0 then
-    begin
-      FreeLibrary(SSLUtilHandle);
-      SSLLibHandle := 0;
-    end;
 
     _SslGetError := nil;
     _SslCtxSetCipherList := nil;
@@ -1510,6 +1500,18 @@ begin
     _DESsetoddparity := nil;
     _DESsetkeychecked := nil;
     _DESecbencrypt := nil;
+
+    if SSLUtilHandle <> 0 then
+    Begin
+      FreeLibrary(SSLUtilHandle);
+      SSLUtilHandle := 0;
+    end;
+    if SSLLibHandle <> 0 then
+    Begin
+      FreeLibrary(SSLLibHandle);
+      SSLLibHandle := 0;
+    end;
+
   finally
     SSLCS.Leave;
   end;
