@@ -1,5 +1,5 @@
 {==============================================================================|
-| Project : Ararat Synapse                                       | 002.009.002 |
+| Project : Ararat Synapse                                       | 002.009.003 |
 |==============================================================================|
 | Content: MIME support procedures and functions                               |
 |==============================================================================|
@@ -1071,7 +1071,7 @@ begin
         FSecondary := 'octet-stream';
     end;
   if FDescription <> '' then
-    FHeaders.Insert(0, 'Content-Description: ' + FDescription);
+    FHeaders.Insert(0, 'Content-Description: ' + InlineCodeEx(FDescription, FTargetCharset));
   if FDisposition <> '' then
   begin
     s := '';
