@@ -337,7 +337,7 @@ type
   end;
 
 const
-  MaxMimeType = 25;
+  MaxMimeType = 26;
   MimeType: array[0..MaxMimeType, 0..2] of string =
   (
     ('AU', 'audio', 'basic'),
@@ -365,7 +365,8 @@ const
     ('TIFF', 'image', 'TIFF'),
     ('WAV', 'audio', 'x-wav'),
     ('WPD', 'application', 'Wordperfect5.1'),
-    ('ZIP', 'application', 'ZIP')
+    ('ZIP', 'application', 'ZIP'),
+    ('XML', 'application', 'xml')
     );
 
 {:Generates a unique boundary string.}
