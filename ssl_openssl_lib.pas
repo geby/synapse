@@ -94,7 +94,9 @@ uses
   BaseUnix,
    {$ENDIF UNIX}
   {$ELSE}
+   {$IFDEF UNIX}
    Libc,
+   {$ENDIF UNIX}
   {$ENDIF}
   SysUtils;
 {$ELSE}
