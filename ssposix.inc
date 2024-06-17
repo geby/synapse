@@ -601,6 +601,8 @@ begin
 {$ELSE}
 var
   s: AnsiString;
+const
+  cMaxHostLength = 255;
 begin
   Result := '';
   setlength(s, cMaxHostLength);
