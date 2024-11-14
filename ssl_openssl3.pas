@@ -368,9 +368,13 @@ begin
       if SslCtxUsePrivateKeyASN1(EVP_PKEY_RSA, FCtx, FPrivateKey, length(FPrivateKey)) <> 1 then
         Exit;
     SSLCheck;
-    if FCertCAFile <> '' then
-      if SslCtxLoadVerifyLocations(FCtx, FCertCAFile, '') <> 1 then
+    if FCertCAFile <> '' then begin
+      if Pos('://', FCertCAFile) > 1 then begin; // we have a URI
+        if SslCtxLoadVerifyStore(FCtx, FCertCAFile) <> 1 then
+          Exit;
+      end else if SslCtxLoadVerifyLocations(FCtx, FCertCAFile, '') <> 1 then
         Exit;
+    end;
     if FPFXfile <> '' then
     begin
       try
