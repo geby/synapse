@@ -95,6 +95,7 @@ type
     FSystemName: string;
     FAutoTLS: Boolean;
     FFullSSL: Boolean;
+    FTlsCertCaFile: String;
     procedure EnhancedCode(const Value: string);
     function ReadResult: Integer;
     function AuthLogin: Boolean;
@@ -211,6 +212,11 @@ type
 
     {:Socket object used for TCP/IP operation. Good for seting OnStatus hook, etc.}
     property Sock: TTCPBlockSocket read FSock;
+
+    {:Used for loading CA certificates from disk file. See to plugin documentation
+     if this method is supported and how! With OpenSSL 3.2 and later it also can be
+     a URI}
+    property TlsCertCaFile: String read FTlsCertCaFile write FTlsCertCaFile;
   end;
 
 {:A very useful function and example of its use would be found in the TSMTPsend
@@ -384,8 +390,13 @@ begin
   if FSock.LastError = 0 then
     FSock.Connect(FTargetHost, FTargetPort);
   if FSock.LastError = 0 then
-    if FFullSSL then
+    if FFullSSL then begin
+      if FTlsCertCaFile <> '' then begin
+        FSock.SSL.CertCAFile := FTlsCertCaFile;
+        FSock.SSL.VerifyCert := true;
+      end;
       FSock.SSLDoConnect;
+    end;
   Result := FSock.LastError = 0;
 end;
 
@@ -566,6 +577,10 @@ begin
     FSock.SendString('STARTTLS' + CRLF);
     if (ReadResult = 220) and (FSock.LastError = 0) then
     begin
+      if FTlsCertCaFile <> '' then begin
+        FSock.SSL.CertCAFile := FTlsCertCaFile;
+        FSock.SSL.VerifyCert := true;
+      end;
       Fsock.SSLDoConnect;
       Result := FSock.LastError = 0;
     end;
