@@ -595,7 +595,7 @@ begin
     PingHandle := Icmp6CreateFile
   else
     PingHandle := IcmpCreateFile;
-  if PingHandle <> -1 then
+  if PingHandle <> INVALID_HANDLE_VALUE then
   begin
     try
       ipo.TTL := FTTL;
