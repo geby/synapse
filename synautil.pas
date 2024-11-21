@@ -1,5 +1,5 @@
 {==============================================================================|
-| Project : Ararat Synapse                                       | 004.016.001 |
+| Project : Ararat Synapse                                       | 004.016.002 |
 |==============================================================================|
 | Content: support procedures and functions                                    |
 |==============================================================================|
@@ -125,6 +125,9 @@ function TimeZone: string;
  specification. Four digit year is used to break any Y2K concerns. (Example
  'Fri, 15 Oct 1999 21:14:56 +0200')}
 function Rfc822DateTime(t: TDateTime): string;
+
+{:Same as @link(Rfc822DateTime), but GMT timezone is used.}
+function Rfc822DateTimeGMT(t: TDateTime): string;
 
 {:Returns date and time in format defined in RFC-3339 in format "yyyy-mm-ddThh:nn:ss.zzz"}
 function Rfc3339DateTime(t: TDateTime): string;
@@ -492,6 +495,18 @@ begin
   DecodeDate(t, wYear, wMonth, wDay);
   Result := Format('%s, %d %s %s %s', [MyDayNames[DayOfWeek(t)], wDay,
     MyMonthNames[1, wMonth], FormatDateTime('yyyy hh":"nn":"ss', t), TimeZone]);
+end;
+
+{==============================================================================}
+
+function Rfc822DateTimeGMT(t: TDateTime): string;
+var
+  wYear, wMonth, wDay: word;
+begin
+  t := t - (TimeZoneBias/(24*60));
+  DecodeDate(t, wYear, wMonth, wDay);
+  Result := Format('%s, %d %s %s GMT', [MyDayNames[DayOfWeek(t)], wDay,
+    MyMonthNames[1, wMonth], FormatDateTime('yyyy hh":"nn":"ss', t)]);
 end;
 
 {==============================================================================}
