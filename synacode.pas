@@ -830,7 +830,7 @@ end;
 function UpdateCrc32(Value: Byte; Crc32: Cardinal): Cardinal;
 begin
   Result := (Crc32 shr 8)
-    xor crc32tab[Byte(Value xor (Crc32 and Integer($000000FF)))];
+    xor Cardinal(crc32tab[Byte(Value xor (Crc32 and Integer($000000FF)))]);
 end;
 
 {==============================================================================}
