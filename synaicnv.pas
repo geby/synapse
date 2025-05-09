@@ -1,9 +1,9 @@
 {==============================================================================|
-| Project : Ararat Synapse                                       | 001.001.002 |
+| Project : Ararat Synapse                                       | 001.001.003 |
 |==============================================================================|
 | Content: ICONV support for Win32, OS/2, Linux and .NET                       |
 |==============================================================================|
-| Copyright (c)2004-2013, Lukas Gebauer                                        |
+| Copyright (c)2004-2025, Lukas Gebauer                                        |
 | All rights reserved.                                                         |
 |                                                                              |
 | Redistribution and use in source and binary forms, with or without           |
@@ -33,7 +33,7 @@
 | DAMAGE.                                                                      |
 |==============================================================================|
 | The Initial Developer of the Original Code is Lukas Gebauer (Czech Republic).|
-| Portions created by Lukas Gebauer are Copyright (c)2004-2013.                |
+| Portions created by Lukas Gebauer are Copyright (c)2004-2025.                |
 | All Rights Reserved.                                                         |
 |==============================================================================|
 | Contributor(s):                                                              |
@@ -94,7 +94,11 @@ const
   {$ENDIF}
 
 type
+{$IFDEF FPC}
+  size_t = NativeUInt;
+{$ELSE}
   size_t = Cardinal;
+{$ENDIF}
 {$IFDEF CIL}
   iconv_t = IntPtr;
 {$ELSE}
