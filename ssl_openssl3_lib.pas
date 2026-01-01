@@ -221,6 +221,8 @@ const
   X509_V_ERR_UNHANDLED_CRITICAL_EXTENSION = 34;
   //The application is not happy
   X509_V_ERR_APPLICATION_VERIFICATION = 50;
+  //Host, email and IP check errors
+  X509_V_ERR_HOSTNAME_MISMATCH = 62;
 
   SSL_FILETYPE_ASN1	= 2;
   SSL_FILETYPE_PEM = 1;
