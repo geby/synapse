@@ -713,7 +713,14 @@ end;
 function SslNew(ctx: PSSL_CTX):PSSL;
 begin
   if InitSSLInterface and Assigned(_SslNew) then
-    Result := _SslNew(ctx)
+  begin
+    SSLCS.Enter;
+    try
+      Result := _SslNew(ctx)
+    finally
+      SSLCS.Leave;
+    end
+  end
   else
     Result := nil;
 end;
@@ -721,7 +728,14 @@ end;
 procedure SslFree(ssl: PSSL);
 begin
   if InitSSLInterface and Assigned(_SslFree) then
-    _SslFree(ssl);
+  begin
+    SSLCS.Enter;
+    try
+      _SslFree(ssl);
+    finally
+      SSLCS.Leave;
+    end
+  end
 end;
 
 function SslAccept(ssl: PSSL):Integer;
