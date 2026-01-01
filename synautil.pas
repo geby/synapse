@@ -1250,8 +1250,18 @@ end;
 function GetEmailAddr(const Value: string): string;
 var
   s: string;
+  function SeparateRightFromRight(const Value, Delimiter: string): string;
+  var
+    x: Integer;
+  begin
+    x := RPos(Delimiter, Value);
+    if x > 0 then
+      x := x + Length(Delimiter) - 1;
+    Result := Copy(Value, x + 1, Length(Value) - x);
+  end;
+
 begin
-  s := SeparateRight(Value, '<');
+  s := SeparateRightFromRight(Value, '<');
   s := SeparateLeft(s, '>');
   Result := Trim(s);
 end;
