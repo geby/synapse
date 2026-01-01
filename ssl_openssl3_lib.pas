@@ -1158,25 +1158,33 @@ end;
 function OPENSSL_sk_num(Stack: PSTACK): Integer;
 begin
   if InitSSLInterface and Assigned(_OPENSSL_sk_num) then
-    Result := _OPENSSL_sk_num(Stack);
+    Result := _OPENSSL_sk_num(Stack)
+  else
+    Result := 0;
 end;
 
 function SSL_CTX_get_cert_store(const Ctx: PSSL_CTX): PX509_STORE;
 begin
   if InitSSLInterface and Assigned(_SSL_CTX_get_cert_store) then
-    Result := _SSL_CTX_get_cert_store(Ctx);
+    Result := _SSL_CTX_get_cert_store(Ctx)
+  else
+    Result := nil;
 end;
 
 function OPENSSL_sk_value(Stack: PSTACK; Item: Integer): PAnsiChar;
 begin
   if InitSSLInterface and Assigned(_OPENSSL_sk_value) then
-    Result := _OPENSSL_sk_value(Stack, Item);
+    Result := _OPENSSL_sk_value(Stack, Item)
+  else
+    Result := nil;
 end;
 
 function X509_STORE_add_cert(Store: PX509_STORE; Cert: PX509): Integer;
 begin
   if InitSSLInterface and Assigned(_X509_STORE_add_cert) then
-    Result := _X509_STORE_add_cert(Store, Cert);
+    Result := _X509_STORE_add_cert(Store, Cert)
+  else
+    Result := 0;
 end;
 
 procedure SkX509PopFree(st: PSTACK; func:TSkPopFreeFunc); {pf}
