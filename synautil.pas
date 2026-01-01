@@ -1271,13 +1271,38 @@ end;
 function GetEmailDesc(Value: string): string;
 var
   s: string;
+  function SeparateLeftQuoted(const Value, Delimiter: string): string;
+  var
+    x: Integer;
+    s: string;
+  begin
+    // Find next delimiter position
+    x := Pos(Delimiter, Value);
+    // check if delimiter is escaped
+    while (x >= 2) and (Value[x-1] = '\') and (x < Length(Value)) do begin
+      // yes, so search for next delimiter
+      x := PosFrom(Delimiter, Value, x + 1);
+    end;
+
+    if x < 1 then
+      Result := Value
+    else
+      s := Copy(Value, 1, x - 1);
+      // replace escaped delimiter with normal delimiter
+      Result := ReplaceString(s, '\' + delimiter, delimiter);
+  end;
+
 begin
   Value := Trim(Value);
   s := SeparateRight(Value, '"');
-  if s <> Value then
-    s := SeparateLeft(s, '"')
+  if s <> Value then begin
+    // text to the right after first quote was separated
+    // Read until next quote and convert \" characters
+    s := SeparateLeftQuoted(s, '"')
+  end
   else
   begin
+    // No quote was found
     s := SeparateLeft(Value, '<');
     if s = Value then
     begin
