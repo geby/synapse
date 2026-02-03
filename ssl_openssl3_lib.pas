@@ -221,6 +221,8 @@ const
   X509_V_ERR_UNHANDLED_CRITICAL_EXTENSION = 34;
   //The application is not happy
   X509_V_ERR_APPLICATION_VERIFICATION = 50;
+  //Host, email and IP check errors
+  X509_V_ERR_HOSTNAME_MISMATCH = 62;
 
   SSL_FILETYPE_ASN1	= 2;
   SSL_FILETYPE_PEM = 1;
@@ -711,7 +713,14 @@ end;
 function SslNew(ctx: PSSL_CTX):PSSL;
 begin
   if InitSSLInterface and Assigned(_SslNew) then
-    Result := _SslNew(ctx)
+  begin
+    SSLCS.Enter;
+    try
+      Result := _SslNew(ctx)
+    finally
+      SSLCS.Leave;
+    end
+  end
   else
     Result := nil;
 end;
@@ -719,7 +728,14 @@ end;
 procedure SslFree(ssl: PSSL);
 begin
   if InitSSLInterface and Assigned(_SslFree) then
-    _SslFree(ssl);
+  begin
+    SSLCS.Enter;
+    try
+      _SslFree(ssl);
+    finally
+      SSLCS.Leave;
+    end
+  end
 end;
 
 function SslAccept(ssl: PSSL):Integer;
@@ -1156,25 +1172,33 @@ end;
 function OPENSSL_sk_num(Stack: PSTACK): Integer;
 begin
   if InitSSLInterface and Assigned(_OPENSSL_sk_num) then
-    Result := _OPENSSL_sk_num(Stack);
+    Result := _OPENSSL_sk_num(Stack)
+  else
+    Result := 0;
 end;
 
 function SSL_CTX_get_cert_store(const Ctx: PSSL_CTX): PX509_STORE;
 begin
   if InitSSLInterface and Assigned(_SSL_CTX_get_cert_store) then
-    Result := _SSL_CTX_get_cert_store(Ctx);
+    Result := _SSL_CTX_get_cert_store(Ctx)
+  else
+    Result := nil;
 end;
 
 function OPENSSL_sk_value(Stack: PSTACK; Item: Integer): PAnsiChar;
 begin
   if InitSSLInterface and Assigned(_OPENSSL_sk_value) then
-    Result := _OPENSSL_sk_value(Stack, Item);
+    Result := _OPENSSL_sk_value(Stack, Item)
+  else
+    Result := nil;
 end;
 
 function X509_STORE_add_cert(Store: PX509_STORE; Cert: PX509): Integer;
 begin
   if InitSSLInterface and Assigned(_X509_STORE_add_cert) then
-    Result := _X509_STORE_add_cert(Store, Cert);
+    Result := _X509_STORE_add_cert(Store, Cert)
+  else
+    Result := 0;
 end;
 
 procedure SkX509PopFree(st: PSTACK; func:TSkPopFreeFunc); {pf}
