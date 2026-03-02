@@ -229,7 +229,10 @@ type
   PDCB = ^TDCB;
 
 const
-{$IFDEF UNIX}
+{$IFNDEF MSWINDOWS}
+  {$IFDEF MACOS}
+    {$DEFINE BSD}
+  {$ENDIF}
   {$IFDEF BSD}
     MaxRates = 18;  //MAC
   {$ELSE}
@@ -289,11 +292,12 @@ const // From fcntl.h
   O_SYNC = $0080;  { synchronous writes }
 {$ENDIF}
 
-{$IFDEF ANDROID}
+{$IFDEF POSIX}
 const
   TIOCMSET = $5418;
   TIOCMGET = $5415;
   TCSBRK   = $5409;
+  TCFLSH   = $540B;
 {$ENDIF}
 
 const
@@ -2004,17 +2008,19 @@ begin
 end;
 
 procedure TBlockSerial.Flush;
+{$IFDEF ANDROID} {$IFDEF FPC}
 var
   Data : Integer;
+{$ENDIF} {$ENDIF}
 begin
 {$IFNDEF MSWINDOWS}
   {$IFDEF ANDROID}
-    Data := 1;
     {$IFNDEF FPC}
     ioctl(FHandle, TCSBRK, 1);
     {$ELSE}
+    Data := 1;
     FpIOCtl(FHandle, TCSBRK, @Data);
-    {$ENDIF}    
+    {$ENDIF}
   {$ELSE}
     SerialCheck(tcdrain(FHandle));
   {$ENDIF}
