@@ -1,9 +1,9 @@
 {==============================================================================|
-| Project : Ararat Synapse                                       | 009.010.002 |
+| Project : Ararat Synapse                                       | 009.011.000 |
 |==============================================================================|
 | Content: Library base                                                        |
 |==============================================================================|
-| Copyright (c)1999-2021, Lukas Gebauer                                        |
+| Copyright (c)1999-2026, Lukas Gebauer                                        |
 | All rights reserved.                                                         |
 |                                                                              |
 | Redistribution and use in source and binary forms, with or without           |
@@ -33,7 +33,7 @@
 | DAMAGE.                                                                      |
 |==============================================================================|
 | The Initial Developer of the Original Code is Lukas Gebauer (Czech Republic).|
-| Portions created by Lukas Gebauer are Copyright (c)1999-2021.                |
+| Portions created by Lukas Gebauer are Copyright (c)1999-2026.                |
 | All Rights Reserved.                                                         |
 |==============================================================================|
 | Contributor(s):                                                              |
@@ -1260,6 +1260,7 @@ type
     FSSHChannelArg2: string;
     FCertComplianceLevel: integer;
     FSNIHost: string;
+    FEOF: boolean;
     procedure ReturnError;
     procedure SetCertCAFile(const Value: string); virtual;
     function DoVerifyCert:boolean;
@@ -1452,7 +1453,10 @@ type
        found in URL will be used, which should be the normal use (http Header Host = SNI Host).
        The value is cleared after the connection is established.
       (SNI support requires OpenSSL 0.9.8k or later. Cryptlib not supported, yet )  }
-    property SNIHost:string read FSNIHost write FSNIHost;
+    property SNIHost: string read FSNIHost write FSNIHost;
+    {:Flag to signalize closed stream after read or write operation.
+      Used internally to signalise WSAECONNRESET.}
+    property EOF: boolean read FEOF write FEOF;
   end;
 
   {:@abstract(Default SSL plugin with no SSL support.)
@@ -4032,8 +4036,11 @@ begin
     ResetLastError;
     LimitBandwidth(Len, FMaxRecvBandwidth, FNextRecv);
     Result := FSSL.RecvBuffer(Buffer, Len);
-    if FSSL.LastError <> 0 then
-      FLastError := WSASYSNOTREADY;
+    if FSSL.EOF then
+      FLastError := WSAECONNRESET
+    else
+      if FSSL.LastError <> 0 then
+        FLastError := WSASYSNOTREADY;
     ExceptCheck;
     Inc(FRecvCounter, Result);
     DoStatus(HR_ReadCount, IntToStr(Result));
@@ -4061,8 +4068,11 @@ begin
     DoMonitor(True, Buffer, Length);
 {$IFDEF CIL}
     Result := FSSL.SendBuffer(Buffer, Length);
-    if FSSL.LastError <> 0 then
-      FLastError := WSASYSNOTREADY;
+    if FSSL.EOF then
+      FLastError := WSAECONNRESET
+    else
+      if FSSL.LastError <> 0 then
+        FLastError := WSASYSNOTREADY;
     Inc(FSendCounter, Result);
     DoStatus(HR_WriteCount, IntToStr(Result));
 {$ELSE}
@@ -4078,8 +4088,11 @@ begin
         LimitBandwidth(y, FMaxSendBandwidth, FNextsend);
         p := IncPoint(Buffer, x);
         r := FSSL.SendBuffer(p, y);
-        if FSSL.LastError <> 0 then
-          FLastError := WSASYSNOTREADY;
+        if FSSL.EOF then
+          FLastError := WSAECONNRESET
+        else
+          if FSSL.LastError <> 0 then
+            FLastError := WSASYSNOTREADY;
         if Flasterror <> 0 then
           Break;
         Inc(x, r);
@@ -4210,6 +4223,7 @@ begin
   FSSHChannelArg2 := '';
   FCertComplianceLevel := -1; //default
   FSNIHost := '';
+  FEOF := false;
 end;
 
 procedure TCustomSSL.Assign(const Value: TCustomSSL);
@@ -4232,6 +4246,7 @@ begin
   FPFXfile := Value.PFXfile;
   FCertComplianceLevel := Value.CertComplianceLevel;
   FSNIHost := Value.FSNIHost;
+  FEOF := Value.FEOF;
 end;
 
 procedure TCustomSSL.ReturnError;
