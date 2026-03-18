@@ -993,6 +993,9 @@ type
     {:See @link(TBlockSocket.WaitingData)}
     function WaitingData: Integer; override;
 
+    {:See @link(TBlockSocket.RecvPacket)}
+    function RecvPacket(Timeout: Integer): AnsiString; override;
+
     {:Sets socket to receive mode for new incoming connections. It is necessary
      to use @link(TBlockSocket.BIND) function call before this method to select
      receiving port!
@@ -1360,6 +1363,9 @@ type
      documentation for possible values. For example 0 is successfuly verified
      certificate, or 18 is self-signed certificate.}
     function GetVerifyCert: integer; virtual;
+
+    {:Return true if plugin have implemented EOF signaling.}
+    function ImplementsEOF: boolean; virtual;
 
     {: Resurn @true if SSL mode is enabled on existing cvonnection.}
     property SSLEnabled: Boolean read FSSLEnabled;
@@ -3848,10 +3854,9 @@ end;
 
 function TTCPBlockSocket.WaitingData: Integer;
 begin
-  Result := 0;
   if FSSL.SSLEnabled and (FSocket <> INVALID_SOCKET) then
-    Result := FSSL.WaitingData;
-  if Result = 0 then
+    Result := FSSL.WaitingData
+  else
     Result := inherited WaitingData;
 end;
 
@@ -4049,6 +4054,62 @@ begin
   end
   else
     Result := inherited RecvBuffer(Buffer, Len);
+end;
+
+function TTCPBlockSocket.RecvPacket(Timeout: Integer): AnsiString;
+var
+  x: integer;
+begin
+  if FSSL.SSLEnabled and (FSocket <> INVALID_SOCKET) then
+  begin
+    Result := '';
+    ResetLastError;
+
+    if FBuffer <> '' then
+    begin
+      Result := FBuffer;
+      FBuffer := '';
+      Exit;
+    end;
+
+    // SSL_pending: data already decoded in SSL buffer
+    x := WaitingData;
+
+    if x = 0 then
+    begin
+      // No decoded data yet - wait at TCP layer
+      if not CanRead(Timeout) then
+      begin
+        FLastError := WSAETIMEDOUT;
+        ExceptCheck;
+        Exit;
+      end;
+      // After CanRead, do not call WaitingData again (SSL_pending would still return 0),
+      // read directly instead - SSL_read decodes one TLS record (max 16 KB)
+      x := 16384;
+    end;
+
+    SetLength(Result, x);
+    x := RecvBuffer(Pointer(Result), x);
+    if x > 0 then
+      SetLength(Result, x)
+    else
+    begin
+      SetLength(Result, 0);
+      // x = 0: either close_notify or zero-length TLS record.
+      // If the plugin implements EOF detection, FLastError is already set correctly
+      // (WSAECONNRESET for close_notify, 0 for zero-length record) - do not touch it.
+      // If the plugin does not implement EOF detection, we cannot distinguish reliably,
+      // so we treat it as disconnect (zero-length TLS records are extremely rare in practice).
+      if not FSSL.ImplementsEOF then
+        if FLastError = 0 then
+          FLastError := WSAECONNRESET;
+    end;
+
+    ExceptCheck;
+  end
+  else
+    Result := inherited RecvPacket(Timeout);
 end;
 
 function TTCPBlockSocket.SendBuffer(const Buffer: TMemory; Length: Integer): Integer;
@@ -4375,6 +4436,12 @@ end;
 function TCustomSSL.GetVerifyCert: integer;
 begin
   Result := 1;
+end;
+
+function TCustomSSL.ImplementsEOF: boolean;
+begin
+  // default (and backward compatibility): plugin does not implement EOF detection
+  Result := false;
 end;
 
 function TCustomSSL.DoVerifyCert:boolean;

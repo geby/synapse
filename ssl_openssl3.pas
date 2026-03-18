@@ -152,6 +152,8 @@ type
     function GetCipherAlgBits: integer; override;
     {:See @inherited}
     function GetVerifyCert: integer; override;
+    {:See @inherited}
+    function ImplementsEOF: boolean; override;
   end;
 
 implementation
@@ -398,6 +400,11 @@ begin
   finally
     SSLCheck;
   end;
+end;
+
+function TSSLOpenSSL3.ImplementsEOF: boolean;
+begin
+  Result := true;
 end;
 
 function TSSLOpenSSL3.Init(server:Boolean): Boolean;
