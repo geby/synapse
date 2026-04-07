@@ -1,9 +1,9 @@
 {==============================================================================|
-| Project : Ararat Synapse                                       | 001.000.002 |
+| Project : Ararat Synapse                                       | 001.001.000 |
 |==============================================================================|
 | Content: SSL support by OpenSSL                                              |
 |==============================================================================|
-| Copyright (c)1999-2023, Lukas Gebauer                                        |
+| Copyright (c)1999-2026, Lukas Gebauer                                        |
 | All rights reserved.                                                         |
 |                                                                              |
 | Redistribution and use in source and binary forms, with or without           |
@@ -33,7 +33,7 @@
 | DAMAGE.                                                                      |
 |==============================================================================|
 | The Initial Developer of the Original Code is Lukas Gebauer (Czech Republic).|
-| Portions created by Lukas Gebauer are Copyright (c)2005-2023.                |
+| Portions created by Lukas Gebauer are Copyright (c)2005-2026.                |
 | Portions created by Petr Fejfar are Copyright (c)2011-2012.                  |
 | All Rights Reserved.                                                         |
 |==============================================================================|
@@ -152,6 +152,8 @@ type
     function GetCipherAlgBits: integer; override;
     {:See @inherited}
     function GetVerifyCert: integer; override;
+    {:See @inherited}
+    function ImplementsEOF: boolean; override;
   end;
 
 implementation
@@ -400,11 +402,17 @@ begin
   end;
 end;
 
+function TSSLOpenSSL3.ImplementsEOF: boolean;
+begin
+  Result := true;
+end;
+
 function TSSLOpenSSL3.Init(server:Boolean): Boolean;
 var
   s: AnsiString;
 begin
   Result := False;
+  FEOF := false;
   FLastErrorDesc := '';
   FLastError := 0;
   Fctx := SslCtxNew(SslMethodTLS); // best common protocol
@@ -613,7 +621,10 @@ begin
     err := SslGetError(FSsl, Result);
   until (err <> SSL_ERROR_WANT_READ) and (err <> SSL_ERROR_WANT_WRITE);
   if err = SSL_ERROR_ZERO_RETURN then
-    Result := 0
+  begin
+    Result := 0;
+    FEOF := true;
+  end
   else
     if (err <> 0) then
       FLastError := err;
@@ -630,12 +641,13 @@ begin
     err := SslGetError(FSsl, Result);
   until (err <> SSL_ERROR_WANT_READ) and (err <> SSL_ERROR_WANT_WRITE);
   if err = SSL_ERROR_ZERO_RETURN then
-    Result := 0
-  {pf}// Verze 1.1.0 byla s else tak jak to ted mam,
-      // ve verzi 1.1.1 bylo ELSE zruseno, ale pak je SSL_ERROR_ZERO_RETURN
-      // propagovano jako Chyba.
-  {pf} else {/pf} if (err <> 0) then
-    FLastError := err;
+  begin
+    Result := 0;
+    FEOF := true;
+  end
+  else
+    if (err <> 0) then
+      FLastError := err;
 end;
 
 function TSSLOpenSSL3.WaitingData: Integer;
