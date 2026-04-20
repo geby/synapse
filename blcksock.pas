@@ -1,5 +1,5 @@
 {==============================================================================|
-| Project : Ararat Synapse                                       | 009.011.000 |
+| Project : Ararat Synapse                                       | 009.012.000 |
 |==============================================================================|
 | Content: Library base                                                        |
 |==============================================================================|
@@ -120,7 +120,7 @@ uses
 
 const
 
-  SynapseRelease = '40';
+  SynapseRelease = 'git';
 
   cLocalhost = '127.0.0.1';
   cAnyHost = '0.0.0.0';
@@ -1539,6 +1539,65 @@ var
 
 implementation
 
+resourcestring
+  c_errstub = 'Error loading Socket interface (%s)!';
+  c_except = 'Synapse TCP/IP Socket error %d: %s';
+  c_sockerr = 'Other Winsock error (%d)';
+  c_WSAEINTR = 'Interrupted system call';
+  c_WSAEBADF = 'Bad file number';
+  c_WSAEACCES = 'Permission denied';
+  c_WSAEFAULT = 'Bad address';
+  c_WSAEINVAL = 'Invalid argument';
+  c_WSAEMFILE = 'Too many open files';
+  c_WSAEWOULDBLOCK = 'Operation would block';
+  c_WSAEINPROGRESS = 'Operation now in progress';
+  c_WSAEALREADY = 'Operation already in progress';
+  c_WSAENOTSOCK = 'Socket operation on nonsocket';
+  c_WSAEDESTADDRREQ = 'Destination address required';
+  c_WSAEMSGSIZE = 'Message too long';
+  c_WSAEPROTOTYPE = 'Protocol wrong type for Socket';
+  c_WSAENOPROTOOPT = 'Protocol not available';
+  c_WSAEPROTONOSUPPORT = 'Protocol not supported';
+  c_WSAESOCKTNOSUPPORT = 'Socket not supported';
+  c_WSAEOPNOTSUPP = 'Operation not supported on Socket';
+  c_WSAEPFNOSUPPORT = 'Protocol family not supported';
+  c_WSAEAFNOSUPPORT = 'Address family not supported';
+  c_WSAEADDRINUSE = 'Address already in use';
+  c_WSAEADDRNOTAVAIL = 'Can''t assign requested address';
+  c_WSAENETDOWN = 'Network is down';
+  c_WSAENETUNREACH = 'Network is unreachable';
+  c_WSAENETRESET = 'Network dropped connection on reset';
+  c_WSAECONNABORTED = 'Software caused connection abort';
+  c_WSAECONNRESET = 'Connection reset by peer';
+  c_WSAENOBUFS = 'No Buffer space available';
+  c_WSAEISCONN = 'Socket is already connected';
+  c_WSAENOTCONN = 'Socket is not connected';
+  c_WSAESHUTDOWN = 'Can''t send after Socket shutdown';
+  c_WSAETOOMANYREFS = 'Too many references:can''t splice';
+  c_WSAETIMEDOUT = 'Connection timed out';
+  c_WSAECONNREFUSED = 'Connection refused';
+  c_WSAELOOP = 'Too many levels of symbolic links';
+  c_WSAENAMETOOLONG = 'File name is too long';
+  c_WSAEHOSTDOWN = 'Host is down';
+  c_WSAEHOSTUNREACH = 'No route to host';
+  c_WSAENOTEMPTY = 'Directory is not empty';
+  c_WSAEPROCLIM = 'Too many processes';
+  c_WSAEUSERS = 'Too many users';
+  c_WSAEDQUOT = 'Disk quota exceeded';
+  c_WSAESTALE = 'Stale NFS file handle';
+  c_WSAEREMOTE = 'Too many levels of remote in path';
+  c_WSASYSNOTREADY = 'Network subsystem is unusable';
+  c_WSAVERNOTSUPPORTED = 'Winsock DLL cannot support this application';
+  c_WSANOTINITIALISED = 'Winsock not initialized';
+  c_WSAEDISCON = 'Disconnect';
+  c_WSAHOST_NOT_FOUND = 'Host not found';
+  c_WSATRY_AGAIN = 'Non authoritative - host not found';
+  c_WSANO_RECOVERY = 'Non recoverable error';
+  c_WSANO_DATA = 'Valid name, no data record of requested type';
+  c_noTLS = 'SSL/TLS support is not compiled!';
+  c_SSLnone = 'Without SSL support';
+
+
 {$IFDEF ONCEWINSOCK}
 var
   WsaDataOnce: TWSADATA;
@@ -1593,9 +1652,9 @@ begin
     Stub := DLLStackName;
   if not InitSocketInterface(Stub) then
   begin
-    e := ESynapseError.Create('Error loading Socket interface (' + Stub + ')!');
+    e := ESynapseError.Create(Format(c_errstub, [Stub]));
     e.ErrorCode := 0;
-    e.ErrorMessage := 'Error loading Socket interface (' + Stub + ')!';
+    e.ErrorMessage := Format(c_errstub, [Stub]);
     raise e;
   end;
   SockCheck(synsock.WSAStartup(WinsockLevel, FWsaDataOnce));
@@ -2656,8 +2715,7 @@ begin
     DoStatus(HR_Error, IntToStr(FLastError) + ',' + FLastErrorDesc);
     if FRaiseExcept then
     begin
-      e := ESynapseError.Create(Format('Synapse TCP/IP Socket error %d: %s',
-        [FLastError, FLastErrorDesc]));
+      e := ESynapseError.Create(Format(c_except, [FLastError, FLastErrorDesc]));
       e.ErrorCode := FLastError;
       e.ErrorMessage := FLastErrorDesc;
       raise e;
@@ -3205,116 +3263,116 @@ begin
   begin
     Result := WSAGetLastErrorDesc;
     if Result = '' then
-      Result := 'Other Winsock error (' + IntToStr(ErrorCode) + ')';
+      Result := Format(c_sockerr, [ErrorCode]);
   end;
 {$ELSE}
   case ErrorCode of
     0:
       Result := '';
     WSAEINTR: {10004}
-      Result := 'Interrupted system call';
+      Result := c_WSAEINTR;
     WSAEBADF: {10009}
-      Result := 'Bad file number';
+      Result := c_WSAEBADF;
     WSAEACCES: {10013}
-      Result := 'Permission denied';
+      Result := c_WSAEACCES;
     WSAEFAULT: {10014}
-      Result := 'Bad address';
+      Result := c_WSAEFAULT;
     WSAEINVAL: {10022}
-      Result := 'Invalid argument';
+      Result := c_WSAEINVAL;
     WSAEMFILE: {10024}
-      Result := 'Too many open files';
+      Result := c_WSAEMFILE;
     WSAEWOULDBLOCK: {10035}
-      Result := 'Operation would block';
+      Result := c_WSAEWOULDBLOCK;
     WSAEINPROGRESS: {10036}
-      Result := 'Operation now in progress';
+      Result := c_WSAEINPROGRESS;
     WSAEALREADY: {10037}
-      Result := 'Operation already in progress';
+      Result := c_WSAEALREADY;
     WSAENOTSOCK: {10038}
-      Result := 'Socket operation on nonsocket';
+      Result := c_WSAENOTSOCK;
     WSAEDESTADDRREQ: {10039}
-      Result := 'Destination address required';
+      Result := c_WSAEDESTADDRREQ;
     WSAEMSGSIZE: {10040}
-      Result := 'Message too long';
+      Result := c_WSAEMSGSIZE;
     WSAEPROTOTYPE: {10041}
-      Result := 'Protocol wrong type for Socket';
+      Result := c_WSAEPROTOTYPE;
     WSAENOPROTOOPT: {10042}
-      Result := 'Protocol not available';
+      Result := c_WSAENOPROTOOPT;
     WSAEPROTONOSUPPORT: {10043}
-      Result := 'Protocol not supported';
+      Result := c_WSAEPROTONOSUPPORT;
     WSAESOCKTNOSUPPORT: {10044}
-      Result := 'Socket not supported';
+      Result := c_WSAESOCKTNOSUPPORT;
     WSAEOPNOTSUPP: {10045}
-      Result := 'Operation not supported on Socket';
+      Result := c_WSAEOPNOTSUPP;
     WSAEPFNOSUPPORT: {10046}
-      Result := 'Protocol family not supported';
+      Result := c_WSAEPFNOSUPPORT;
     WSAEAFNOSUPPORT: {10047}
-      Result := 'Address family not supported';
+      Result := c_WSAEAFNOSUPPORT;
     WSAEADDRINUSE: {10048}
-      Result := 'Address already in use';
+      Result := c_WSAEADDRINUSE;
     WSAEADDRNOTAVAIL: {10049}
-      Result := 'Can''t assign requested address';
+      Result := c_WSAEADDRNOTAVAIL;
     WSAENETDOWN: {10050}
-      Result := 'Network is down';
+      Result := c_WSAENETDOWN;
     WSAENETUNREACH: {10051}
-      Result := 'Network is unreachable';
+      Result := c_WSAENETUNREACH;
     WSAENETRESET: {10052}
-      Result := 'Network dropped connection on reset';
+      Result := c_WSAENETRESET;
     WSAECONNABORTED: {10053}
-      Result := 'Software caused connection abort';
+      Result := c_WSAECONNABORTED;
     WSAECONNRESET: {10054}
-      Result := 'Connection reset by peer';
+      Result := c_WSAECONNRESET;
     WSAENOBUFS: {10055}
-      Result := 'No Buffer space available';
+      Result := c_WSAENOBUFS;
     WSAEISCONN: {10056}
-      Result := 'Socket is already connected';
+      Result := c_WSAEISCONN;
     WSAENOTCONN: {10057}
-      Result := 'Socket is not connected';
+      Result := c_WSAENOTCONN;
     WSAESHUTDOWN: {10058}
-      Result := 'Can''t send after Socket shutdown';
+      Result := c_WSAESHUTDOWN;
     WSAETOOMANYREFS: {10059}
-      Result := 'Too many references:can''t splice';
+      Result := c_WSAETOOMANYREFS;
     WSAETIMEDOUT: {10060}
-      Result := 'Connection timed out';
+      Result := c_WSAETIMEDOUT;
     WSAECONNREFUSED: {10061}
-      Result := 'Connection refused';
+      Result := c_WSAECONNREFUSED;
     WSAELOOP: {10062}
-      Result := 'Too many levels of symbolic links';
+      Result := c_WSAELOOP;
     WSAENAMETOOLONG: {10063}
-      Result := 'File name is too long';
+      Result := c_WSAENAMETOOLONG;
     WSAEHOSTDOWN: {10064}
-      Result := 'Host is down';
+      Result := c_WSAEHOSTDOWN;
     WSAEHOSTUNREACH: {10065}
-      Result := 'No route to host';
+      Result := c_WSAEHOSTUNREACH;
     WSAENOTEMPTY: {10066}
-      Result := 'Directory is not empty';
+      Result := c_WSAENOTEMPTY;
     WSAEPROCLIM: {10067}
-      Result := 'Too many processes';
+      Result := c_WSAEPROCLIM;
     WSAEUSERS: {10068}
-      Result := 'Too many users';
+      Result := c_WSAEUSERS;
     WSAEDQUOT: {10069}
-      Result := 'Disk quota exceeded';
+      Result := c_WSAEDQUOT;
     WSAESTALE: {10070}
-      Result := 'Stale NFS file handle';
+      Result := c_WSAESTALE;
     WSAEREMOTE: {10071}
-      Result := 'Too many levels of remote in path';
+      Result := c_WSAEREMOTE;
     WSASYSNOTREADY: {10091}
-      Result := 'Network subsystem is unusable';
+      Result := c_WSASYSNOTREADY;
     WSAVERNOTSUPPORTED: {10092}
-      Result := 'Winsock DLL cannot support this application';
+      Result := c_WSAVERNOTSUPPORTED;
     WSANOTINITIALISED: {10093}
-      Result := 'Winsock not initialized';
+      Result := c_WSANOTINITIALISED;
     WSAEDISCON: {10101}
-      Result := 'Disconnect';
+      Result := c_WSAEDISCON;
     WSAHOST_NOT_FOUND: {11001}
-      Result := 'Host not found';
+      Result := c_WSAHOST_NOT_FOUND;
     WSATRY_AGAIN: {11002}
-      Result := 'Non authoritative - host not found';
+      Result := c_WSATRY_AGAIN;
     WSANO_RECOVERY: {11003}
-      Result := 'Non recoverable error';
+      Result := c_WSANO_RECOVERY;
     WSANO_DATA: {11004}
-      Result := 'Valid name, no data record of requested type'
+      Result := c_WSANO_DATA
   else
-    Result := 'Other Winsock error (' + IntToStr(ErrorCode) + ')';
+    Result := Format(c_sockerr, [ErrorCode]);
   end;
 {$ENDIF}
 end;
@@ -4313,7 +4371,7 @@ end;
 procedure TCustomSSL.ReturnError;
 begin
   FLastError := -1;
-  FLastErrorDesc := 'SSL/TLS support is not compiled!';
+  FLastErrorDesc := c_noTLS;
 end;
 
 function TCustomSSL.LibVersion: String;
@@ -4459,7 +4517,7 @@ end;
 
 function TSSLNone.LibVersion: String;
 begin
-  Result := 'Without SSL support';
+  Result := c_SSLnone;
 end;
 
 function TSSLNone.LibName: String;
@@ -4474,9 +4532,9 @@ begin
 {$IFDEF ONCEWINSOCK}
   if not InitSocketInterface(DLLStackName) then
   begin
-    e := ESynapseError.Create('Error loading Socket interface (' + DLLStackName + ')!');
+    e := ESynapseError.Create(Format(c_errstub, [DLLStackName]));
     e.ErrorCode := 0;
-    e.ErrorMessage := 'Error loading Socket interface (' + DLLStackName + ')!';
+    e.ErrorMessage := Format(c_errstub, [DLLStackName]);
     raise e;
   end;
   synsock.WSAStartup(WinsockLevel, WsaDataOnce);
