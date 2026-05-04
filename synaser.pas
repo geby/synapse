@@ -1,9 +1,9 @@
 {==============================================================================|
-| Project : Ararat Synapse                                       | 007.007.003 |
+| Project : Ararat Synapse                                       | 007.007.004 |
 |==============================================================================|
 | Content: Serial port support                                                 |
 |==============================================================================|
-| Copyright (c)2001-2023, Lukas Gebauer                                        |
+| Copyright (c)2001-2026, Lukas Gebauer                                        |
 | All rights reserved.                                                         |
 |                                                                              |
 | Redistribution and use in source and binary forms, with or without           |
@@ -33,7 +33,7 @@
 | DAMAGE.                                                                      |
 |==============================================================================|
 | The Initial Developer of the Original Code is Lukas Gebauer (Czech Republic).|
-| Portions created by Lukas Gebauer are Copyright (c)2001-2023.                |
+| Portions created by Lukas Gebauer are Copyright (c)2001-2026.                |
 | All Rights Reserved.                                                         |
 |==============================================================================|
 | Contributor(s):                                                              |
@@ -907,7 +907,7 @@ begin
   if pos('COM', uppercase(Value)) = 1 then
     FComNr := StrToIntdef(copy(Value, 4, Length(Value) - 3), PortIsClosed + 1) - 1;
   if pos('/DEV/TTYS', uppercase(Value)) = 1 then
-    FComNr := StrToIntdef(copy(Value, 10, Length(Value) - 9), PortIsClosed - 1);
+    FComNr := StrToIntdef(copy(Value, 10, Length(Value) - 9), PortIsClosed);
 end;
 
 procedure TBlockSerial.SetBandwidth(Value: Integer);
@@ -995,30 +995,30 @@ begin
   {$ENDIF}
 {$ENDIF}
 {$IFNDEF MSWINDOWS}
-  if FComNr <> PortIsClosed then
+  if FComNr > PortIsClosed then
     FDevice := '/dev/ttyS' + IntToStr(FComNr);
-  {$IFDEF USE_LINUX_LOCK}
-    // Comport already owned by another process?          {HGJ}
-    if FLinuxLock then
-      if not cpomComportAccessible then
-      begin
-        if FileExists(LockfileName) then
-          RaiseSynaError(ErrAlreadyOwned)
-        else
-          RaiseSynaError(ErrAccessDenied);
 
-        Exit;
-      end;
+  {$IFDEF USE_LINUX_LOCK}
+  // Comport already owned by another process?          {HGJ}
+  if FLinuxLock then
+    if not cpomComportAccessible then
+    begin
+      if FileExists(LockfileName) then
+        RaiseSynaError(ErrAlreadyOwned)
+      else
+        RaiseSynaError(ErrAccessDenied);
+      Exit;
+    end;
   {$ENDIF}
 
   {$IFNDEF FPC}
     {$IFDEF POSIX}
-      FHandle := open(MarshaledAString(AnsiString(FDevice)), O_RDWR or O_SYNC);
+  FHandle := open(MarshaledAString(AnsiString(FDevice)), O_RDWR or O_SYNC);
     {$ELSE}
-      FHandle := THandle(Libc.open(pchar(FDevice), O_RDWR or O_SYNC));
+  FHandle := THandle(Libc.open(pchar(FDevice), O_RDWR or O_SYNC));
     {$ENDIF}
   {$ELSE}
-    FHandle := THandle(fpOpen(FDevice, O_RDWR or O_SYNC));
+  FHandle := THandle(fpOpen(FDevice, O_RDWR or O_SYNC));
   {$ENDIF}
   if FHandle = INVALID_HANDLE_VALUE then  //because THandle is not integer on all platforms!
     SerialCheck(-1)
@@ -1033,7 +1033,7 @@ begin
   if FLastError <> sOK then
     Exit;
 {$ELSE}
-  if FComNr <> PortIsClosed then
+  if FComNr > PortIsClosed then
     FDevice := '\\.\COM' + IntToStr(FComNr + 1);
   FHandle := THandle(CreateFile(PChar(FDevice), GENERIC_READ or GENERIC_WRITE,
     0, nil, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL or FILE_FLAG_OVERLAPPED, 0));
