@@ -191,6 +191,30 @@ const
     'libeay32.dll'
   );
 {$ENDIF}
+{$IFDEF DARWIN}
+const
+  DarwinLibCount = 8;
+  DarwinSSLLibNames: array[0..DarwinLibCount-1] of string = (
+    '/opt/homebrew/opt/openssl@3/lib/libssl.3.dylib',
+    '/usr/local/opt/openssl@3/lib/libssl.3.dylib',
+    '/opt/local/lib/libssl.3.dylib',
+    '/usr/local/lib/libssl.3.dylib',
+    '/opt/homebrew/opt/openssl@1.1/lib/libssl.1.1.dylib',
+    '/usr/local/opt/openssl@1.1/lib/libssl.1.1.dylib',
+    '/opt/local/lib/libssl.1.1.dylib',
+    '/usr/local/lib/libssl.1.1.dylib'
+  );
+  DarwinCryptoLibNames: array[0..DarwinLibCount-1] of string = (
+    '/opt/homebrew/opt/openssl@3/lib/libcrypto.3.dylib',
+    '/usr/local/opt/openssl@3/lib/libcrypto.3.dylib',
+    '/opt/local/lib/libcrypto.3.dylib',
+    '/usr/local/lib/libcrypto.3.dylib',
+    '/opt/homebrew/opt/openssl@1.1/lib/libcrypto.1.1.dylib',
+    '/usr/local/opt/openssl@1.1/lib/libcrypto.1.1.dylib',
+    '/opt/local/lib/libcrypto.1.1.dylib',
+    '/usr/local/lib/libcrypto.1.1.dylib'
+  );
+{$ENDIF}
 {$ENDIF}
 
 type
@@ -1971,8 +1995,23 @@ begin
         end;
       end;
       {$ELSE}
+      {$IFDEF DARWIN}
+      if (DLLUtilName = 'libcrypto.dylib') and (DLLSSLName = 'libssl.dylib') then
+        for i := 0 to Pred(DarwinLibCount) do
+          if FileExists(DarwinCryptoLibNames[i]) then
+          begin
+            SSLUtilHandle := LoadLib(DarwinCryptoLibNames[i]);
+            SSLLibHandle := LoadLib(DarwinSSLLibNames[i]);
+            Break;
+          end;
+      if (SSLUtilHandle = 0) and (SSLLibHandle = 0) then
+      begin
+      {$ENDIF}
       SSLUtilHandle := LoadLib(DLLUtilName);
       SSLLibHandle := LoadLib(DLLSSLName);
+      {$IFDEF DARWIN}
+      end;
+      {$ENDIF}
       {$ENDIF}
 {$ENDIF}
       if (SSLLibHandle <> 0) and (SSLUtilHandle <> 0) then
