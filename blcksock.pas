@@ -1462,7 +1462,7 @@ type
     property SNIHost: string read FSNIHost write FSNIHost;
     {:Flag to signalize closed stream after read or write operation.
       Used internally to signalise WSAECONNRESET.}
-    property EOF: boolean read FEOF write FEOF;
+    property EOFsignaled: boolean read FEOF write FEOF;
   end;
 
   {:@abstract(Default SSL plugin with no SSL support.)
@@ -4099,7 +4099,7 @@ begin
     ResetLastError;
     LimitBandwidth(Len, FMaxRecvBandwidth, FNextRecv);
     Result := FSSL.RecvBuffer(Buffer, Len);
-    if FSSL.EOF then
+    if FSSL.EOFsignaled then
       FLastError := WSAECONNRESET
     else
       if FSSL.LastError <> 0 then
@@ -4187,7 +4187,7 @@ begin
     DoMonitor(True, Buffer, Length);
 {$IFDEF CIL}
     Result := FSSL.SendBuffer(Buffer, Length);
-    if FSSL.EOF then
+    if FSSL.EOFsignaled then
       FLastError := WSAECONNRESET
     else
       if FSSL.LastError <> 0 then
@@ -4207,7 +4207,7 @@ begin
         LimitBandwidth(y, FMaxSendBandwidth, FNextsend);
         p := IncPoint(Buffer, x);
         r := FSSL.SendBuffer(p, y);
-        if FSSL.EOF then
+        if FSSL.EOFsignaled then
           FLastError := WSAECONNRESET
         else
           if FSSL.LastError <> 0 then
