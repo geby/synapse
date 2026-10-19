@@ -1,9 +1,9 @@
 {==============================================================================|
-| Project : Ararat Synapse                                       | 001.000.003 |
+| Project : Ararat Synapse                                       | 001.000.004 |
 |==============================================================================|
 | Content: SSL support by OpenSSL 3.0                                          |
 |==============================================================================|
-| Copyright (c)1999-2023, Lukas Gebauer                                        |
+| Copyright (c)1999-2026, Lukas Gebauer                                        |
 | All rights reserved.                                                         |
 |                                                                              |
 | Redistribution and use in source and binary forms, with or without           |
@@ -33,7 +33,7 @@
 | DAMAGE.                                                                      |
 |==============================================================================|
 | The Initial Developer of the Original Code is Lukas Gebauer (Czech Republic).|
-| Portions created by Lukas Gebauer are Copyright (c)2002-2023.                |
+| Portions created by Lukas Gebauer are Copyright (c)2002-2026.                |
 | Portions created by Petr Fejfar are Copyright (c)2011-2012.                  |
 | All Rights Reserved.                                                         |
 |==============================================================================|
