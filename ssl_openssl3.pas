@@ -99,6 +99,7 @@ type
   protected
     FSsl: PSSL;
     Fctx: PSSL_CTX;
+    FReuseSession: PSSL_SESSION;
     function SSLCheck: Boolean;
     function SetSslKeys: boolean;
     function Init(server:Boolean): Boolean;
@@ -110,6 +111,7 @@ type
     {:See @inherited}
     constructor Create(const Value: TTCPBlockSocket); override;
     destructor Destroy; override;
+    procedure Assign(const Value: TCustomSSL); override;
     {:See @inherited}
     function LibVersion: String; override;
     {:See @inherited}
@@ -181,12 +183,25 @@ begin
   FCiphers := 'DEFAULT';
   FSsl := nil;
   Fctx := nil;
+  FReuseSession := nil;
 end;
 
 destructor TSSLOpenSSL3.Destroy;
 begin
   DeInit;
+  if assigned(FReuseSession) then
+    SslSessionFree(FReuseSession);
   inherited Destroy;
+end;
+
+procedure TSSLOpenSSL3.Assign(const Value: TCustomSSL);
+begin
+  inherited Assign(Value);
+  if assigned(FReuseSession) then
+    SslSessionFree(FReuseSession);
+  FReuseSession := nil;
+  if (Value is TSSLOpenSSL3) and assigned(TSSLOpenSSL3(Value).FSsl) and Value.SSLEnabled then
+    FReuseSession := SslGet1Session(TSSLOpenSSL3(Value).FSsl);
 end;
 
 function TSSLOpenSSL3.LibVersion: String;
@@ -517,6 +532,8 @@ begin
       SSLCheck;
       Exit;
     end;
+    if assigned(FReuseSession) then
+      SslSetSession(FSsl, FReuseSession);
     if SNIHost<>'' then
     begin
       SSLCtrl(Fssl, SSL_CTRL_SET_TLSEXT_HOSTNAME, TLSEXT_NAMETYPE_host_name, PAnsiChar(AnsiString(SNIHost)));
